@@ -25,9 +25,11 @@ import {
   Cog,
   Building2,
   CalendarClock,
-  MessageSquare
+  MessageSquare,
+  Crown,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 
 const menuItems = [
@@ -85,6 +87,18 @@ export function CRMSidebarWithAuth() {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, signOut, isAdmin } = useAuth();
+  const { subscription, loading: subscriptionLoading } = useSubscription();
+
+  const getPlanLabel = () => {
+    if (subscriptionLoading) return "...";
+    if (!subscription?.subscribed || !subscription.plan) return "Free";
+    return subscription.plan === "start" ? "Start" : "Scale";
+  };
+
+  const getPlanColor = () => {
+    if (!subscription?.subscribed || !subscription.plan) return "text-muted-foreground";
+    return subscription.plan === "scale" ? "text-amber-500" : "text-primary";
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -180,9 +194,16 @@ export function CRMSidebarWithAuth() {
                 <p className="text-sm font-poppins font-medium text-foreground truncate">
                   {profile?.name}
                 </p>
-                <p className="text-xs text-muted-foreground font-poppins capitalize">
-                  {isAdmin ? 'admin' : 'seller'}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground font-poppins capitalize">
+                    {isAdmin ? 'Admin' : 'Seller'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">•</span>
+                  <span className={`text-xs font-poppins font-medium flex items-center gap-0.5 ${getPlanColor()}`}>
+                    {subscription?.plan === "scale" && <Crown className="h-3 w-3" />}
+                    {getPlanLabel()}
+                  </span>
+                </div>
               </div>
             </div>
           </Button>
