@@ -101,7 +101,6 @@ export function Settings() {
     { id: "test-distribution", icon: Play, label: "Testar Distribuição", active: activeTab === "test-distribution" },
     { id: "sources", icon: MapPin, label: "Origens de Leads", active: activeTab === "sources" },
     { id: "notifications", icon: Bell, label: "Notificações", active: activeTab === "notifications" },
-    ...(isAdmin ? [{ id: "clerk-migration", icon: Shield, label: "Migração Clerk", active: activeTab === "clerk-migration" }] : []),
   ];
 
   const renderContent = () => {
@@ -130,8 +129,6 @@ export function Settings() {
         return <TestLeadDistribution />;
       case "sources":
         return <LeadSourcesManagement />;
-      case "clerk-migration":
-        return isAdmin ? <ClerkMigration /> : null;
       case "notifications":
         return (
           <Card className="card-gradient border-0">
