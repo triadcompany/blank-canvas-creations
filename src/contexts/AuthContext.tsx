@@ -29,6 +29,7 @@ interface AuthContextType {
   role: 'admin' | 'seller' | null;
   error: Error | null;
   loading: boolean;
+  needsOnboarding: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, name: string, organizationName?: string) => Promise<{ error: any; data?: any }>;
   signOut: () => Promise<void>;
@@ -43,7 +44,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
   const { openSignIn, openSignUp } = useClerk();
-  const { profile, role, loading: supabaseLoading, refreshProfile, error } = useClerkSupabase();
+  const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
 
   // Converter usuário Clerk para formato compatível
   const user: CompatUser | null = clerkUser ? {
@@ -90,12 +91,13 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     role,
     error,
     loading,
+    needsOnboarding,
     signIn,
     signUp,
     signOut,
     refreshProfile,
     isAdmin,
-  }), [user, clerkUser, profile, role, error, loading, signIn, signUp, signOut, refreshProfile, isAdmin]);
+  }), [user, clerkUser, profile, role, error, loading, needsOnboarding, signIn, signUp, signOut, refreshProfile, isAdmin]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -125,6 +127,7 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     role: null,
     error: null,
     loading: false,
+    needsOnboarding: false,
     signIn,
     signUp,
     signOut,

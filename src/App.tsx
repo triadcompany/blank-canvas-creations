@@ -24,6 +24,7 @@ import Mensagens from "./pages/Mensagens";
 import LandingPage from "./pages/LandingPage";
 import Prospeccao from "./pages/Prospeccao";
 import Followups from "./pages/Followups";
+import Onboarding from "./pages/Onboarding";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -69,6 +70,7 @@ const App = () => {
             <Route path="/seller-auth" element={<SellerAuth />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <CRMLayout>
