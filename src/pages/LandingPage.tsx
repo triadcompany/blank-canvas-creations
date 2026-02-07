@@ -107,6 +107,9 @@ export default function LandingPage() {
               <a href="#funcionalidades" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                 Funcionalidades
               </a>
+              <a href="#planos" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                Planos
+              </a>
               <a href="#seguranca" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                 Segurança
               </a>
@@ -465,8 +468,8 @@ export default function LandingPage() {
               <h3 className="font-semibold mb-4">Produto</h3>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li><a href="#funcionalidades" className="hover:text-foreground transition-colors">Funcionalidades</a></li>
+                <li><a href="#planos" className="hover:text-foreground transition-colors">Planos</a></li>
                 <li><a href="#seguranca" className="hover:text-foreground transition-colors">Segurança</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Preços</a></li>
               </ul>
             </div>
             <div>

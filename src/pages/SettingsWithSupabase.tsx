@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useUserInvites } from "@/hooks/useUserInvites";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Users,
   GitBranch,
@@ -24,8 +24,10 @@ import {
   Clock,
   ExternalLink,
   MessageSquare,
+  CreditCard,
 } from "lucide-react";
 import { WhatsAppLeadNotifications } from "@/components/settings/WhatsAppLeadNotifications";
+import BillingSettings from "@/components/settings/BillingSettings";
 import {
   Dialog,
   DialogContent, 
@@ -47,7 +49,16 @@ export function Settings() {
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
   const { inviteUser, loading: inviteLoading } = useUserInvites();
-  const [selectedSection, setSelectedSection] = useState("usuarios");
+  const [selectedSection, setSelectedSection] = useState("billing");
+  const [searchParams] = useSearchParams();
+  
+  // Check for tab parameter in URL (e.g., after returning from Stripe)
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) {
+      setSelectedSection(tab);
+    }
+  }, [searchParams]);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "seller">("seller");
@@ -76,6 +87,7 @@ export function Settings() {
   };
 
   const menuItems = [
+    { id: "billing", label: "Planos e Cobrança", icon: CreditCard },
     { id: "usuarios", label: "Usuários", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: GitBranch },
     { id: "whatsapp-notifications", label: "Notificações WhatsApp", icon: MessageSquare },
@@ -386,6 +398,8 @@ export function Settings() {
 
   const renderContent = () => {
     switch (selectedSection) {
+      case "billing":
+        return <BillingSettings />;
       case "usuarios":
         return renderUsuariosSection();
       case "pipeline":
@@ -395,7 +409,7 @@ export function Settings() {
       case "notifications":
         return renderNotificationsSection();
       default:
-        return renderUsuariosSection();
+        return <BillingSettings />;
     }
   };
 
