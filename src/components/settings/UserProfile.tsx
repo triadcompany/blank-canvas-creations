@@ -5,22 +5,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, 
   Camera, 
   Shield, 
   Save,
-  ExternalLink
+  ExternalLink,
+  Crown,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useClerk } from "@clerk/clerk-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useNavigate } from "react-router-dom";
 
 export function UserProfile() {
-  const { profile, user, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile, isAdmin } = useAuth();
   const { openUserProfile } = useClerk();
   const { toast } = useToast();
+  const { subscription, loading: subscriptionLoading } = useSubscription();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isUpdating, setIsUpdating] = useState(false);
@@ -29,6 +36,19 @@ export function UserProfile() {
   const [formData, setFormData] = useState({
     name: profile?.name || "",
   });
+
+  const getPlanInfo = () => {
+    if (subscriptionLoading) return { label: "...", variant: "secondary" as const, icon: false };
+    if (!subscription?.subscribed || !subscription.plan) {
+      return { label: "Free", variant: "secondary" as const, icon: false };
+    }
+    if (subscription.plan === "scale") {
+      return { label: "Scale", variant: "default" as const, icon: true };
+    }
+    return { label: "Start", variant: "outline" as const, icon: false };
+  };
+
+  const planInfo = getPlanInfo();
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -170,6 +190,15 @@ export function UserProfile() {
               </AvatarFallback>
             </Avatar>
             <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant={planInfo.variant} className="flex items-center gap-1">
+                  {planInfo.icon && <Crown className="h-3 w-3" />}
+                  Plano {planInfo.label}
+                </Badge>
+                <Badge variant="outline" className="capitalize">
+                  {isAdmin ? "Admin" : "Vendedor"}
+                </Badge>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -189,6 +218,37 @@ export function UserProfile() {
                 onChange={handleAvatarUpload}
                 className="hidden"
               />
+            </div>
+          </div>
+
+          {/* Plan Info Card */}
+          <div className="p-4 rounded-lg bg-muted/50 border">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">
+                    Plano atual: <span className={planInfo.icon ? "text-amber-500" : "text-primary"}>{planInfo.label}</span>
+                  </p>
+                  {subscription?.current_period_end && (
+                    <p className="text-xs text-muted-foreground">
+                      {subscription.cancel_at_period_end 
+                        ? `Expira em ${new Date(subscription.current_period_end).toLocaleDateString('pt-BR')}`
+                        : `Renova em ${new Date(subscription.current_period_end).toLocaleDateString('pt-BR')}`
+                      }
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate('/settings?tab=billing')}
+              >
+                {subscription?.subscribed ? "Gerenciar" : "Fazer upgrade"}
+              </Button>
             </div>
           </div>
 
