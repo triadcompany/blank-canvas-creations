@@ -1,0 +1,353 @@
+import React, { useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Users,
+  TrendingUp,
+  Target,
+  Award,
+  Phone,
+  Mail,
+  Calendar,
+  DollarSign,
+  ArrowUpRight,
+  Sparkles
+} from "lucide-react";
+import heroImage from "@/assets/crm-hero.jpg";
+import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
+import { TasksWidget } from "@/components/tasks/TasksWidget";
+import { useOrganization } from "@/hooks/useOrganization";
+import { useAuth } from "@/contexts/AuthContext";
+
+export function Dashboard() {
+  const { leads, stages, loading } = useSupabaseLeads();
+  const { organization } = useOrganization();
+  const { profile } = useAuth();
+
+  // Calcular métricas reais baseadas nos dados
+  const metrics = useMemo(() => {
+    if (loading || !leads.length) {
+      return [
+        {
+          title: "Total de Leads",
+          value: "0",
+          change: "0%",
+          icon: Users,
+          gradient: "from-primary to-primary/70"
+        },
+        {
+          title: "Vendas Fechadas",
+          value: "0",
+          change: "0%",
+          icon: Target,
+          gradient: "from-emerald-500 to-emerald-400"
+        },
+        {
+          title: "Taxa de Conversão",
+          value: "0%",
+          change: "0%",
+          icon: TrendingUp,
+          gradient: "from-authority to-authority/70"
+        },
+        {
+          title: "Receita do Mês",
+          value: "R$ 0",
+          change: "0%",
+          icon: DollarSign,
+          gradient: "from-amber-500 to-amber-400"
+        }
+      ];
+    }
+
+    const totalLeads = leads.length;
+    
+    // Encontrar etapas de venda (fechado/vendido)
+    const salesStages = stages.filter(stage => 
+      stage.name.toLowerCase().includes('fechado') || 
+      stage.name.toLowerCase().includes('venda') ||
+      stage.name.toLowerCase().includes('vendido')
+    );
+    
+    const salesCount = leads.filter(lead => 
+      salesStages.some(stage => stage.id === lead.stage_id)
+    ).length;
+    
+    const conversionRate = totalLeads > 0 ? (salesCount / totalLeads * 100).toFixed(1) : 0;
+    
+    // Calcular receita baseada no valor_negocio dos leads vendidos (mês atual)
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const revenue = leads
+      .filter(lead => {
+        const isSalesStage = salesStages.some(stage => stage.id === lead.stage_id);
+        // Verificar se o lead foi atualizado neste mês (indicando que foi movido para venda)
+        const leadDate = lead.created_at ? new Date(lead.created_at) : null;
+        const isThisMonth = leadDate ? leadDate >= startOfMonth : false;
+        return isSalesStage && (lead.valor_negocio || lead.price);
+      })
+      .reduce((total, lead) => {
+        // Priorizar valor_negocio, senão usar price legado
+        if (lead.valor_negocio) {
+          return total + lead.valor_negocio;
+        }
+        const price = parseFloat(lead.price?.replace(/[^\d,]/g, '')?.replace(',', '.') || '0');
+        return total + price;
+      }, 0);
+
+    return [
+      {
+        title: "Total de Leads",
+        value: totalLeads.toString(),
+        change: "+0%",
+        icon: Users,
+        gradient: "from-primary to-primary/70"
+      },
+      {
+        title: "Vendas Fechadas",
+        value: salesCount.toString(),
+        change: "+0%",
+        icon: Target,
+        gradient: "from-emerald-500 to-emerald-400"
+      },
+      {
+        title: "Taxa de Conversão",
+        value: `${conversionRate}%`,
+        change: "+0%",
+        icon: TrendingUp,
+        gradient: "from-authority to-authority/70"
+      },
+      {
+        title: "Receita do Mês",
+        value: `R$ ${revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+        change: "+0%",
+        icon: DollarSign,
+        gradient: "from-amber-500 to-amber-400"
+      }
+    ];
+  }, [leads, stages, loading]);
+
+  const firstName = profile?.name?.split(' ')[0] || 'Usuário';
+
+  return (
+    <div className="p-6 space-y-8">
+      {/* Hero Banner - Improved */}
+      <div 
+        className="relative h-40 rounded-3xl overflow-hidden shadow-xl"
+        style={{
+          backgroundImage: `url(${heroImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/95 via-primary/80 to-authority/60"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent"></div>
+        <div className="relative z-10 p-8 h-full flex flex-col justify-center">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-5 w-5 text-white/80" />
+            <span className="text-white/80 font-medium text-sm uppercase tracking-wider">
+              {organization?.name || 'AutoLead CRM'}
+            </span>
+          </div>
+          <h1 className="text-3xl font-poppins font-bold text-white mb-1">
+            Olá, {firstName}! 👋
+          </h1>
+          <p className="font-poppins text-white/90 text-lg">
+            Gerencie seus leads e potencialize suas vendas
+          </p>
+        </div>
+      </div>
+
+      {/* Metrics Cards - Improved */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        {metrics.map((metric, index) => (
+          <Card 
+            key={metric.title} 
+            className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 group"
+          >
+            <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-5 group-hover:opacity-10 transition-opacity`}></div>
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-poppins font-medium text-muted-foreground">
+                    {metric.title}
+                  </p>
+                  <p className="text-3xl font-poppins font-bold text-foreground">
+                    {metric.value}
+                  </p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+                    <span className="text-xs font-medium text-emerald-600">
+                      {metric.change} vs mês anterior
+                    </span>
+                  </div>
+                </div>
+                <div className={`p-3 rounded-2xl bg-gradient-to-br ${metric.gradient} shadow-lg`}>
+                  <metric.icon className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Charts Row - Improved */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Leads por Etapa */}
+        <Card className="col-span-2 border-0 shadow-lg">
+          <CardHeader className="pb-4">
+            <CardTitle className="font-poppins font-semibold text-lg flex items-center gap-2">
+              <div className="w-2 h-6 bg-primary rounded-full"></div>
+              Leads por Etapa do Funil
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {leads.length > 0 ? (
+              <div className="space-y-4">
+                {stages.map((stage) => {
+                  const stageLeads = leads.filter(lead => lead.stage_id === stage.id);
+                  const percentage = leads.length > 0 ? (stageLeads.length / leads.length * 100) : 0;
+                  
+                  return (
+                    <div key={stage.id} className="group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-3">
+                          <div 
+                            className="w-3 h-3 rounded-full shadow-sm"
+                            style={{ backgroundColor: stage.color }}
+                          />
+                          <span className="font-poppins text-sm font-medium">{stage.name}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-poppins font-bold text-lg">{stageLeads.length}</span>
+                          <span className="text-muted-foreground text-sm">({percentage.toFixed(1)}%)</span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{ 
+                            width: `${percentage}%`,
+                            backgroundColor: stage.color 
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                  <Users className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground font-poppins">
+                  Adicione seus primeiros leads para ver a distribuição por etapas
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top Vendedores */}
+        <Card className="border-0 shadow-lg">
+          <CardHeader className="pb-4">
+            <CardTitle className="font-poppins font-semibold text-lg flex items-center gap-2">
+              <Award className="h-5 w-5 text-amber-500" />
+              <span>Top Vendedores</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {leads.length > 0 ? (
+              <div className="space-y-4">
+                {Object.entries(
+                  leads.reduce((acc, lead) => {
+                    const sellerName = lead.seller_name || 'Vendedor';
+                    acc[sellerName] = (acc[sellerName] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>)
+                )
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5)
+                .map(([seller, count], index) => (
+                  <div key={seller} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                        index === 0 ? 'bg-amber-100 text-amber-600' :
+                        index === 1 ? 'bg-slate-200 text-slate-600' :
+                        index === 2 ? 'bg-orange-100 text-orange-600' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <span className="font-poppins text-sm font-medium">{seller}</span>
+                    </div>
+                    <span className="font-poppins font-bold text-primary">{count} leads</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-full bg-muted mx-auto mb-4 flex items-center justify-center">
+                  <Award className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground font-poppins text-sm">
+                  Ranking de vendedores aparecerá aqui
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tasks Widget */}
+      <div className="grid gap-6">
+        <TasksWidget />
+      </div>
+
+      {/* Quick Actions - Improved */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-primary to-primary/70 rounded-2xl shadow-lg group-hover:scale-105 transition-transform">
+                <Phone className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-poppins font-semibold text-lg">Follow-ups</h3>
+                <p className="text-sm text-muted-foreground">0 ligações pendentes</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-authority to-authority/70 rounded-2xl shadow-lg group-hover:scale-105 transition-transform">
+                <Mail className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-poppins font-semibold text-lg">E-mails</h3>
+                <p className="text-sm text-muted-foreground">0 enviados hoje</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="p-4 bg-gradient-to-br from-emerald-500 to-emerald-400 rounded-2xl shadow-lg group-hover:scale-105 transition-transform">
+                <Calendar className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-poppins font-semibold text-lg">Reuniões</h3>
+                <p className="text-sm text-muted-foreground">0 agendadas hoje</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

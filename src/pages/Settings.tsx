@@ -1,0 +1,471 @@
+import React, { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { useUserInvites } from "@/hooks/useUserInvites";
+import { Link } from "react-router-dom";
+import { 
+  Users, 
+  Workflow, 
+  Bell,
+  Shield,
+  User,
+  Mail,
+  UserPlus,
+  Edit,
+  Crown,
+  UserCheck,
+  Trash2,
+  Clock,
+  ExternalLink,
+  MapPin,
+  Play,
+  Zap,
+  Webhook,
+  MessageSquare,
+  PlayCircle,
+  Instagram,
+} from "lucide-react";
+import { InstagramSettings } from "@/components/instagram/InstagramSettings";
+import { UserProfile } from "@/components/settings/UserProfile";
+import LeadDistribution from "@/components/settings/LeadDistribution";
+import { LeadSourcesManagement } from "@/components/settings/LeadSourcesManagement";
+import { TestLeadDistribution } from "@/components/settings/TestLeadDistribution";
+import { N8nIntegration } from "@/components/settings/N8nIntegration";
+import { WebhookIntegration } from "@/components/settings/WebhookIntegration";
+import { FollowupTemplatesManagement } from "@/components/settings/FollowupTemplatesManagement";
+import { FollowupCadencesManagement } from "@/components/settings/FollowupCadencesManagement";
+import { ClerkMigration } from "@/components/settings/ClerkMigration";
+import { PageHeader } from "@/components/layout/PageHeader";
+import {
+  Dialog,
+  DialogContent, 
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+export function Settings() {
+  const { profiles, invitations, updateProfile, deleteProfile, deleteInvitation, loading, refreshProfiles } = useSupabaseProfiles();
+  const { profile, isAdmin } = useAuth();
+  const { toast } = useToast();
+  const { inviteUser, loading: inviteLoading } = useUserInvites();
+  const [activeTab, setActiveTab] = useState("profile");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"admin" | "seller">("seller");
+  const [editingProfile, setEditingProfile] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const handleRoleUpdate = async (profileId: string, newRole: "admin" | "seller") => {
+    await updateProfile(profileId, { role: newRole });
+    setEditingProfile(null);
+  };
+
+  const settingsItems = [
+    { id: "profile", icon: User, label: "Meu Perfil", active: activeTab === "profile" },
+    { id: "vendors", icon: Users, label: "Usuários", active: activeTab === "vendors" },
+    { id: "pipeline", icon: Workflow, label: "Pipeline", active: activeTab === "pipeline" },
+    { id: "templates", icon: MessageSquare, label: "Templates Follow-up", active: activeTab === "templates" },
+    { id: "cadences", icon: PlayCircle, label: "Cadências", active: activeTab === "cadences" },
+    { id: "instagram", icon: Instagram, label: "Instagram", active: activeTab === "instagram" },
+    { id: "integration", icon: Webhook, label: "Integração", active: activeTab === "integration" },
+    { id: "n8n", icon: Zap, label: "Automação n8n", active: activeTab === "n8n" },
+    { id: "distribution", icon: Users, label: "Distribuição de Leads", active: activeTab === "distribution" },
+    { id: "test-distribution", icon: Play, label: "Testar Distribuição", active: activeTab === "test-distribution" },
+    { id: "sources", icon: MapPin, label: "Origens de Leads", active: activeTab === "sources" },
+    { id: "notifications", icon: Bell, label: "Notificações", active: activeTab === "notifications" },
+    ...(isAdmin ? [{ id: "clerk-migration", icon: Shield, label: "Migração Clerk", active: activeTab === "clerk-migration" }] : []),
+  ];
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "profile":
+        return <UserProfile />;
+      case "vendors":
+        return renderVendorsContent();
+      case "pipeline":
+        return renderPipelineContent();
+      case "templates":
+        return <FollowupTemplatesManagement />;
+      case "cadences":
+        return <FollowupCadencesManagement />;
+      case "instagram":
+        return <InstagramSettings />;
+      case "integration":
+        return <WebhookIntegration />;
+      case "n8n":
+        return <N8nIntegration />;
+      case "distribution":
+        return <LeadDistribution />;
+      case "test-distribution":
+        return <TestLeadDistribution />;
+      case "sources":
+        return <LeadSourcesManagement />;
+      case "clerk-migration":
+        return isAdmin ? <ClerkMigration /> : null;
+      case "notifications":
+        return (
+          <Card className="card-gradient border-0">
+            <CardContent className="p-8 text-center">
+              <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground font-poppins">
+                Configurações de notificações serão implementadas em breve.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      default:
+        return (
+          <Card className="card-gradient border-0">
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground font-poppins">
+                Esta funcionalidade será implementada em breve.
+              </p>
+            </CardContent>
+          </Card>
+        );
+    }
+  };
+
+  const renderVendorsContent = () => {
+    if (!isAdmin) {
+      return (
+        <Card className="card-gradient border-0">
+          <CardContent className="p-8 text-center">
+            <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-poppins font-bold text-foreground mb-2">
+              Acesso Restrito
+            </h2>
+            <p className="text-muted-foreground font-poppins">
+              Apenas administradores podem gerenciar usuários.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-poppins font-semibold text-foreground">
+              Gerenciar Usuários
+            </h3>
+            <p className="text-sm text-muted-foreground font-poppins">
+              Adicione e gerencie vendedores e administradores do sistema
+            </p>
+          </div>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="btn-gradient text-white font-poppins">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Adicionar Usuário
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-poppins">Criar Novo Usuário</DialogTitle>
+                <DialogDescription className="font-poppins">
+                  Após criar, o usuário poderá se cadastrar no sistema usando este email e criando sua própria senha.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="userName" className="font-poppins">Nome Completo</Label>
+                  <Input
+                    id="userName"
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="Nome do usuário"
+                    className="font-poppins"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="userEmail" className="font-poppins">Email</Label>
+                  <Input
+                    id="userEmail"
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="email@empresa.com"
+                    className="font-poppins"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="userRole" className="font-poppins">Função</Label>
+                  <Select value={newUserRole} onValueChange={(value: "admin" | "seller") => setNewUserRole(value)}>
+                    <SelectTrigger className="font-poppins">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="seller">Vendedor</SelectItem>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setDialogOpen(false)} className="font-poppins">
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={async () => {
+                      if (!newUserEmail || !newUserName) {
+                        toast({
+                          title: "Erro",
+                          description: "Preencha todos os campos",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      const result = await inviteUser({
+                        email: newUserEmail,
+                        name: newUserName,
+                        role: newUserRole,
+                      });
+
+                      if (result.success) {
+                        setNewUserEmail('');
+                        setNewUserName('');
+                        setNewUserRole('seller');
+                        setDialogOpen(false);
+                        refreshProfiles();
+                      }
+                    }}
+                    className="btn-gradient text-white font-poppins"
+                    disabled={inviteLoading}
+                  >
+                    {inviteLoading ? 'Criando...' : 'Criar Usuário'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid gap-4">
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="mt-2 font-poppins text-muted-foreground text-sm">Carregando usuários...</p>
+            </div>
+          ) : (
+            <>
+              {profiles.map((userProfile) => (
+                <Card key={userProfile.id} className="card-gradient border-0">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                          {userProfile.role === 'admin' ? (
+                            <Crown className="h-5 w-5 text-primary" />
+                          ) : (
+                            <UserCheck className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-poppins font-semibold text-foreground">
+                            {userProfile.name}
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground font-poppins">
+                              {userProfile.email}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge 
+                          variant={userProfile.role === 'admin' ? 'default' : 'secondary'}
+                          className="font-poppins"
+                        >
+                          {userProfile.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                        </Badge>
+                        {editingProfile === userProfile.id ? (
+                          <div className="flex items-center space-x-1">
+                            <Select
+                              value={userProfile.role}
+                              onValueChange={(value: "admin" | "seller") => handleRoleUpdate(userProfile.id, value)}
+                            >
+                              <SelectTrigger className="w-32 h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="seller">Vendedor</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingProfile(userProfile.id)}
+                              className="font-poppins"
+                              disabled={userProfile.id === profile?.id}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            {userProfile.id !== profile?.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteProfile(userProfile.id, userProfile.user_id)}
+                                className="font-poppins text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              
+              {invitations.map((invitation) => (
+                <Card key={invitation.id} className="card-gradient border-0 border-l-4 border-l-orange-500">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-orange-500/10 rounded-full flex items-center justify-center">
+                          <Clock className="h-5 w-5 text-orange-500" />
+                        </div>
+                        <div>
+                          <h4 className="font-poppins font-semibold text-foreground">
+                            {invitation.name}
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            <Mail className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground font-poppins">
+                              {invitation.email}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline" className="font-poppins text-orange-600 border-orange-200">
+                          Aguardando Cadastro
+                        </Badge>
+                        <Badge 
+                          variant={invitation.role === 'admin' ? 'default' : 'secondary'}
+                          className="font-poppins"
+                        >
+                          {invitation.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteInvitation(invitation.id)}
+                          className="font-poppins text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPipelineContent = () => {
+    return (
+      <Card className="card-gradient border-0">
+        <CardHeader>
+          <CardTitle className="font-poppins font-semibold flex items-center space-x-2">
+            <Workflow className="h-5 w-5 text-primary" />
+            <span>Pipeline Personalizado</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground font-poppins">
+              Personalize as etapas do seu funil de vendas
+            </p>
+            
+            <div className="text-center py-8">
+              <Workflow className="h-12 w-12 text-primary mx-auto mb-4" />
+              <h4 className="text-lg font-poppins font-semibold mb-2">
+                Gerenciamento de Pipeline
+              </h4>
+              <p className="text-muted-foreground font-poppins mb-4">
+                Configure os estágios do funil de vendas da sua organização na página dedicada de pipelines.
+              </p>
+              <Button asChild className="btn-gradient text-white font-poppins">
+                <Link to="/pipelines" className="flex items-center gap-2">
+                  <Workflow className="h-4 w-4" />
+                  Acessar Gerenciamento de Pipelines
+                  <ExternalLink className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <PageHeader 
+        title="Configurações" 
+        description="Gerencie as configurações do seu CRM e personalize sua experiência"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Sidebar de configurações */}
+        <div className="space-y-2">
+          <Card className="card-gradient border-0">
+            <CardContent className="p-4">
+              <div className="space-y-2">
+                {settingsItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
+                      item.active 
+                        ? "bg-primary text-primary-foreground font-medium" 
+                        : "hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span className="font-poppins text-sm">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Conteúdo principal */}
+        <div className="col-span-2 space-y-6">
+          {renderContent()}
+        </div>
+      </div>
+    </div>
+  );
+}
