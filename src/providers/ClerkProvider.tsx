@@ -1,5 +1,6 @@
 import { ClerkProvider as BaseClerkProvider } from '@clerk/clerk-react';
 import { ReactNode, createContext, useContext } from 'react';
+import { ptBR } from '@clerk/localizations';
 
 // Clerk publishable key - this is a PUBLIC key, safe to include in code
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || 'pk_test_Z3JhdGVmdWwtcGVsaWNhbi04OC5jbGVyay5hY2NvdW50cy5kZXYk';
@@ -18,7 +19,6 @@ interface ClerkProviderProps {
 export function ClerkProvider({ children }: ClerkProviderProps) {
   if (!CLERK_PUBLISHABLE_KEY) {
     console.warn('⚠️ VITE_CLERK_PUBLISHABLE_KEY is not set. Clerk authentication will not work.');
-    // Render children without Clerk - but mark as unavailable
     return (
       <ClerkAvailableContext.Provider value={false}>
         {children}
@@ -30,14 +30,16 @@ export function ClerkProvider({ children }: ClerkProviderProps) {
     <ClerkAvailableContext.Provider value={true}>
       <BaseClerkProvider
         publishableKey={CLERK_PUBLISHABLE_KEY}
+        localization={ptBR}
         appearance={{
           variables: {
-            colorPrimary: 'hsl(250, 84%, 54%)',
-            colorBackground: 'hsl(240, 10%, 3.9%)',
-            colorText: 'hsl(0, 0%, 98%)',
-            colorInputBackground: 'hsl(240, 3.7%, 15.9%)',
-            colorInputText: 'hsl(0, 0%, 98%)',
+            colorPrimary: 'hsl(24, 95%, 53%)',
+            colorBackground: 'hsl(0, 0%, 100%)',
+            colorText: 'hsl(0, 0%, 22%)',
+            colorInputBackground: 'hsl(0, 0%, 100%)',
+            colorInputText: 'hsl(0, 0%, 22%)',
             borderRadius: '0.75rem',
+            fontFamily: 'Poppins, sans-serif',
           },
           elements: {
             formButtonPrimary: 
@@ -53,9 +55,6 @@ export function ClerkProvider({ children }: ClerkProviderProps) {
             identityPreviewText: 'text-foreground',
             identityPreviewEditButton: 'text-primary',
           },
-        }}
-        localization={{
-          locale: 'pt-BR',
         }}
       >
         {children}

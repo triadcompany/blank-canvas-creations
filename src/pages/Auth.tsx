@@ -57,39 +57,50 @@ export function Auth() {
     }
   }, [searchParams]);
 
-  // Clerk appearance customizada
+  // Clerk appearance customizada - visual elegante e moderno
   const clerkAppearance = {
     variables: {
       colorPrimary: 'hsl(24, 95%, 53%)',
       colorBackground: 'transparent',
       colorText: 'hsl(0, 0%, 22%)',
-      colorInputBackground: 'hsl(0, 0%, 100%)',
+      colorInputBackground: 'hsl(220, 14%, 96%)',
       colorInputText: 'hsl(0, 0%, 22%)',
-      borderRadius: '0.75rem',
+      borderRadius: '0.875rem',
       fontFamily: 'Poppins, sans-serif',
+      spacingUnit: '1rem',
     },
     elements: {
       rootBox: 'w-full',
-      card: 'bg-transparent shadow-none p-0 w-full',
-      headerTitle: 'font-poppins font-bold text-2xl text-foreground',
-      headerSubtitle: 'font-poppins text-muted-foreground text-sm',
+      card: 'bg-transparent shadow-none p-0 w-full gap-6',
+      headerTitle: 'hidden',
+      headerSubtitle: 'hidden',
       formButtonPrimary: 
-        'bg-gradient-to-r from-primary to-orange-500 hover:from-primary/90 hover:to-orange-500/90 text-white font-poppins font-medium shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-xl hover:shadow-primary/30 hover:-translate-y-0.5 h-11',
-      socialButtonsBlockButton: 'border border-border hover:bg-accent/50 font-poppins h-11 transition-all duration-200',
-      socialButtonsBlockButtonText: 'font-poppins font-medium',
-      formFieldLabel: 'font-poppins text-foreground font-medium text-sm',
-      formFieldInput: 'font-poppins bg-white border-border text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary h-11 transition-all duration-200',
-      footerActionLink: 'text-primary hover:text-primary/80 font-poppins font-medium',
-      identityPreview: 'bg-muted/50 border-border',
-      identityPreviewText: 'text-foreground',
-      identityPreviewEditButton: 'text-primary hover:text-primary/80',
-      dividerLine: 'bg-border',
-      dividerText: 'text-muted-foreground font-poppins text-sm',
+        'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-poppins font-semibold shadow-lg shadow-primary/20 transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:-translate-y-0.5 h-12 text-base rounded-xl',
+      socialButtonsBlockButton: 'bg-card border-2 border-border hover:border-primary/30 hover:bg-accent/30 font-poppins h-12 transition-all duration-200 rounded-xl shadow-sm',
+      socialButtonsBlockButtonText: 'font-poppins font-medium text-foreground',
+      socialButtonsProviderIcon: 'w-5 h-5',
+      formFieldLabel: 'font-poppins text-foreground font-semibold text-sm mb-2',
+      formFieldInput: 'font-poppins bg-muted/50 border-2 border-border text-foreground focus:ring-0 focus:border-primary h-12 transition-all duration-200 rounded-xl placeholder:text-muted-foreground',
+      formFieldLabelRow: 'mb-1',
       formFieldInputShowPasswordButton: 'text-muted-foreground hover:text-foreground',
+      footerActionLink: 'text-primary hover:text-primary/80 font-poppins font-semibold',
+      identityPreview: 'bg-muted/50 border-2 border-border rounded-xl',
+      identityPreviewText: 'text-foreground font-poppins',
+      identityPreviewEditButton: 'text-primary hover:text-primary/80 font-poppins font-medium',
+      dividerLine: 'bg-border',
+      dividerText: 'text-muted-foreground font-poppins text-sm bg-card px-4',
+      dividerRow: 'my-6',
       alertText: 'text-destructive font-poppins',
       footer: 'hidden',
-      formFieldRow: 'mb-4',
-      form: 'gap-4',
+      formFieldRow: 'mb-5',
+      form: 'gap-0',
+      formHeaderTitle: 'hidden',
+      formHeaderSubtitle: 'hidden',
+      otpCodeFieldInput: 'border-2 border-border rounded-xl h-12 font-poppins text-lg',
+      formResendCodeLink: 'text-primary font-poppins font-medium',
+      tagInputContainer: 'bg-muted/50 border-2 border-border rounded-xl',
+      selectButton: 'bg-muted/50 border-2 border-border rounded-xl h-12',
+      badge: 'bg-primary/10 text-primary font-poppins font-medium rounded-lg',
     },
   };
 
@@ -120,12 +131,12 @@ export function Auth() {
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary via-orange-500 to-orange-600 overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary via-accent to-primary overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-white rounded-full blur-2xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute top-0 left-0 w-96 h-96 bg-primary-foreground rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary-foreground rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-primary-foreground rounded-full blur-2xl -translate-x-1/2 -translate-y-1/2" />
         </div>
 
         {/* Grid Pattern */}
@@ -137,11 +148,11 @@ export function Auth() {
         </div>
 
         {/* Content */}
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+        <div className="relative z-10 flex flex-col justify-between p-12 text-primary-foreground w-full">
           {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-primary-foreground/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-              <Sparkles className="w-7 h-7 text-white" />
+              <Sparkles className="w-7 h-7 text-primary-foreground" />
             </div>
             <span className="text-2xl font-bold font-poppins">AutoLead</span>
           </div>
@@ -152,7 +163,7 @@ export function Auth() {
               <h1 className="text-4xl xl:text-5xl font-bold font-poppins leading-tight">
                 Transforme seus leads em clientes
               </h1>
-              <p className="text-lg text-white/80 font-poppins max-w-md">
+              <p className="text-lg text-primary-foreground/80 font-poppins max-w-md">
                 A plataforma completa para gerenciar seu funil de vendas e aumentar suas conversões.
               </p>
             </div>
@@ -162,14 +173,14 @@ export function Auth() {
               {features.map((feature, index) => (
                 <div 
                   key={index}
-                  className="flex items-center gap-4 p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 transition-all duration-300 hover:bg-white/15"
+                  className="flex items-center gap-4 p-4 bg-primary-foreground/10 backdrop-blur-sm rounded-xl border border-primary-foreground/10 transition-all duration-300 hover:bg-primary-foreground/15"
                 >
-                  <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
-                    <feature.icon className="w-6 h-6 text-white" />
+                  <div className="w-12 h-12 bg-primary-foreground/20 rounded-lg flex items-center justify-center shrink-0">
+                    <feature.icon className="w-6 h-6 text-primary-foreground" />
                   </div>
                   <div>
                     <h3 className="font-semibold font-poppins">{feature.title}</h3>
-                    <p className="text-sm text-white/70 font-poppins">{feature.description}</p>
+                    <p className="text-sm text-primary-foreground/70 font-poppins">{feature.description}</p>
                   </div>
                 </div>
               ))}
@@ -177,26 +188,26 @@ export function Auth() {
           </div>
 
           {/* Footer */}
-          <div className="text-sm text-white/60 font-poppins">
+          <div className="text-sm text-primary-foreground/60 font-poppins">
             © 2024 AutoLead. Todos os direitos reservados.
           </div>
         </div>
       </div>
 
       {/* Right Panel - Auth Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-gradient-to-b from-background to-muted/30">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-gradient-to-b from-background to-muted/20">
         <div className="w-full max-w-md space-y-8 animate-fade-in">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-lg shadow-primary/25">
-              <Sparkles className="w-7 h-7 text-white" />
+              <Sparkles className="w-7 h-7 text-primary-foreground" />
             </div>
             <span className="text-2xl font-bold font-poppins text-foreground">AutoLead</span>
           </div>
 
           {/* Header de convite */}
           {inviteData && (
-            <div className="bg-card border border-border rounded-2xl p-6 space-y-4 shadow-lg animate-scale-in">
+            <div className="bg-card border-2 border-border rounded-2xl p-6 space-y-4 shadow-lg animate-scale-in">
               <div className="flex items-center justify-center gap-2">
                 <div className="p-2 bg-primary/10 rounded-lg">
                   <UserPlus className="h-5 w-5 text-primary" />
@@ -234,21 +245,19 @@ export function Auth() {
           )}
 
           {/* Auth Header */}
-          {!inviteData && (
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl sm:text-3xl font-bold font-poppins text-foreground">
-                {isSignUp ? 'Crie sua conta' : 'Bem-vindo de volta'}
-              </h1>
-              <p className="text-muted-foreground font-poppins">
-                {isSignUp 
-                  ? 'Comece a gerenciar seus leads hoje mesmo' 
-                  : 'Entre para acessar seu painel de controle'}
-              </p>
-            </div>
-          )}
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold font-poppins text-foreground">
+              {isSignUp ? 'Crie sua conta' : 'Bem-vindo de volta'}
+            </h1>
+            <p className="text-muted-foreground font-poppins">
+              {isSignUp 
+                ? 'Comece a gerenciar seus leads hoje mesmo' 
+                : 'Entre para acessar seu painel de controle'}
+            </p>
+          </div>
 
           {/* Clerk Components */}
-          <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 shadow-lg">
+          <div className="bg-card border-2 border-border rounded-2xl p-6 sm:p-8 shadow-xl">
             {isSignUp ? (
               <SignUp 
                 appearance={clerkAppearance}
