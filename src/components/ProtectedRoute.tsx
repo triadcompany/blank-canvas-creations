@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -10,11 +10,12 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
-  const { user, profile, role, loading, error, refreshProfile, signOut } = useAuth();
+  const { user, profile, role, loading, error, refreshProfile, signOut, needsOnboarding } = useAuth();
+  const location = useLocation();
 
   // Show toast when error occurs (hook at top level)
   useEffect(() => {
-    if (error && user && !profile) {
+    if (error && user && !profile && !needsOnboarding) {
       toast.error('Erro ao configurar conta', {
         description: 'Tente novamente em alguns segundos.',
         action: {
@@ -23,7 +24,7 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
         },
       });
     }
-  }, [error, user, profile, refreshProfile]);
+  }, [error, user, profile, needsOnboarding, refreshProfile]);
 
   // Aguardar carregar
   if (loading) {
@@ -42,8 +43,16 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/auth" replace />;
   }
 
-  // Se profile ainda não existe, mostrar loading com retry
-  if (!profile) {
+  // Se precisa de onboarding (primeira vez), redireciona
+  if (needsOnboarding) {
+    // Evita redirect loop se já está no onboarding
+    if (location.pathname !== '/onboarding') {
+      return <Navigate to="/onboarding" replace />;
+    }
+  }
+
+  // Se profile ainda não existe e não é onboarding, mostrar loading com retry
+  if (!profile && !needsOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md p-6 space-y-4">
