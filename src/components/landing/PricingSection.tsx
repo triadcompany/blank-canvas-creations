@@ -146,7 +146,7 @@ export default function PricingSection() {
                 <Button 
                   variant="outline" 
                   className="w-full h-12 text-base font-semibold mb-8"
-                  onClick={() => navigate("/auth")}
+                  onClick={() => navigate("/auth?redirect=/settings?tab=billing")}
                 >
                   Começar agora
                 </Button>
@@ -220,7 +220,7 @@ export default function PricingSection() {
 
                 <Button 
                   className="w-full h-12 text-base font-semibold mb-8 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
-                  onClick={() => navigate("/auth")}
+                  onClick={() => navigate("/auth?redirect=/settings?tab=billing")}
                 >
                   Começar agora
                   <ArrowRight className="ml-2 h-5 w-5" />
