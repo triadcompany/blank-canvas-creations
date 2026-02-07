@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -13,10 +12,23 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
   const { user, profile, role, loading, error, refreshProfile, signOut } = useAuth();
 
+  // Show toast when error occurs (hook at top level)
+  useEffect(() => {
+    if (error && user && !profile) {
+      toast.error('Erro ao configurar conta', {
+        description: 'Tente novamente em alguns segundos.',
+        action: {
+          label: 'Tentar novamente',
+          onClick: refreshProfile,
+        },
+      });
+    }
+  }, [error, user, profile, refreshProfile]);
+
   // Aguardar carregar
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="mt-2 font-poppins text-muted-foreground">Carregando...</p>
@@ -30,33 +42,29 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/auth" replace />;
   }
 
-  // Se profile ainda não existe (webhook pode estar processando), mostrar loading
+  // Se profile ainda não existe, mostrar loading com retry
   if (!profile) {
-    if (error) {
-      return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-md space-y-4">
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle className="font-poppins">Não foi possível configurar sua conta</AlertTitle>
-              <AlertDescription className="font-poppins">
-                {error.message || 'Tente novamente em instantes.'}
-              </AlertDescription>
-            </Alert>
-            <div className="flex gap-2">
-              <Button onClick={refreshProfile} className="w-full font-poppins">Tentar novamente</Button>
-              <Button variant="outline" onClick={signOut} className="w-full font-poppins">Sair</Button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md p-6 space-y-4">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-2 font-poppins text-muted-foreground">Configurando conta...</p>
+          <p className="font-poppins text-foreground">Configurando sua conta...</p>
+          <p className="text-sm text-muted-foreground">
+            Isso pode levar alguns segundos na primeira vez.
+          </p>
+          {error && (
+            <div className="space-y-2 pt-4">
+              <p className="text-sm text-destructive">{error.message}</p>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={refreshProfile} size="sm" className="font-poppins">
+                  Tentar novamente
+                </Button>
+                <Button variant="outline" onClick={signOut} size="sm" className="font-poppins">
+                  Sair
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
