@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useUserInvites } from "@/hooks/useUserInvites";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { 
   Users, 
   Workflow, 
@@ -31,6 +31,7 @@ import {
   MessageSquare,
   PlayCircle,
   Instagram,
+  CreditCard,
 } from "lucide-react";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
@@ -42,6 +43,7 @@ import { WebhookIntegration } from "@/components/settings/WebhookIntegration";
 import { FollowupTemplatesManagement } from "@/components/settings/FollowupTemplatesManagement";
 import { FollowupCadencesManagement } from "@/components/settings/FollowupCadencesManagement";
 import { ClerkMigration } from "@/components/settings/ClerkMigration";
+import BillingSettings from "@/components/settings/BillingSettings";
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Dialog,
@@ -64,6 +66,7 @@ export function Settings() {
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
   const { inviteUser, loading: inviteLoading } = useUserInvites();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("profile");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
@@ -71,12 +74,21 @@ export function Settings() {
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Check for tab parameter in URL (e.g., after returning from Stripe)
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
   const handleRoleUpdate = async (profileId: string, newRole: "admin" | "seller") => {
     await updateProfile(profileId, { role: newRole });
     setEditingProfile(null);
   };
 
   const settingsItems = [
+    { id: "billing", icon: CreditCard, label: "Planos e Cobrança", active: activeTab === "billing" },
     { id: "profile", icon: User, label: "Meu Perfil", active: activeTab === "profile" },
     { id: "vendors", icon: Users, label: "Usuários", active: activeTab === "vendors" },
     { id: "pipeline", icon: Workflow, label: "Pipeline", active: activeTab === "pipeline" },
@@ -94,6 +106,8 @@ export function Settings() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case "billing":
+        return <BillingSettings />;
       case "profile":
         return <UserProfile />;
       case "vendors":
@@ -130,15 +144,7 @@ export function Settings() {
           </Card>
         );
       default:
-        return (
-          <Card className="card-gradient border-0">
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground font-poppins">
-                Esta funcionalidade será implementada em breve.
-              </p>
-            </CardContent>
-          </Card>
-        );
+        return <BillingSettings />;
     }
   };
 
