@@ -27,6 +27,7 @@ export function Auth() {
   // Redirect se já estiver logado
   useEffect(() => {
     if (!loading && user) {
+      // Redireciona para dashboard - o profile será criado no ProtectedRoute
       navigate('/');
     }
   }, [loading, user, navigate]);

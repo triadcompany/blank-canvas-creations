@@ -3531,38 +3531,38 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
-          clerk_user_id: string | null
+          clerk_user_id: string
           created_at: string | null
           email: string
           id: string
           name: string
           organization_id: string | null
           updated_at: string | null
-          user_id: string
+          user_id: string | null
           whatsapp_e164: string | null
         }
         Insert: {
           avatar_url?: string | null
-          clerk_user_id?: string | null
+          clerk_user_id: string
           created_at?: string | null
           email: string
           id?: string
           name: string
           organization_id?: string | null
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
           whatsapp_e164?: string | null
         }
         Update: {
           avatar_url?: string | null
-          clerk_user_id?: string | null
+          clerk_user_id?: string
           created_at?: string | null
           email?: string
           id?: string
           name?: string
           organization_id?: string | null
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
           whatsapp_e164?: string | null
         }
         Relationships: [
@@ -3952,31 +3952,31 @@ export type Database = {
       }
       user_roles: {
         Row: {
-          clerk_user_id: string | null
+          clerk_user_id: string
           created_at: string | null
           id: string
           organization_id: string
           role: Database["public"]["Enums"]["app_role"]
           updated_at: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
-          clerk_user_id?: string | null
+          clerk_user_id: string
           created_at?: string | null
           id?: string
           organization_id: string
           role: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
-          clerk_user_id?: string | null
+          clerk_user_id?: string
           created_at?: string | null
           id?: string
           organization_id?: string
           role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

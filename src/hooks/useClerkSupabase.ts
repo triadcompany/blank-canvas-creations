@@ -1,14 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useUser, useSession } from '@clerk/clerk-react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { supabase } from '@/integrations/supabase/client';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 interface Profile {
   id: string;
-  user_id: string;
-  clerk_user_id?: string;
+  user_id: string | null;
+  clerk_user_id: string;
   name: string;
   email: string;
   organization_id: string;
@@ -28,168 +25,209 @@ interface UseClerkSupabaseReturn {
 
 /**
  * Hook to synchronize Clerk user with Supabase profile and roles.
- * Fetches the user's profile and role from Supabase based on their Clerk user ID.
- * If profile doesn't exist, calls Edge Function to create it.
+ * Uses direct Supabase upsert - NO Edge Functions required.
+ * Clerk is the source of truth for authentication.
  */
 export function useClerkSupabase(): UseClerkSupabaseReturn {
   const { user, isLoaded } = useUser();
-  const { session } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<'admin' | 'seller' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const retryCountRef = useRef(0);
-  const maxRetries = 3;
-  const provisioningRef = useRef(false);
+  const isProvisioningRef = useRef(false);
 
-  const provisionUserViaEdgeFunction = useCallback(async () => {
-    if (!session || provisioningRef.current) return null;
+  /**
+   * Ensure profile exists in Supabase.
+   * Creates organization, profile, and role if they don't exist.
+   * Updates profile data if it exists but has different info.
+   */
+  const ensureProfile = useCallback(async (clerkUser: typeof user) => {
+    if (!clerkUser || isProvisioningRef.current) return null;
     
-    provisioningRef.current = true;
-    
+    isProvisioningRef.current = true;
+    setError(null);
+
     try {
-      console.log('🆕 useClerkSupabase: Provisioning user via Edge Function:', user?.id);
-      
-      // Get a session token from Clerk
-      const token = await session.getToken();
-      
-      if (!token) {
-        throw new Error('Failed to get Clerk token');
-      }
+      const clerkUserId = clerkUser.id;
+      const email = clerkUser.primaryEmailAddress?.emailAddress || '';
+      const name = clerkUser.fullName || clerkUser.firstName || email.split('@')[0] || 'User';
+      const avatarUrl = clerkUser.imageUrl || undefined;
 
-      // Use the official client to avoid browser/CORS edge cases
-      const { data, error } = await supabase.functions.invoke('provision-clerk-user', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {}),
-        },
-      });
+      console.log('🔍 ensureProfile: Checking profile for:', clerkUserId);
 
-      if (error) {
-        console.error('❌ Provision failed:', error);
-        throw new Error(error.message || 'Failed to provision user');
-      }
-
-      console.log('✅ User provisioned:', data);
-      setProfile(data.profile as Profile);
-      setRole(data.role as 'admin' | 'seller');
-      
-      return data.profile;
-    } catch (err) {
-      console.error('❌ Error provisioning user:', err);
-      throw err;
-    } finally {
-      provisioningRef.current = false;
-    }
-  }, [session, user?.id]);
-
-  const fetchProfileAndRole = useCallback(async (clerkUserId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      console.log('🔍 useClerkSupabase: Fetching profile for Clerk user:', clerkUserId);
-
-      // Fetch profile by clerk_user_id
-      const { data: profileData, error: profileError } = await (supabase
+      // 1. Try to find existing profile
+      const { data: existingProfile, error: fetchError } = await supabase
         .from('profiles')
-        .select('*') as any)
+        .select('*')
         .eq('clerk_user_id', clerkUserId)
         .maybeSingle();
 
-      if (profileError) {
-        if (profileError.message?.includes('clerk_user_id')) {
-          console.log('⏳ useClerkSupabase: clerk_user_id column not found, database migration needed');
-          setLoading(false);
-          return;
-        }
-        throw profileError;
+      if (fetchError && !fetchError.message?.includes('No rows')) {
+        console.error('❌ Error fetching profile:', fetchError);
+        throw new Error(fetchError.message);
       }
 
-      if (!profileData) {
-        retryCountRef.current += 1;
+      let finalProfile: Profile;
+
+      if (existingProfile) {
+        console.log('✅ Profile found:', existingProfile.id);
         
-        if (retryCountRef.current >= maxRetries) {
-          // After max retries, provision via Edge Function
-          console.log('⚡ useClerkSupabase: Max retries reached, provisioning via Edge Function...');
-          
-          try {
-            await provisionUserViaEdgeFunction();
-            retryCountRef.current = 0;
-          } catch (provisionError) {
-            console.error('❌ Failed to provision user:', provisionError);
-            setError(provisionError instanceof Error ? provisionError : new Error('Failed to provision user'));
-          }
-          setLoading(false);
-          return;
-        }
-        
-        console.log(`⏳ useClerkSupabase: Profile not found, retry ${retryCountRef.current}/${maxRetries}...`);
-        setTimeout(() => fetchProfileAndRole(clerkUserId), 2000);
-        return;
-      }
+        // Check if we need to update the profile
+        const needsUpdate = 
+          existingProfile.email !== email ||
+          existingProfile.name !== name ||
+          existingProfile.avatar_url !== avatarUrl;
 
-      // Profile found - reset retry counter
-      retryCountRef.current = 0;
-      console.log('✅ useClerkSupabase: Profile fetched:', profileData);
-      setProfile(profileData as unknown as Profile);
+        if (needsUpdate) {
+          console.log('🔄 Updating profile with new data...');
+          const { data: updatedProfile, error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              email,
+              name,
+              avatar_url: avatarUrl,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('clerk_user_id', clerkUserId)
+            .select()
+            .single();
 
-      // Fetch role by clerk_user_id
-      const { data: roleData, error: roleError } = await (supabase
-        .from('user_roles')
-        .select('role') as any)
-        .eq('clerk_user_id', clerkUserId)
-        .maybeSingle();
-
-      if (roleError) {
-        if (roleError.message?.includes('clerk_user_id')) {
-          console.log('⏳ useClerkSupabase: clerk_user_id column not found in user_roles');
-          setRole(null);
-        } else {
-          console.error('❌ useClerkSupabase: Role fetch error:', roleError);
-          setRole(null);
-        }
-      } else if (!roleData) {
-        console.log('⏳ useClerkSupabase: Role not found, creating default admin role...');
-        // Create admin role if missing - need organization_id from profile
-        if (profileData?.organization_id) {
-          const { error: createRoleError } = await supabase
-            .from('user_roles')
-            .insert({
-              clerk_user_id: clerkUserId,
-              user_id: clerkUserId,
-              organization_id: profileData.organization_id,
-              role: 'admin',
-            } as any);
-          
-          if (!createRoleError) {
-            setRole('admin');
+          if (updateError) {
+            console.error('❌ Error updating profile:', updateError);
+            // Don't throw - use existing profile
+            finalProfile = existingProfile as Profile;
           } else {
-            console.error('❌ Error creating role:', createRoleError);
-            setRole(null);
+            finalProfile = updatedProfile as Profile;
           }
         } else {
-          setRole(null);
+          finalProfile = existingProfile as Profile;
         }
       } else {
-        console.log('✅ useClerkSupabase: Role fetched:', roleData?.role);
-        setRole(roleData?.role as 'admin' | 'seller' || null);
+        // 2. Create new organization first
+        console.log('🆕 Creating new organization and profile...');
+        
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({ 
+            name: `${name}'s Organization`,
+            is_active: true,
+          })
+          .select('id')
+          .single();
+
+        if (orgError) {
+          console.error('❌ Error creating organization:', orgError);
+          throw new Error('Failed to create organization: ' + orgError.message);
+        }
+
+        console.log('✅ Organization created:', newOrg.id);
+
+        // 3. Create profile
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            clerk_user_id: clerkUserId,
+            email,
+            name,
+            avatar_url: avatarUrl,
+            organization_id: newOrg.id,
+          })
+          .select()
+          .single();
+
+        if (profileError) {
+          console.error('❌ Error creating profile:', profileError);
+          // Try to rollback organization
+          await supabase.from('organizations').delete().eq('id', newOrg.id);
+          throw new Error('Failed to create profile: ' + profileError.message);
+        }
+
+        console.log('✅ Profile created:', newProfile.id);
+        finalProfile = newProfile as Profile;
+
+        // 4. Create admin role for new user
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            clerk_user_id: clerkUserId,
+            organization_id: newOrg.id,
+            role: 'admin',
+          });
+
+        if (roleError) {
+          console.error('⚠️ Error creating role (non-blocking):', roleError);
+          // Don't throw - profile was created, role is secondary
+        } else {
+          console.log('✅ Admin role created');
+        }
+
+        // 5. Create default pipeline for the organization
+        try {
+          const { data: pipeline } = await supabase
+            .from('pipelines')
+            .insert({
+              name: 'Pipeline Principal',
+              organization_id: newOrg.id,
+              is_default: true,
+            })
+            .select('id')
+            .single();
+
+          if (pipeline) {
+            const defaultStages = [
+              { name: 'Novo Lead', position: 0, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Contato Inicial', position: 1, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Qualificação', position: 2, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Proposta', position: 3, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Negociação', position: 4, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Fechamento', position: 5, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Ganho', position: 6, pipeline_id: pipeline.id, created_by: clerkUserId },
+              { name: 'Perdido', position: 7, pipeline_id: pipeline.id, created_by: clerkUserId },
+            ];
+
+            await supabase.from('pipeline_stages').insert(defaultStages);
+            console.log('✅ Default pipeline created');
+          }
+        } catch (pipelineError) {
+          console.log('⚠️ Pipeline creation skipped (non-blocking)');
+        }
       }
 
+      setProfile(finalProfile);
+
+      // 5. Fetch role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('clerk_user_id', clerkUserId)
+        .maybeSingle();
+
+      if (roleData?.role) {
+        setRole(roleData.role as 'admin' | 'seller');
+      } else {
+        // Default to admin for profile owner
+        setRole('admin');
+      }
+
+      return finalProfile;
+
     } catch (err) {
-      console.error('❌ useClerkSupabase: Error fetching profile:', err);
-      setError(err instanceof Error ? err : new Error('Unknown error'));
+      console.error('❌ ensureProfile error:', err);
+      const error = err instanceof Error ? err : new Error('Unknown error');
+      setError(error);
+      return null;
     } finally {
-      setLoading(false);
+      isProvisioningRef.current = false;
     }
-  }, [user, provisionUserViaEdgeFunction]);
+  }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user?.id) {
-      retryCountRef.current = 0;
-      await fetchProfileAndRole(user.id);
+    if (user) {
+      setLoading(true);
+      await ensureProfile(user);
+      setLoading(false);
     }
-  }, [user, fetchProfileAndRole]);
+  }, [user, ensureProfile]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -201,18 +239,22 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       setProfile(null);
       setRole(null);
       setLoading(false);
-      retryCountRef.current = 0;
+      setError(null);
       return;
     }
 
-    fetchProfileAndRole(user.id);
-  }, [user, isLoaded, fetchProfileAndRole]);
+    // Ensure profile exists
+    setLoading(true);
+    ensureProfile(user).finally(() => {
+      setLoading(false);
+    });
+  }, [user, isLoaded, ensureProfile]);
 
-  return {
+  return useMemo(() => ({
     profile,
     role,
     loading: !isLoaded || loading,
     error,
     refreshProfile,
-  };
+  }), [profile, role, isLoaded, loading, error, refreshProfile]);
 }
