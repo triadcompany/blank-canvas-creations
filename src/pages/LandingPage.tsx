@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import PricingSection from "@/components/landing/PricingSection";
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -407,6 +408,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* Pricing Section */}
+      <PricingSection />
 
       {/* Final CTA Section */}
       <section className="py-24 md:py-32 relative overflow-hidden">
