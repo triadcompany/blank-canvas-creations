@@ -1,35 +1,33 @@
 import React, { useState, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, 
   Camera, 
-  Lock, 
-  Save
+  Shield, 
+  Save,
+  ExternalLink
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useClerk } from "@clerk/clerk-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export function UserProfile() {
   const { profile, user, refreshProfile } = useAuth();
+  const { openUserProfile } = useClerk();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
   
   const [formData, setFormData] = useState({
     name: profile?.name || "",
-    email: user?.email || "",
-    whatsapp_e164: profile?.whatsapp_e164 || "",
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: ""
   });
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
@@ -43,10 +41,7 @@ export function UserProfile() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ 
-          name: formData.name,
-          whatsapp_e164: formData.whatsapp_e164 || null
-        })
+        .update({ name: formData.name })
         .eq('id', profile.id);
 
       if (error) throw error;
@@ -81,7 +76,7 @@ export function UserProfile() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+    if (file.size > 2 * 1024 * 1024) {
       toast({
         title: "Erro", 
         description: "A imagem deve ter no máximo 2MB.",
@@ -95,7 +90,6 @@ export function UserProfile() {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/avatar.${fileExt}`;
 
-      // Upload file to storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, file, {
@@ -105,12 +99,10 @@ export function UserProfile() {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
-      // Update profile with avatar URL
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
@@ -135,87 +127,60 @@ export function UserProfile() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (formData.newPassword !== formData.confirmPassword) {
-      toast({
-        title: "Erro",
-        description: "As senhas não coincidem.",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleOpenAccountPortal = () => {
+    openUserProfile();
+  };
 
-    if (formData.newPassword.length < 6) {
-      toast({
-        title: "Erro",
-        description: "A nova senha deve ter pelo menos 6 caracteres.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsChangingPassword(true);
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: formData.newPassword
-      });
-
-      if (error) throw error;
-
-      setFormData(prev => ({
-        ...prev,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: ""
-      }));
-
-      toast({
-        title: "Senha alterada",
-        description: "Sua senha foi alterada com sucesso.",
-      });
-    } catch (error) {
-      console.error('Error changing password:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao alterar senha. Tente novamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsChangingPassword(false);
-    }
+  const getInitials = (name: string | undefined) => {
+    if (!name) return "U";
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
   };
 
   return (
-    <div className="space-y-6">
-      {/* Profile Information */}
-      <Card className="card-gradient border-0">
-        <CardHeader>
-          <CardTitle className="font-poppins font-semibold flex items-center space-x-2">
-            <User className="h-5 w-5 text-primary" />
-            <span>Informações Pessoais</span>
-          </CardTitle>
+    <div className="space-y-6 max-w-2xl">
+      {/* Account Information */}
+      <Card className="border bg-card">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <User className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-semibold">
+                Informações da Conta
+              </CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">
+                Essas informações são vinculadas à sua conta de acesso.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Avatar Section */}
-          <div className="flex items-center space-x-4">
-            <Avatar className="w-20 h-20">
+          <div className="flex items-center gap-6">
+            <Avatar className="w-20 h-20 border-2 border-border">
               <AvatarImage src={profile?.avatar_url} alt={profile?.name} />
-              <AvatarFallback className="bg-primary text-primary-foreground text-lg font-bold">
-                {profile?.name?.split(' ').map(n => n[0]).join('').substring(0, 2)}
+              <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
+                {getInitials(profile?.name)}
               </AvatarFallback>
             </Avatar>
             <div className="space-y-2">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploadingAvatar}
-                className="font-poppins"
               >
                 <Camera className="h-4 w-4 mr-2" />
-                {isUploadingAvatar ? "Enviando..." : "Alterar Foto"}
+                {isUploadingAvatar ? "Enviando..." : "Alterar foto"}
               </Button>
-              <p className="text-xs text-muted-foreground font-poppins">
-                PNG, JPG até 2MB
+              <p className="text-xs text-muted-foreground">
+                JPG, PNG ou GIF. Máximo 2MB.
               </p>
               <input
                 ref={fileInputRef}
@@ -227,109 +192,86 @@ export function UserProfile() {
             </div>
           </div>
 
+          <Separator />
+
           {/* Name and Email */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="font-poppins font-medium">
-                Nome Completo
+              <Label htmlFor="name" className="text-sm font-medium">
+                Nome completo
               </Label>
               <Input 
                 id="name"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="Seu nome completo"
-                className="font-poppins"
+                className="max-w-md"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email" className="font-poppins font-medium">
+              <Label htmlFor="email" className="text-sm font-medium">
                 E-mail
               </Label>
               <Input 
                 id="email"
-                value={formData.email}
+                value={user?.email || ""}
                 disabled
-                className="font-poppins bg-muted"
+                className="max-w-md bg-muted/50"
               />
-              <p className="text-xs text-muted-foreground font-poppins">
-                Para alterar o e-mail, entre em contato com o suporte
+              <p className="text-xs text-muted-foreground">
+                O e-mail é gerenciado pela sua conta de acesso.
               </p>
             </div>
           </div>
 
-          {/* WhatsApp */}
-          <div className="space-y-2">
-            <Label htmlFor="whatsapp" className="font-poppins font-medium">
-              WhatsApp (Formato E.164)
-            </Label>
-            <Input 
-              id="whatsapp"
-              value={formData.whatsapp_e164}
-              onChange={(e) => handleInputChange('whatsapp_e164', e.target.value)}
-              placeholder="+5511999999999"
-              className="font-poppins font-mono"
-            />
-            <p className="text-xs text-muted-foreground font-poppins">
-              Número com código do país para receber notificações quando um lead for atribuído (ex: +5511999999999)
-            </p>
-          </div>
+          <Separator />
 
-          <Button 
-            onClick={handleUpdateProfile}
-            disabled={isUpdating || !formData.name.trim()}
-            className="btn-gradient text-white font-poppins font-medium"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {isUpdating ? "Salvando..." : "Salvar Alterações"}
-          </Button>
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button 
+              onClick={handleUpdateProfile}
+              disabled={isUpdating || !formData.name.trim()}
+              className="w-full sm:w-auto"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isUpdating ? "Salvando..." : "Salvar alterações"}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={handleOpenAccountPortal}
+              className="w-full sm:w-auto"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Gerenciar conta de acesso
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Password Change */}
-      <Card className="card-gradient border-0">
-        <CardHeader>
-          <CardTitle className="font-poppins font-semibold flex items-center space-x-2">
-            <Lock className="h-5 w-5 text-primary" />
-            <span>Alterar Senha</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="newPassword" className="font-poppins font-medium">
-                Nova Senha
-              </Label>
-              <Input 
-                id="newPassword"
-                type="password"
-                value={formData.newPassword}
-                onChange={(e) => handleInputChange('newPassword', e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="font-poppins"
-              />
+      {/* Security Section */}
+      <Card className="border bg-card">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Shield className="h-5 w-5 text-primary" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="font-poppins font-medium">
-                Confirmar Nova Senha
-              </Label>
-              <Input 
-                id="confirmPassword"
-                type="password"
-                value={formData.confirmPassword}
-                onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                placeholder="Confirme a nova senha"
-                className="font-poppins"
-              />
+            <div>
+              <CardTitle className="text-lg font-semibold">
+                Segurança da Conta
+              </CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">
+                A senha e métodos de login são gerenciados com segurança pela plataforma de autenticação.
+              </CardDescription>
             </div>
           </div>
-
+        </CardHeader>
+        <CardContent>
           <Button 
-            onClick={handleChangePassword}
-            disabled={isChangingPassword || !formData.newPassword || !formData.confirmPassword}
-            className="btn-gradient text-white font-poppins font-medium"
+            variant="outline"
+            onClick={handleOpenAccountPortal}
           >
-            <Lock className="h-4 w-4 mr-2" />
-            {isChangingPassword ? "Alterando..." : "Alterar Senha"}
+            <Shield className="h-4 w-4 mr-2" />
+            Alterar senha ou métodos de login
           </Button>
         </CardContent>
       </Card>
