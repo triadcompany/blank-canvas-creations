@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useUser, useOrganization } from '@clerk/clerk-react';
+import { useUser } from '@clerk/clerk-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface SubscriptionData {
@@ -62,13 +63,15 @@ export const PLAN_PRICES = {
 
 export function useSubscription() {
   const { user, isLoaded: userLoaded } = useUser();
-  const { organization, isLoaded: orgLoaded } = useOrganization();
+  const { profile } = useAuth();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  const organizationId = profile?.organization_id;
+
   const checkSubscription = useCallback(async () => {
-    if (!organization?.id) {
+    if (!user?.id || !organizationId) {
       setSubscription({
         subscribed: false,
         plan: null,
@@ -86,8 +89,8 @@ export function useSubscription() {
       
       const { data, error: fnError } = await supabase.functions.invoke('check-subscription', {
         headers: {
-          'x-clerk-user-id': user?.id || '',
-          'x-clerk-org-id': organization.id,
+          'x-clerk-user-id': user.id,
+          'x-clerk-org-id': organizationId,
         },
       });
 
@@ -111,25 +114,25 @@ export function useSubscription() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, organization?.id]);
+  }, [user?.id, organizationId]);
 
   // Check subscription on mount and when org changes
   useEffect(() => {
-    if (userLoaded && orgLoaded) {
+    if (userLoaded && profile) {
       checkSubscription();
     }
-  }, [userLoaded, orgLoaded, checkSubscription]);
+  }, [userLoaded, profile, checkSubscription]);
 
   // Refresh subscription periodically (every 60 seconds)
   useEffect(() => {
-    if (!organization?.id) return;
+    if (!organizationId) return;
     
     const interval = setInterval(checkSubscription, 60000);
     return () => clearInterval(interval);
-  }, [organization?.id, checkSubscription]);
+  }, [organizationId, checkSubscription]);
 
   const createCheckout = useCallback(async (plan: 'start' | 'scale', billingCycle: 'monthly' | 'yearly') => {
-    if (!user || !organization) {
+    if (!user || !organizationId) {
       toast.error('Você precisa estar logado para assinar um plano');
       return;
     }
@@ -138,7 +141,7 @@ export function useSubscription() {
       const { data, error: fnError } = await supabase.functions.invoke('create-checkout', {
         headers: {
           'x-clerk-user-id': user.id,
-          'x-clerk-org-id': organization.id,
+          'x-clerk-org-id': organizationId,
         },
         body: {
           plan,
@@ -160,10 +163,10 @@ export function useSubscription() {
       console.error('Error creating checkout:', err);
       toast.error('Erro ao iniciar checkout. Tente novamente.');
     }
-  }, [user, organization]);
+  }, [user, organizationId]);
 
   const openCustomerPortal = useCallback(async () => {
-    if (!user || !organization) {
+    if (!user || !organizationId) {
       toast.error('Você precisa estar logado para gerenciar sua assinatura');
       return;
     }
@@ -172,7 +175,7 @@ export function useSubscription() {
       const { data, error: fnError } = await supabase.functions.invoke('customer-portal', {
         headers: {
           'x-clerk-user-id': user.id,
-          'x-clerk-org-id': organization.id,
+          'x-clerk-org-id': organizationId,
         },
       });
 
@@ -187,7 +190,7 @@ export function useSubscription() {
       console.error('Error opening customer portal:', err);
       toast.error('Erro ao abrir portal de gerenciamento. Tente novamente.');
     }
-  }, [user, organization]);
+  }, [user, organizationId]);
 
   const hasFeature = useCallback((feature: keyof PlanFeatures): boolean => {
     if (!subscription?.subscribed || !subscription.plan) {
