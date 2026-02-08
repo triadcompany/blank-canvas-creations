@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,8 @@ import { useSubscription, PLAN_FEATURES, PLAN_PRICES } from "@/hooks/useSubscrip
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export default function BillingSettings() {
   const { 
@@ -17,12 +20,61 @@ export default function BillingSettings() {
     loading, 
     createCheckout, 
     openCustomerPortal,
+    checkSubscription,
     isSubscribed,
     isPastDue 
   } = useSubscription();
   
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedBilling, setSelectedBilling] = useState<'monthly' | 'yearly'>('yearly');
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+
+  // Sync subscription when returning from Stripe checkout with session_id
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    
+    if (sessionId && !syncLoading) {
+      syncSubscriptionFromCheckout(sessionId);
+    }
+  }, [searchParams]);
+
+  const syncSubscriptionFromCheckout = async (sessionId: string) => {
+    setSyncLoading(true);
+    try {
+      console.log('[BillingSettings] Syncing subscription from checkout session:', sessionId);
+      
+      const { data, error } = await supabase.functions.invoke('sync-subscription-from-checkout', {
+        body: { session_id: sessionId },
+      });
+
+      if (error) {
+        console.error('[BillingSettings] Sync error:', error);
+        toast.error('Erro ao sincronizar assinatura. Tente recarregar a página.');
+        return;
+      }
+
+      if (data?.success) {
+        console.log('[BillingSettings] Subscription synced successfully:', data);
+        toast.success(`Plano ${data.plan?.toUpperCase()} ativado com sucesso!`);
+        
+        // Refresh subscription status
+        await checkSubscription();
+        
+        // Remove session_id from URL to prevent re-sync
+        searchParams.delete('session_id');
+        setSearchParams(searchParams, { replace: true });
+      } else {
+        console.warn('[BillingSettings] Sync returned unsuccessful:', data);
+        toast.error(data?.error || 'Não foi possível validar a assinatura.');
+      }
+    } catch (err) {
+      console.error('[BillingSettings] Sync exception:', err);
+      toast.error('Erro inesperado ao sincronizar assinatura.');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const handleSubscribe = async (plan: 'start' | 'scale') => {
     setCheckoutLoading(plan);
@@ -60,10 +112,13 @@ export default function BillingSettings() {
     "Automações avançadas",
   ];
 
-  if (loading) {
+  if (loading || syncLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center py-12 gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        {syncLoading && (
+          <p className="text-sm text-muted-foreground">Validando sua assinatura...</p>
+        )}
       </div>
     );
   }
