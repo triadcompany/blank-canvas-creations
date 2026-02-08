@@ -26,11 +26,27 @@ serve(async (req) => {
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     logStep("Stripe key verified");
 
+    // Log webhook secret status (without exposing the actual value)
+    if (webhookSecret) {
+      logStep("Webhook secret configured", { 
+        length: webhookSecret.length,
+        prefix: webhookSecret.substring(0, 5) + "..."
+      });
+    } else {
+      logStep("WARNING: Webhook secret NOT configured - signature verification disabled");
+    }
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     
     // Get the raw body
     const body = await req.text();
     const signature = req.headers.get("stripe-signature");
+    
+    logStep("Request details", {
+      hasSignature: !!signature,
+      signaturePrefix: signature ? signature.substring(0, 20) + "..." : null,
+      bodyLength: body.length
+    });
 
     let event: Stripe.Event;
 
@@ -38,18 +54,29 @@ serve(async (req) => {
     if (webhookSecret && signature) {
       try {
         event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-        logStep("Webhook signature verified");
+        logStep("Webhook signature verified successfully");
       } catch (err) {
-        logStep("Webhook signature verification failed", { error: err });
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logStep("Webhook signature verification failed", { 
+          error: errorMessage,
+          hint: "Verifique se STRIPE_WEBHOOK_SECRET corresponde ao Signing Secret do endpoint no Stripe Dashboard"
+        });
         return new Response(JSON.stringify({ error: "Invalid signature" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-    } else {
-      // Parse without verification (for development)
+    } else if (!webhookSecret) {
+      // Parse without verification (only if no secret configured)
+      logStep("WARNING: Parsing webhook without signature verification");
       event = JSON.parse(body);
-      logStep("Webhook parsed without signature verification");
+    } else {
+      // Secret exists but no signature provided
+      logStep("ERROR: Webhook secret configured but no signature in request");
+      return new Response(JSON.stringify({ error: "Missing signature header" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     logStep("Event type", { type: event.type });

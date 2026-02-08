@@ -45,15 +45,15 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    // Query subscriptions table
+    // Query subscriptions table using maybeSingle to avoid errors when no record exists
     const { data: subscription, error } = await supabaseClient
       .from("subscriptions")
       .select("*")
       .eq("clerk_organization_id", clerkOrgId)
       .eq("status", "active")
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== "PGRST116") {
+    if (error) {
       logStep("Database error", { error: error.message });
       throw new Error(`Database error: ${error.message}`);
     }
