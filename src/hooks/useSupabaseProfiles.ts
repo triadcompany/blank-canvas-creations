@@ -31,25 +31,34 @@ export function useSupabaseProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [invitations, setInvitations] = useState<UserInvitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, user, profile: currentProfile } = useAuth();
   const { toast } = useToast();
 
   const fetchProfiles = async () => {
+    const organizationId = currentProfile?.organization_id;
+
+    // Se não tiver organization_id, não pode listar ninguém
+    if (!organizationId) {
+      setLoading(false);
+      return;
+    }
+
     // Se não for admin, carrega apenas o próprio perfil
     if (!isAdmin) {
       if (user) {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('clerk_user_id', user.id)
+          .eq('organization_id', organizationId)
           .single();
         
         if (!error && data) {
-          // Buscar role do usuário
           const { data: roleData } = await supabase
             .from('user_roles')
             .select('role')
-            .eq('user_id', user.id)
+            .eq('clerk_user_id', user.id)
+            .eq('organization_id', organizationId)
             .single();
           
           setProfiles([{
@@ -62,17 +71,21 @@ export function useSupabaseProfiles() {
       return;
     }
 
+    // Admin: buscar SOMENTE perfis e roles da mesma organização
     const [profilesResult, rolesResult, invitationsResult] = await Promise.all([
       supabase
         .from('profiles')
         .select('*')
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false }),
       supabase
         .from('user_roles')
-        .select('user_id, role'),
+        .select('clerk_user_id, role')
+        .eq('organization_id', organizationId),
       supabase
         .from('user_invitations')
         .select('*')
+        .eq('organization_id', organizationId)
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
     ]);
@@ -84,10 +97,9 @@ export function useSupabaseProfiles() {
         variant: "destructive",
       });
     } else {
-      // Merge roles with profiles
       const profilesWithRoles = (profilesResult.data || []).map(profile => ({
         ...profile,
-        role: rolesResult.data?.find(r => r.user_id === profile.user_id)?.role || 'seller'
+        role: rolesResult.data?.find(r => r.clerk_user_id === profile.clerk_user_id)?.role || 'seller'
       }));
       setProfiles(profilesWithRoles);
     }
@@ -107,7 +119,7 @@ export function useSupabaseProfiles() {
 
   useEffect(() => {
     fetchProfiles();
-  }, [isAdmin, user]);
+  }, [isAdmin, user, currentProfile?.organization_id]);
 
   const updateProfile = async (profileId: string, updates: Partial<Profile>) => {
     try {
@@ -158,12 +170,12 @@ export function useSupabaseProfiles() {
     }
   };
 
-  const deleteProfile = async (profileId: string, userId: string) => {
+  const deleteProfile = async (profileId: string, clerkUserId: string) => {
     try {
-      // Chamar edge function para deletar usuário tanto do auth quanto do profiles
+      // Chamar edge function para deletar usuário tanto do Clerk quanto do profiles
       const { data, error } = await supabase.functions.invoke('delete-user', {
         body: {
-          userId: userId,
+          clerkUserId: clerkUserId,
           profileId: profileId
         }
       });
