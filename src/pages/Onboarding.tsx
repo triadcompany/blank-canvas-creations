@@ -76,31 +76,16 @@ export default function Onboarding() {
 
       console.log("✅ Admin role created");
 
-      // 4. Create default pipeline
-      const { data: pipeline } = await supabase
-        .from("pipelines")
-        .insert({
-          name: "Pipeline Principal",
-          organization_id: newOrg.id,
-          is_default: true,
-        })
-        .select("id")
-        .single();
+      // 4. Create default pipeline via idempotent seed function
+      const { data: pipelineId, error: seedError } = await supabase.rpc('seed_default_pipeline', {
+        p_org_id: newOrg.id,
+        p_created_by: clerkUserId,
+      });
 
-      if (pipeline) {
-        const defaultStages = [
-          { name: "Novo Lead", position: 0, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Contato Inicial", position: 1, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Qualificação", position: 2, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Proposta", position: 3, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Negociação", position: 4, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Fechamento", position: 5, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Ganho", position: 6, pipeline_id: pipeline.id, created_by: clerkUserId },
-          { name: "Perdido", position: 7, pipeline_id: pipeline.id, created_by: clerkUserId },
-        ];
-
-        await supabase.from("pipeline_stages").insert(defaultStages);
-        console.log("✅ Default pipeline created");
+      if (seedError) {
+        console.warn("⚠️ Pipeline seed error (non-critical):", seedError);
+      } else {
+        console.log("✅ Default pipeline created:", pipelineId);
       }
 
       toast.success("Empresa criada com sucesso!", {

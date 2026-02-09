@@ -36,15 +36,58 @@ export function usePipelines() {
   const { toast } = useToast();
 
   // Fetch pipelines
-  const fetchPipelines = async () => {
+  // Seed default pipeline if none exists
+  const seedDefaultPipeline = async () => {
+    if (!profile?.organization_id || !profile?.clerk_user_id) return false;
+    
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabase.rpc('seed_default_pipeline', {
+        p_org_id: profile.organization_id,
+        p_created_by: profile.clerk_user_id,
+      });
+      
+      if (error) {
+        console.error('Error seeding pipeline:', error);
+        return false;
+      }
+      
+      console.log('✅ Default pipeline seeded:', data);
+      return true;
+    } catch (err) {
+      console.error('Exception seeding pipeline:', err);
+      return false;
+    }
+  };
+
+  const fetchPipelines = async () => {
+    if (!profile?.organization_id) return;
+
+    try {
+      let { data, error } = await supabase
         .from('pipelines')
         .select('*')
+        .eq('organization_id', profile.organization_id)
+        .eq('is_active', true)
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      // Se não há pipelines, rodar seed idempotente
+      if (!data || data.length === 0) {
+        const seeded = await seedDefaultPipeline();
+        if (seeded) {
+          const { data: refreshed, error: refreshError } = await supabase
+            .from('pipelines')
+            .select('*')
+            .eq('organization_id', profile.organization_id)
+            .eq('is_active', true)
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: true });
+          
+          if (!refreshError) data = refreshed;
+        }
+      }
 
       setPipelines(data || []);
       
@@ -52,11 +95,6 @@ export function usePipelines() {
       if (data && data.length > 0) {
         const defaultPipeline = data.find(p => p.is_default) || data[0];
         setSelectedPipeline(defaultPipeline);
-      } else {
-        // Se não há pipelines, talvez seja um novo usuário - tentar novamente após delay
-        setTimeout(() => {
-          fetchPipelines();
-        }, 1000);
       }
     } catch (error: any) {
       toast({
@@ -395,8 +433,10 @@ export function usePipelines() {
   };
 
   useEffect(() => {
-    fetchPipelines().finally(() => setLoading(false));
-  }, []);
+    if (profile?.organization_id) {
+      fetchPipelines().finally(() => setLoading(false));
+    }
+  }, [profile?.organization_id]);
 
   useEffect(() => {
     if (selectedPipeline) {

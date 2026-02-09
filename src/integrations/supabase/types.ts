@@ -4915,6 +4915,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      seed_default_pipeline: {
+        Args: { p_created_by: string; p_org_id: string }
+        Returns: string
+      }
       set_organization_context: { Args: { org_id: string }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
