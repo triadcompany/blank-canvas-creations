@@ -15,6 +15,7 @@ export default function Onboarding() {
   const { refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
+  const [cnpj, setCnpj] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreateOrganization = async (e: React.FormEvent) => {
@@ -37,6 +38,7 @@ export default function Onboarding() {
         .from("organizations")
         .insert({
           name: companyName.trim(),
+          cnpj: cnpj.trim() || null,
           is_active: true,
         })
         .select("id")
@@ -141,10 +143,27 @@ export default function Onboarding() {
                 minLength={2}
                 maxLength={100}
               />
-              <p className="text-xs text-muted-foreground">
-                Você poderá alterar isso depois nas configurações.
-              </p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cnpj" className="text-sm font-medium">
+                CNPJ <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <Input
+                id="cnpj"
+                type="text"
+                placeholder="00.000.000/0000-00"
+                value={cnpj}
+                onChange={(e) => setCnpj(e.target.value)}
+                disabled={isCreating}
+                className="h-12"
+                maxLength={18}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Você poderá alterar isso depois nas configurações.
+            </p>
 
             <Button
               type="submit"
