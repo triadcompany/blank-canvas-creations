@@ -42,96 +42,44 @@ export function useUserInvites() {
     setLoading(true);
 
     try {
-      // Check for existing pending invitation
-      const { data: existingInvite } = await supabase
-        .from('user_invitations')
-        .select('id')
-        .eq('email', userData.email)
-        .eq('organization_id', organizationId)
-        .eq('status', 'pending')
-        .maybeSingle();
+      // Edge function handles both invitation creation and email sending using service role
+      console.log('📧 Enviando convite via Edge Function...');
 
-      if (existingInvite) {
-        console.log('⚠️ Invite already exists, updating...');
-        await supabase
-          .from('user_invitations')
-          .update({ name: userData.name, role: userData.role === 'admin' ? 'admin' : 'vendedor', updated_at: new Date().toISOString() })
-          .eq('id', existingInvite.id);
-      } else {
-        // Create new invitation
-        const { error: insertError } = await supabase
-          .from('user_invitations')
-          .insert({
-            email: userData.email,
-            name: userData.name,
-            role: userData.role === 'admin' ? 'admin' : 'vendedor',
-            organization_id: organizationId,
-            invited_by: profile.id,
-            status: 'pending',
-          });
+      const { data: inviteResult, error: inviteError } = await supabase.functions.invoke('invite-user', {
+        body: {
+          email: userData.email,
+          name: userData.name,
+          role: userData.role,
+          organizationId,
+        },
+      });
 
-        if (insertError) {
-          console.error('❌ Error creating invitation:', insertError);
-          toast({
-            title: 'Erro ao criar convite',
-            description: insertError.message,
-            variant: 'destructive',
-          });
-          return { error: insertError.message };
-        }
+      const actionLink = inviteResult?.signUpUrl as string | undefined;
+
+      if (inviteError) {
+        console.error('❌ Erro ao chamar Edge Function:', inviteError);
+        toast({
+          title: 'Erro ao criar convite',
+          description: inviteResult?.error || inviteError.message || 'Erro ao enviar convite',
+          variant: 'destructive',
+        });
+        return { error: inviteError.message, actionLink };
       }
 
-      // Send invite email via Edge Function
-      try {
-        console.log('📧 Enviando convite via Edge Function...');
-
-        const { data: inviteResult, error: inviteError } = await supabase.functions.invoke('invite-user', {
-          body: {
-            email: userData.email,
-            name: userData.name,
-            role: userData.role,
-            organizationId,
-          },
-        });
-
-        const actionLink = inviteResult?.signUpUrl as string | undefined;
-
-        if (inviteError) {
-          console.error('❌ Erro ao chamar Edge Function:', inviteError);
-          toast({
-            title: 'Convite criado!',
-            description: actionLink
-              ? `${userData.name} foi convidado, mas o email não pôde ser enviado. Envie este link: ${actionLink}`
-              : `${userData.name} foi convidado, mas houve um problema ao enviar o email.`,
-            variant: 'destructive',
-          });
-          return { success: true, actionLink };
-        }
-
-        if (inviteResult?.success) {
-          toast({
-            title: 'Convite enviado!',
-            description: inviteResult.message || `Convite enviado para ${userData.name} (${userData.email}).`,
-          });
-          return { success: true, actionLink };
-        }
-
+      if (inviteResult?.success) {
         toast({
-          title: 'Convite criado!',
-          description: `${userData.name} foi convidado, mas houve um problema: ${inviteResult?.error || 'Erro desconhecido'}`,
-          variant: 'destructive',
+          title: 'Convite enviado!',
+          description: inviteResult.message || `Convite enviado para ${userData.name} (${userData.email}).`,
         });
         return { success: true, actionLink };
-      } catch (emailError: any) {
-        console.error('❌ Erro ao enviar convite:', emailError);
-        toast({
-          title: 'Convite criado!',
-          description: `${userData.name} foi adicionado. (Não foi possível enviar o email.)`,
-          variant: 'destructive',
-        });
       }
 
-      return { success: true };
+      toast({
+        title: 'Erro ao criar convite',
+        description: inviteResult?.error || 'Erro desconhecido',
+        variant: 'destructive',
+      });
+      return { error: inviteResult?.error, actionLink };
     } catch (error: any) {
       toast({
         title: 'Erro inesperado',
