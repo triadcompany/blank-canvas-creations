@@ -50,24 +50,42 @@ export default function Onboarding() {
 
       console.log("✅ Organization created:", newOrg.id);
 
-      // 2. Create profile
-      const { error: profileError } = await supabase
+      // 2. Upsert profile (may already exist from a previous attempt)
+      const { data: existingProfile } = await supabase
         .from("profiles")
-        .insert({
-          clerk_user_id: clerkUserId,
-          email,
-          name,
-          avatar_url: avatarUrl,
-          organization_id: newOrg.id,
-        });
+        .select("id")
+        .eq("clerk_user_id", clerkUserId)
+        .maybeSingle();
 
-      if (profileError) {
-        // Rollback organization
-        await supabase.from("organizations").delete().eq("id", newOrg.id);
-        throw new Error("Erro ao criar perfil: " + profileError.message);
+      if (existingProfile) {
+        // Update existing profile with the new org
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ organization_id: newOrg.id })
+          .eq("clerk_user_id", clerkUserId);
+
+        if (updateError) {
+          await supabase.from("organizations").delete().eq("id", newOrg.id);
+          throw new Error("Erro ao atualizar perfil: " + updateError.message);
+        }
+        console.log("✅ Profile updated with new org");
+      } else {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            clerk_user_id: clerkUserId,
+            email,
+            name,
+            avatar_url: avatarUrl,
+            organization_id: newOrg.id,
+          });
+
+        if (profileError) {
+          await supabase.from("organizations").delete().eq("id", newOrg.id);
+          throw new Error("Erro ao criar perfil: " + profileError.message);
+        }
+        console.log("✅ Profile created");
       }
-
-      console.log("✅ Profile created");
 
       // 3. Create admin role
       await supabase.from("user_roles").insert({
