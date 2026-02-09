@@ -73,16 +73,27 @@ export function useSupabaseLeads(pipelineId?: string) {
         .single();
       
       if (!defaultPipeline) {
-        // Se não tem padrão, pega o primeiro ativo
-        const { data: firstPipeline } = await supabase
-          .from('pipelines')
-          .select('id')
-          .eq('organization_id', profile.organization_id)
-          .eq('is_active', true)
-          .limit(1)
-          .single();
+        // Tentar seed idempotente
+        if (profile.clerk_user_id) {
+          const { data: seededId } = await supabase.rpc('seed_default_pipeline', {
+            p_org_id: profile.organization_id,
+            p_created_by: profile.clerk_user_id,
+          });
+          activePipelineId = seededId;
+        }
         
-        activePipelineId = firstPipeline?.id;
+        if (!activePipelineId) {
+          // Fallback: pega o primeiro ativo
+          const { data: firstPipeline } = await supabase
+            .from('pipelines')
+            .select('id')
+            .eq('organization_id', profile.organization_id)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+          
+          activePipelineId = firstPipeline?.id;
+        }
       } else {
         activePipelineId = defaultPipeline.id;
       }
