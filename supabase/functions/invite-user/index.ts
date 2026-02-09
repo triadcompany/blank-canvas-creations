@@ -142,7 +142,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("⚠️ Invite already exists, updating...");
       await supabaseAdmin
         .from('user_invitations')
-        .update({ name, role, updated_at: new Date().toISOString() })
+        .update({ name, role: role === 'admin' ? 'admin' : 'seller', updated_at: new Date().toISOString() })
         .eq('id', existingInvite.id);
     } else {
       // Criar novo convite na tabela user_invitations
@@ -151,7 +151,7 @@ const handler = async (req: Request): Promise<Response> => {
         .insert({
           email,
           name,
-          role: role === 'admin' ? 'admin' : 'vendedor',
+          role: role === 'admin' ? 'admin' : 'seller',
           organization_id: organizationId,
           status: 'pending',
         });
