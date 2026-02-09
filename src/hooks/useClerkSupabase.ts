@@ -69,8 +69,48 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
         throw new Error(fetchError.message);
       }
 
-      // If no profile exists, user needs onboarding
+      // If no profile exists, check if user was invited (has org in metadata)
       if (!existingProfile) {
+        const metadata = clerkUser.unsafeMetadata as Record<string, any> | undefined;
+        const invitedOrgId = metadata?.organization_id as string | undefined;
+        const invitedRole = (metadata?.role as string) || 'seller';
+
+        if (invitedOrgId) {
+          console.log('🎟️ Invited user detected, auto-provisioning profile...');
+          
+          // Auto-create profile for invited user
+          const { data: newProfile, error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              clerk_user_id: clerkUserId,
+              email,
+              name,
+              avatar_url: avatarUrl,
+              organization_id: invitedOrgId,
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('❌ Error creating invited profile:', insertError);
+            throw new Error(insertError.message);
+          }
+
+          // Create role
+          await supabase.from('user_roles').insert({
+            clerk_user_id: clerkUserId,
+            organization_id: invitedOrgId,
+            role: invitedRole === 'admin' ? 'admin' : 'seller',
+          });
+
+          console.log('✅ Invited user provisioned:', newProfile.id);
+          
+          setProfile(newProfile as Profile);
+          setRole(invitedRole === 'admin' ? 'admin' : 'seller');
+          return newProfile as Profile;
+        }
+
+        // No invitation data — needs onboarding to create organization
         console.log('📝 No profile found - needs onboarding');
         setNeedsOnboarding(true);
         setProfile(null);
