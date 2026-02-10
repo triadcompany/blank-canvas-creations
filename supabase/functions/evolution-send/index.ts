@@ -16,11 +16,12 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+    const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!evolutionApiKey) {
+    if (!evolutionApiKey || !evolutionBaseUrl) {
       return new Response(
-        JSON.stringify({ error: "EVOLUTION_API_KEY não configurada" }),
+        JSON.stringify({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -37,7 +38,7 @@ serve(async (req) => {
     // Get integration
     const { data: integration } = await supabase
       .from("whatsapp_integrations")
-      .select("instance_name, evolution_base_url, status")
+      .select("instance_name, status")
       .eq("organization_id", organization_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -56,22 +57,18 @@ serve(async (req) => {
       );
     }
 
-    // Normalize phone
     const phone = to_e164.replace(/\D/g, "");
 
     // Send via Evolution API
     const sendRes = await fetch(
-      `${integration.evolution_base_url}/message/sendText/${integration.instance_name}`,
+      `${evolutionBaseUrl}/message/sendText/${integration.instance_name}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           apikey: evolutionApiKey,
         },
-        body: JSON.stringify({
-          number: phone,
-          text: message,
-        }),
+        body: JSON.stringify({ number: phone, text: message }),
       }
     );
 
@@ -79,8 +76,6 @@ serve(async (req) => {
 
     if (!sendRes.ok) {
       console.error("[evolution-send] Error:", sendData);
-
-      // Log failed message
       await supabase.from("whatsapp_messages").insert({
         organization_id,
         lead_id: lead_id || null,
@@ -98,7 +93,6 @@ serve(async (req) => {
       );
     }
 
-    // Log successful message
     const externalId = sendData?.key?.id || sendData?.messageId || null;
     await supabase.from("whatsapp_messages").insert({
       organization_id,
