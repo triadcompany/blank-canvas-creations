@@ -11,10 +11,41 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type QrFormat = "data_url" | "base64" | "text" | "url" | null;
+
+function detectQrFormat(raw: string | null): { qr_code_data: string | null; qr_format: QrFormat } {
+  if (!raw) return { qr_code_data: null, qr_format: null };
+  if (raw.startsWith("data:image")) return { qr_code_data: raw, qr_format: "data_url" };
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return { qr_code_data: raw, qr_format: "url" };
+  if (/^[A-Za-z0-9+/=]{50,}$/.test(raw.replace(/\s/g, ""))) return { qr_code_data: raw, qr_format: "base64" };
+  if (raw.length > 10) return { qr_code_data: raw, qr_format: "text" };
+  return { qr_code_data: null, qr_format: null };
+}
+
+function extractQrFromResponse(data: Record<string, unknown>): string | null {
+  const candidates = [
+    (data as any)?.base64,
+    (data as any)?.qrcode?.base64,
+    (data as any)?.qrcode?.pairingCode,
+    (data as any)?.qrcode,
+    (data as any)?.instance?.qrcode?.base64,
+    (data as any)?.instance?.qrcode,
+    (data as any)?.pairingCode,
+    (data as any)?.code,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 10) return c;
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const respond = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,25 +55,16 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (!evolutionApiKey || !evolutionBaseUrl) {
-      console.error("[evolution-qr] Missing secrets");
-      return new Response(
-        JSON.stringify({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "Secrets não configurados" }, 500);
     }
 
     const { organization_id } = await req.json();
-
     if (!organization_id) {
-      return new Response(
-        JSON.stringify({ error: "organization_id é obrigatório" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "organization_id obrigatório" }, 400);
     }
 
     console.log(`[evolution-qr] === START === org=${organization_id}`);
 
-    // Get integration
     const { data: integration, error } = await supabase
       .from("whatsapp_integrations")
       .select("instance_name, status")
@@ -50,122 +72,67 @@ serve(async (req) => {
       .maybeSingle();
 
     if (error || !integration) {
-      console.error("[evolution-qr] Integration not found:", error);
-      return new Response(
-        JSON.stringify({ error: "Integração não encontrada. Crie uma instância primeiro." }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "Integração não encontrada" }, 404);
     }
 
-    console.log(`[evolution-qr] Instance: ${integration.instance_name}, current status: ${integration.status}`);
+    console.log(`[evolution-qr] Instance: ${integration.instance_name} status: ${integration.status}`);
 
     if (integration.status === "connected") {
-      return new Response(
-        JSON.stringify({ connected: true, message: "WhatsApp já está conectado" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: true, status: "connected", qr_code_data: null, qr_format: null, message: "Já conectado" });
     }
 
-    // Retry loop: try up to 10 times with 3s interval
-    let qrCode: string | null = null;
-    let isConnected = false;
+    let rawQr: string | null = null;
+    let connected = false;
 
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      const connectUrl = `${evolutionBaseUrl}/instance/connect/${integration.instance_name}`;
-      console.log(`[evolution-qr] Attempt ${attempt}/10: GET ${connectUrl}`);
+    for (let i = 1; i <= 10; i++) {
+      const url = `${evolutionBaseUrl}/instance/connect/${integration.instance_name}`;
+      console.log(`[evolution-qr] Attempt ${i}/10: GET ${url}`);
 
       try {
-        const qrRes = await fetch(connectUrl, {
-          method: "GET",
-          headers: { apikey: evolutionApiKey },
-        });
+        const r = await fetch(url, { method: "GET", headers: { apikey: evolutionApiKey } });
+        const rText = await r.text();
+        console.log(`[evolution-qr] Attempt ${i}: HTTP ${r.status} | body: ${rText.substring(0, 500)}`);
 
-        const qrStatus = qrRes.status;
-        const qrText = await qrRes.text();
-        console.log(`[evolution-qr] Attempt ${attempt} response: status=${qrStatus} body=${qrText.substring(0, 500)}`);
-
-        if (qrRes.ok) {
-          const qrData = JSON.parse(qrText);
-          console.log(`[evolution-qr] Response keys: ${Object.keys(qrData).join(", ")}`);
-
-          // Check if already connected
-          if (qrData?.instance?.state === "open" || qrData?.state === "open") {
-            isConnected = true;
-            console.log(`[evolution-qr] Connected on attempt ${attempt}`);
-            break;
+        if (r.ok) {
+          const rData = JSON.parse(rText);
+          if ((rData as any)?.instance?.state === "open" || (rData as any)?.state === "open") {
+            connected = true; break;
           }
-
-          // Extract QR
-          const extractedQr = qrData?.base64 || qrData?.qrcode?.base64 || qrData?.instance?.qrcode || null;
-          if (extractedQr) {
-            qrCode = extractedQr;
-            console.log(`[evolution-qr] QR found on attempt ${attempt} (length=${qrCode.length})`);
-            break;
-          }
+          const q = extractQrFromResponse(rData);
+          if (q) { rawQr = q; console.log(`[evolution-qr] QR on attempt ${i} (len=${q.length})`); break; }
+          else { console.log(`[evolution-qr] Attempt ${i}: no QR. Keys: ${JSON.stringify(Object.keys(rData))}`); }
         }
       } catch (err) {
-        console.error(`[evolution-qr] Attempt ${attempt} error:`, err);
+        console.error(`[evolution-qr] Attempt ${i} error:`, err);
       }
 
-      if (attempt < 10) {
-        console.log(`[evolution-qr] No QR yet, waiting 3s...`);
-        await sleep(3000);
-      }
+      if (i < 10) await sleep(2000);
     }
 
-    if (isConnected) {
-      await supabase
-        .from("whatsapp_integrations")
-        .update({
-          status: "connected",
-          qr_code_data: null,
-          connected_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("organization_id", organization_id);
+    if (connected) {
+      await supabase.from("whatsapp_integrations").update({
+        status: "connected", qr_code_data: null,
+        connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }).eq("organization_id", organization_id);
 
-      return new Response(
-        JSON.stringify({ connected: true, message: "WhatsApp conectado!" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: true, status: "connected", qr_code_data: null, qr_format: null, message: "WhatsApp conectado!" });
     }
 
-    if (!qrCode) {
+    const { qr_code_data, qr_format } = detectQrFormat(rawQr);
+
+    if (!qr_code_data) {
       console.log("[evolution-qr] QR not available after 10 attempts");
-      return new Response(
-        JSON.stringify({
-          error: "QR não disponível ainda. A instância pode estar inicializando — tente novamente em alguns segundos.",
-          status: "qr_pending",
-        }),
-        { status: 408, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "qr_pending", qr_code_data: null, qr_format: null, message: "QR não disponível. Tente novamente em alguns segundos." }, 408);
     }
 
-    // Normalize QR format
-    if (!qrCode.startsWith("data:")) {
-      qrCode = `data:image/png;base64,${qrCode}`;
-    }
+    console.log(`[evolution-qr] Saving QR format=${qr_format} len=${qr_code_data.length}`);
+    await supabase.from("whatsapp_integrations").update({
+      qr_code_data, status: "qr_pending", updated_at: new Date().toISOString(),
+    }).eq("organization_id", organization_id);
 
-    console.log(`[evolution-qr] Saving QR (length=${qrCode.length})`);
-
-    await supabase
-      .from("whatsapp_integrations")
-      .update({
-        qr_code_data: qrCode,
-        status: "qr_pending",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("organization_id", organization_id);
-
-    return new Response(
-      JSON.stringify({ qr_code: qrCode, status: "qr_pending" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return respond({ ok: true, status: "qr_pending", qr_code_data, qr_format, message: "QR atualizado" });
   } catch (err) {
-    console.error("[evolution-qr] Unhandled error:", err);
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("[evolution-qr] Unhandled:", err);
+    return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: String(err) }, 500);
   }
 });

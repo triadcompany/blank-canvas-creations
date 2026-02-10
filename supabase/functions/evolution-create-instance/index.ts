@@ -11,10 +11,58 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type QrFormat = "data_url" | "base64" | "text" | "url" | null;
+
+function detectQrFormat(raw: string | null): { qr_code_data: string | null; qr_format: QrFormat } {
+  if (!raw) return { qr_code_data: null, qr_format: null };
+  if (raw.startsWith("data:image")) return { qr_code_data: raw, qr_format: "data_url" };
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return { qr_code_data: raw, qr_format: "url" };
+  // Check if it looks like base64 (long alphanumeric string)
+  if (/^[A-Za-z0-9+/=]{50,}$/.test(raw.replace(/\s/g, ""))) return { qr_code_data: raw, qr_format: "base64" };
+  // Fallback: could be a text code for QR generation
+  if (raw.length > 10) return { qr_code_data: raw, qr_format: "text" };
+  return { qr_code_data: null, qr_format: null };
+}
+
+function extractQrFromResponse(data: Record<string, unknown>): string | null {
+  // Try all known Evolution API QR fields
+  const candidates = [
+    (data as any)?.base64,
+    (data as any)?.qrcode?.base64,
+    (data as any)?.qrcode?.pairingCode,
+    (data as any)?.qrcode,
+    (data as any)?.instance?.qrcode?.base64,
+    (data as any)?.instance?.qrcode,
+    (data as any)?.pairingCode,
+    (data as any)?.code,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 10) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function isConnectedState(data: Record<string, unknown>): boolean {
+  return (
+    (data as any)?.instance?.state === "open" ||
+    (data as any)?.state === "open" ||
+    (data as any)?.instance?.status === "open"
+  );
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const respond = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,238 +72,161 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (!evolutionApiKey || !evolutionBaseUrl) {
-      console.error("[evolution-create] Missing secrets: EVOLUTION_API_KEY or EVOLUTION_BASE_URL");
-      return new Response(
-        JSON.stringify({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      console.error("[evolution-create] Missing secrets");
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }, 500);
     }
 
     const { organization_id, instance_name } = await req.json();
 
     if (!organization_id || !instance_name) {
-      return new Response(
-        JSON.stringify({ error: "organization_id e instance_name são obrigatórios" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "organization_id e instance_name são obrigatórios" }, 400);
     }
 
     if (!/^[a-z0-9_-]{3,40}$/.test(instance_name)) {
-      return new Response(
-        JSON.stringify({ error: "instance_name deve ter 3-40 caracteres, lowercase, apenas letras, números, - e _" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "instance_name inválido" }, 400);
     }
 
     console.log(`[evolution-create] === START === org=${organization_id} instance=${instance_name}`);
     console.log(`[evolution-create] Base URL: ${evolutionBaseUrl}`);
 
-    // Step 1: Try to create the instance
+    // ──── Step 1: Create instance ────
     const createUrl = `${evolutionBaseUrl}/instance/create`;
     console.log(`[evolution-create] Step 1: POST ${createUrl}`);
-
-    const createBody = {
-      instanceName: instance_name,
-      integration: "WHATSAPP-BAILEYS",
-      qrcode: true,
-      reject_call: false,
-      webhook: {
-        url: `${supabaseUrl}/functions/v1/evolution-webhook`,
-        enabled: true,
-        webhookByEvents: true,
-        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
-      },
-    };
 
     const createRes = await fetch(createUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-      body: JSON.stringify(createBody),
+      body: JSON.stringify({
+        instanceName: instance_name,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: true,
+        reject_call: false,
+        webhook: {
+          url: `${supabaseUrl}/functions/v1/evolution-webhook`,
+          enabled: true,
+          webhookByEvents: true,
+          events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+        },
+      }),
     });
 
     const createStatus = createRes.status;
     const createText = await createRes.text();
-    console.log(`[evolution-create] Step 1 response: status=${createStatus} body=${createText.substring(0, 1000)}`);
+    console.log(`[evolution-create] Step 1: HTTP ${createStatus} | body: ${createText.substring(0, 800)}`);
 
-    let instanceAlreadyExists = false;
+    let instanceExists = false;
+    let rawQr: string | null = null;
+    let connected = false;
 
     if (!createRes.ok) {
-      if (createText.includes("already") || createText.includes("exists") || createText.includes("instance_already")) {
-        console.log("[evolution-create] Instance already exists, will try to connect");
-        instanceAlreadyExists = true;
+      if (createText.includes("already") || createText.includes("exists") || createText.includes("instance_already") || createStatus === 403) {
+        console.log("[evolution-create] Instance already exists");
+        instanceExists = true;
       } else {
-        return new Response(
-          JSON.stringify({ error: "Erro ao criar instância Evolution", details: createText }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: `Erro ao criar instância (HTTP ${createStatus})`, debug: createText.substring(0, 300) }, 400);
       }
-    }
-
-    // Try to extract QR from creation response
-    let qrCode: string | null = null;
-    let isConnected = false;
-
-    if (!instanceAlreadyExists) {
+    } else {
       try {
         const createData = JSON.parse(createText);
-        console.log(`[evolution-create] Create response keys: ${Object.keys(createData).join(", ")}`);
+        console.log(`[evolution-create] Create keys: ${JSON.stringify(Object.keys(createData))}`);
 
-        // Check for QR in create response
-        qrCode = createData?.qrcode?.base64 || createData?.base64 || createData?.instance?.qrcode?.base64 || null;
-        if (qrCode) {
-          console.log(`[evolution-create] QR found in create response (length=${qrCode.length})`);
-        }
-
-        // Check if already open
-        if (createData?.instance?.state === "open" || createData?.state === "open") {
-          isConnected = true;
-          console.log("[evolution-create] Instance already connected from creation");
+        if (isConnectedState(createData)) {
+          connected = true;
+        } else {
+          rawQr = extractQrFromResponse(createData);
+          if (rawQr) console.log(`[evolution-create] QR from create (len=${rawQr.length}, prefix=${rawQr.substring(0, 30)})`);
         }
       } catch {
-        console.log("[evolution-create] Could not parse create response as JSON");
+        console.log("[evolution-create] Create response not JSON");
       }
     }
 
-    // Step 2: Call connect endpoint to start the session / get QR
-    if (!isConnected && !qrCode) {
+    // ──── Step 2: Connect/start session ────
+    if (!connected && !rawQr) {
       const connectUrl = `${evolutionBaseUrl}/instance/connect/${instance_name}`;
       console.log(`[evolution-create] Step 2: GET ${connectUrl}`);
 
-      const connectRes = await fetch(connectUrl, {
-        method: "GET",
-        headers: { apikey: evolutionApiKey },
-      });
-
+      const connectRes = await fetch(connectUrl, { method: "GET", headers: { apikey: evolutionApiKey } });
       const connectStatus = connectRes.status;
       const connectText = await connectRes.text();
-      console.log(`[evolution-create] Step 2 response: status=${connectStatus} body=${connectText.substring(0, 1000)}`);
+      console.log(`[evolution-create] Step 2: HTTP ${connectStatus} | body: ${connectText.substring(0, 800)}`);
 
       if (connectRes.ok) {
         try {
           const connectData = JSON.parse(connectText);
-          console.log(`[evolution-create] Connect response keys: ${Object.keys(connectData).join(", ")}`);
+          console.log(`[evolution-create] Connect keys: ${JSON.stringify(Object.keys(connectData))}`);
 
-          if (connectData?.instance?.state === "open" || connectData?.state === "open") {
-            isConnected = true;
-            console.log("[evolution-create] Instance connected from connect endpoint");
+          if (isConnectedState(connectData)) {
+            connected = true;
           } else {
-            qrCode = connectData?.base64 || connectData?.qrcode?.base64 || connectData?.instance?.qrcode || null;
-            if (qrCode) {
-              console.log(`[evolution-create] QR found from connect (length=${qrCode.length})`);
-            }
+            rawQr = extractQrFromResponse(connectData);
+            if (rawQr) console.log(`[evolution-create] QR from connect (len=${rawQr.length}, prefix=${rawQr.substring(0, 30)})`);
           }
         } catch {
-          console.log("[evolution-create] Could not parse connect response");
+          console.log("[evolution-create] Connect response not JSON");
         }
       }
     }
 
-    // Step 3: Retry loop if no QR yet and not connected
-    if (!isConnected && !qrCode) {
-      console.log("[evolution-create] Step 3: Retry loop to fetch QR (max 10 attempts, 3s interval)");
+    // ──── Step 3: Retry loop (10 × 2s = 20s max) ────
+    if (!connected && !rawQr) {
+      console.log("[evolution-create] Step 3: Retry loop (10 attempts × 2s)");
 
-      for (let attempt = 1; attempt <= 10; attempt++) {
-        await sleep(3000);
-
+      for (let i = 1; i <= 10; i++) {
+        await sleep(2000);
         const retryUrl = `${evolutionBaseUrl}/instance/connect/${instance_name}`;
-        console.log(`[evolution-create] Retry ${attempt}/10: GET ${retryUrl}`);
+        console.log(`[evolution-create] Retry ${i}/10: GET ${retryUrl}`);
 
         try {
-          const retryRes = await fetch(retryUrl, {
-            method: "GET",
-            headers: { apikey: evolutionApiKey },
-          });
+          const r = await fetch(retryUrl, { method: "GET", headers: { apikey: evolutionApiKey } });
+          const rText = await r.text();
+          console.log(`[evolution-create] Retry ${i}: HTTP ${r.status} | body: ${rText.substring(0, 400)}`);
 
-          const retryStatus = retryRes.status;
-          const retryText = await retryRes.text();
-          console.log(`[evolution-create] Retry ${attempt} response: status=${retryStatus} body=${retryText.substring(0, 500)}`);
-
-          if (retryRes.ok) {
-            const retryData = JSON.parse(retryText);
-
-            if (retryData?.instance?.state === "open" || retryData?.state === "open") {
-              isConnected = true;
-              console.log(`[evolution-create] Connected on retry ${attempt}`);
-              break;
-            }
-
-            const retryQr = retryData?.base64 || retryData?.qrcode?.base64 || retryData?.instance?.qrcode || null;
-            if (retryQr) {
-              qrCode = retryQr;
-              console.log(`[evolution-create] QR found on retry ${attempt} (length=${qrCode.length})`);
-              break;
-            }
+          if (r.ok) {
+            const rData = JSON.parse(rText);
+            if (isConnectedState(rData)) { connected = true; break; }
+            const q = extractQrFromResponse(rData);
+            if (q) { rawQr = q; console.log(`[evolution-create] QR on retry ${i} (len=${q.length})`); break; }
+            else { console.log(`[evolution-create] Retry ${i}: no QR field found in keys: ${JSON.stringify(Object.keys(rData))}`); }
           }
         } catch (err) {
-          console.error(`[evolution-create] Retry ${attempt} error:`, err);
+          console.error(`[evolution-create] Retry ${i} error:`, err);
         }
       }
     }
 
-    // Step 4: Persist result
-    if (isConnected) {
-      console.log("[evolution-create] Final: CONNECTED");
-      await supabase
-        .from("whatsapp_integrations")
-        .upsert({
-          organization_id,
-          provider: "evolution",
-          instance_name,
-          status: "connected",
-          qr_code_data: null,
-          connected_at: new Date().toISOString(),
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "organization_id" });
-
-      return new Response(
-        JSON.stringify({ success: true, instance_name, status: "connected", connected: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Normalize QR format
-    if (qrCode && !qrCode.startsWith("data:")) {
-      // Ensure it's stored as a proper data URL
-      qrCode = `data:image/png;base64,${qrCode}`;
-    }
-
-    console.log(`[evolution-create] Final: QR_PENDING qrCode=${qrCode ? `present (length=${qrCode.length})` : "null"}`);
-
-    await supabase
-      .from("whatsapp_integrations")
-      .upsert({
-        organization_id,
-        provider: "evolution",
-        instance_name,
-        status: "qr_pending",
-        qr_code_data: qrCode,
-        is_active: true,
+    // ──── Step 4: Persist & respond ────
+    if (connected) {
+      console.log("[evolution-create] RESULT: connected");
+      await supabase.from("whatsapp_integrations").upsert({
+        organization_id, provider: "evolution", instance_name,
+        status: "connected", qr_code_data: null,
+        connected_at: new Date().toISOString(), is_active: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id" });
 
-    if (!qrCode) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          instance_name,
-          status: "qr_pending",
-          qr_code: null,
-          warning: "QR não disponível ainda. A instância foi criada — clique 'Atualizar QR' em alguns segundos.",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ ok: true, status: "connected", qr_code_data: null, qr_format: null, message: "WhatsApp já está conectado" });
     }
 
-    return new Response(
-      JSON.stringify({ success: true, instance_name, status: "qr_pending", qr_code: qrCode }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const { qr_code_data, qr_format } = detectQrFormat(rawQr);
+    console.log(`[evolution-create] RESULT: qr_pending | qr_format=${qr_format} | qr_data=${qr_code_data ? `present (len=${qr_code_data.length})` : "null"}`);
+
+    await supabase.from("whatsapp_integrations").upsert({
+      organization_id, provider: "evolution", instance_name,
+      status: "qr_pending", qr_code_data: qr_code_data,
+      is_active: true, updated_at: new Date().toISOString(),
+    }, { onConflict: "organization_id" });
+
+    if (!qr_code_data) {
+      return respond({
+        ok: false, status: "qr_pending", qr_code_data: null, qr_format: null,
+        message: "Instância criada mas QR não disponível. Clique 'Atualizar QR' em alguns segundos.",
+      });
+    }
+
+    return respond({ ok: true, status: "qr_pending", qr_code_data, qr_format, message: "QR Code gerado com sucesso" });
   } catch (err) {
-    console.error("[evolution-create] Unhandled error:", err);
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error("[evolution-create] Unhandled:", err);
+    return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: String(err) }, 500);
   }
 });
