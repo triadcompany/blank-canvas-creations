@@ -863,31 +863,37 @@ export type Database = {
       conversations: {
         Row: {
           assigned_to: string | null
+          contact_name: string | null
           contact_phone: string
           created_at: string
           id: string
           instance_name: string
           last_message_at: string | null
+          last_message_preview: string | null
           organization_id: string
           unread_count: number
         }
         Insert: {
           assigned_to?: string | null
+          contact_name?: string | null
           contact_phone: string
           created_at?: string
           id?: string
           instance_name: string
           last_message_at?: string | null
+          last_message_preview?: string | null
           organization_id: string
           unread_count?: number
         }
         Update: {
           assigned_to?: string | null
+          contact_name?: string | null
           contact_phone?: string
           created_at?: string
           id?: string
           instance_name?: string
           last_message_at?: string | null
+          last_message_preview?: string | null
           organization_id?: string
           unread_count?: number
         }

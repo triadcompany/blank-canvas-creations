@@ -65,9 +65,14 @@ serve(async (req) => {
       return await handleQrCodeUpdate(supabase, body, integration);
     }
 
-    // ── INBOUND MESSAGES ──
+    // ── MESSAGES (inbound + outbound) ──
     if (event === "MESSAGES_UPSERT" || event === "messages.upsert") {
-      return await handleInboundMessages(supabase, body, orgId, instanceName);
+      return await handleMessages(supabase, body, orgId, instanceName);
+    }
+
+    // ── MESSAGE STATUS UPDATES ──
+    if (event === "MESSAGES_UPDATE" || event === "messages.update") {
+      return await handleMessageStatusUpdate(supabase, body, orgId);
     }
 
     // Ignore all other events
@@ -132,58 +137,86 @@ async function handleQrCodeUpdate(supabase: any, body: any, integration: any) {
   return respond({ ok: true });
 }
 
-// ── INBOUND MESSAGES handler ──
-async function handleInboundMessages(supabase: any, body: any, orgId: string, instanceName: string) {
+// ── MESSAGE STATUS UPDATE handler (delivered/read) ──
+async function handleMessageStatusUpdate(supabase: any, body: any, orgId: string) {
+  // Evolution sends status updates like delivered, read, etc.
+  // We could update message status in the future
+  console.log("[evolution-webhook] Message status update received");
+  return respond({ ok: true });
+}
+
+// ── MESSAGES handler (inbound + outbound) ──
+async function handleMessages(supabase: any, body: any, orgId: string, instanceName: string) {
   const messages = body.data || [];
   const msgArray = Array.isArray(messages) ? messages : [messages];
 
   for (const msg of msgArray) {
-    // Skip outgoing messages
-    if (msg.key?.fromMe) continue;
+    const isFromMe = msg.key?.fromMe === true;
 
     // Extract phone from remoteJid
     const phone = (msg.key?.remoteJid || "")
       .replace("@s.whatsapp.net", "")
       .replace("@c.us", "");
 
-    // Extract text — only process text messages
+    if (!phone) continue;
+
+    // Extract text
     const text =
       msg.message?.conversation ||
       msg.message?.extendedTextMessage?.text || null;
 
-    // Ignore non-text messages
-    if (!text) {
-      console.log(`[evolution-webhook] Non-text message from ${phone} — ignored`);
+    // For non-text: create a placeholder
+    const mediaType = msg.message?.imageMessage ? "imagem"
+      : msg.message?.videoMessage ? "vídeo"
+      : msg.message?.audioMessage ? "áudio"
+      : msg.message?.documentMessage ? "documento"
+      : msg.message?.stickerMessage ? "sticker"
+      : null;
+
+    const displayBody = text || (mediaType ? `📎 (${mediaType})` : null);
+
+    // Skip if no content at all
+    if (!displayBody) {
+      console.log(`[evolution-webhook] Empty message from ${phone} — ignored`);
       continue;
     }
-
-    if (!phone) continue;
 
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
     const pushName = msg.pushName || "";
-    const messagePreview = text.substring(0, 100);
+    const messagePreview = displayBody.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
+    const direction = isFromMe ? "outbound" : "inbound";
 
-    // ── 1) UPSERT into conversations table (Inbox source) ──
+    // ── 1) UPSERT into conversations table ──
     let conversationId: string | null = null;
 
     const { data: existingConv } = await supabase
       .from("conversations")
-      .select("id, unread_count")
+      .select("id, unread_count, contact_name")
       .eq("organization_id", orgId)
       .eq("instance_name", instanceName)
       .eq("contact_phone", normalizedPhone)
       .maybeSingle();
 
+    const convUpdate: Record<string, unknown> = {
+      last_message_at: now,
+      last_message_preview: messagePreview,
+    };
+
     if (existingConv) {
       conversationId = existingConv.id;
+      // Only increment unread for inbound
+      if (!isFromMe) {
+        convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
+      }
+      // Update contact_name if we have pushName and it's not set yet
+      if (pushName && !existingConv.contact_name) {
+        convUpdate.contact_name = pushName;
+      }
       await supabase
         .from("conversations")
-        .update({
-          last_message_at: now,
-          unread_count: (existingConv.unread_count || 0) + 1,
-        })
+        .update(convUpdate)
         .eq("id", conversationId);
     } else {
       const { data: newConv } = await supabase
@@ -192,8 +225,10 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
           organization_id: orgId,
           instance_name: instanceName,
           contact_phone: normalizedPhone,
+          contact_name: pushName || null,
           last_message_at: now,
-          unread_count: 1,
+          last_message_preview: messagePreview,
+          unread_count: isFromMe ? 0 : 1,
           assigned_to: null,
         })
         .select("id")
@@ -203,160 +238,159 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
       console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
     }
 
-    // ── 2) Save inbound message to messages table (Inbox source) ──
-    if (conversationId) {
-      // Idempotency: skip if externalMessageId already exists
-      if (externalMessageId) {
-        const { data: existingMsg } = await supabase
-          .from("messages")
-          .select("id")
-          .eq("conversation_id", conversationId)
-          .eq("body", text)
-          .eq("direction", "inbound")
-          .limit(1)
-          .maybeSingle();
+    // ── 2) Save message to messages table (idempotent by external ID) ──
+    if (conversationId && externalMessageId) {
+      // Check idempotency by external_message_id
+      const { data: existingMsg } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("conversation_id", conversationId)
+        .eq("external_message_id", externalMessageId)
+        .maybeSingle();
 
-        if (!existingMsg) {
-          await supabase.from("messages").insert({
-            organization_id: orgId,
-            conversation_id: conversationId,
-            direction: "inbound",
-            body: text,
-          });
-        }
-      } else {
+      if (!existingMsg) {
         await supabase.from("messages").insert({
           organization_id: orgId,
           conversation_id: conversationId,
-          direction: "inbound",
-          body: text,
+          direction,
+          body: displayBody,
+          external_message_id: externalMessageId,
         });
       }
+    } else if (conversationId) {
+      await supabase.from("messages").insert({
+        organization_id: orgId,
+        conversation_id: conversationId,
+        direction,
+        body: displayBody,
+      });
     }
 
-    // ── 3) Also persist to legacy whatsapp_threads / whatsapp_messages ──
-    let threadId: string | null = null;
+    // ── 3) Legacy whatsapp_threads / whatsapp_messages (inbound only) ──
+    if (!isFromMe) {
+      let threadId: string | null = null;
 
-    const { data: existingThread } = await supabase
-      .from("whatsapp_threads")
-      .select("id, contact_name, unread_count")
-      .eq("organization_id", orgId)
-      .eq("contact_phone_e164", normalizedPhone)
-      .maybeSingle();
-
-    if (existingThread) {
-      threadId = existingThread.id;
-      const threadUpdate: Record<string, unknown> = {
-        last_message_at: now,
-        last_message_preview: messagePreview,
-        instance_name: instanceName,
-        status: "open",
-        unread_count: (existingThread.unread_count || 0) + 1,
-      };
-      if (pushName && !existingThread.contact_name) {
-        threadUpdate.contact_name = pushName;
-      }
-
-      await supabase
+      const { data: existingThread } = await supabase
         .from("whatsapp_threads")
-        .update(threadUpdate)
-        .eq("id", threadId);
-    } else {
-      const { data: newThread } = await supabase
-        .from("whatsapp_threads")
-        .insert({
-          organization_id: orgId,
-          instance_name: instanceName,
-          contact_phone_e164: normalizedPhone,
-          contact_name: pushName || null,
-          status: "open",
-          last_message_at: now,
-          last_message_preview: messagePreview,
-          unread_count: 1,
-          routing_bucket: containsAdMarker(text) ? "traffic" : "non_traffic",
-          first_message_text: text.substring(0, 500),
-          first_message_at: now,
-        })
-        .select("id")
-        .single();
-
-      threadId = newThread?.id || null;
-      console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
-    }
-
-    // Save to legacy whatsapp_messages
-    await supabase.from("whatsapp_messages").insert({
-      organization_id: orgId,
-      instance_name: instanceName,
-      thread_id: threadId,
-      direction: "inbound",
-      phone: normalizedPhone,
-      message_text: text,
-      status: "delivered",
-      external_message_id: externalMessageId,
-      metadata: { pushName, timestamp: msg.messageTimestamp },
-    });
-
-    console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} conv=${conversationId} thread=${threadId}`);
-
-    // ── 4) Lead matching & engagement ──
-    const phoneVariants = [
-      normalizedPhone,
-      normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
-    ];
-
-    let leadId: string | null = null;
-
-    for (const variant of phoneVariants) {
-      const { data: lead } = await supabase
-        .from("leads")
-        .select("id")
+        .select("id, contact_name, unread_count")
         .eq("organization_id", orgId)
-        .or(`phone.eq.${variant},whatsapp.eq.${variant}`)
+        .eq("contact_phone_e164", normalizedPhone)
         .maybeSingle();
 
-      if (lead) {
-        leadId = lead.id;
-        break;
+      if (existingThread) {
+        threadId = existingThread.id;
+        const threadUpdate: Record<string, unknown> = {
+          last_message_at: now,
+          last_message_preview: messagePreview,
+          instance_name: instanceName,
+          status: "open",
+          unread_count: (existingThread.unread_count || 0) + 1,
+        };
+        if (pushName && !existingThread.contact_name) {
+          threadUpdate.contact_name = pushName;
+        }
+
+        await supabase
+          .from("whatsapp_threads")
+          .update(threadUpdate)
+          .eq("id", threadId);
+      } else {
+        const { data: newThread } = await supabase
+          .from("whatsapp_threads")
+          .insert({
+            organization_id: orgId,
+            instance_name: instanceName,
+            contact_phone_e164: normalizedPhone,
+            contact_name: pushName || null,
+            status: "open",
+            last_message_at: now,
+            last_message_preview: messagePreview,
+            unread_count: 1,
+            routing_bucket: containsAdMarker(text || "") ? "traffic" : "non_traffic",
+            first_message_text: (text || "").substring(0, 500),
+            first_message_at: now,
+          })
+          .select("id")
+          .single();
+
+        threadId = newThread?.id || null;
+        console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
       }
-    }
 
-    if (leadId) {
-      await supabase
-        .from("leads")
-        .update({
-          last_reply_at: now,
-          last_inbound_message_at: now,
-          last_inbound_message_text: text.substring(0, 500),
-          updated_at: now,
-        })
-        .eq("id", leadId);
+      // Save to legacy whatsapp_messages
+      await supabase.from("whatsapp_messages").insert({
+        organization_id: orgId,
+        instance_name: instanceName,
+        thread_id: threadId,
+        direction: "inbound",
+        phone: normalizedPhone,
+        message_text: text || displayBody,
+        status: "delivered",
+        external_message_id: externalMessageId,
+        metadata: { pushName, timestamp: msg.messageTimestamp },
+      });
 
-      await wakePausedRuns(supabase, orgId, leadId, now);
-      console.log(`[evolution-webhook] Linked to lead ${leadId}`);
-    } else if (containsAdMarker(text)) {
-      // Auto-create lead from ad traffic
-      await supabase
-        .from("leads")
-        .insert({
-          organization_id: orgId,
-          name: pushName || "Lead WhatsApp",
-          phone: normalizedPhone,
-          whatsapp: normalizedPhone,
-          source: "Meta Ads",
-          canal: "WhatsApp",
-          status: "novo",
-          last_reply_at: now,
-          last_inbound_message_at: now,
-          last_inbound_message_text: text.substring(0, 500),
-        });
+      console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} conv=${conversationId} thread=${threadId}`);
 
-      console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
+      // ── 4) Lead matching & engagement (inbound only) ──
+      const phoneVariants = [
+        normalizedPhone,
+        normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
+      ];
+
+      let leadId: string | null = null;
+
+      for (const variant of phoneVariants) {
+        const { data: lead } = await supabase
+          .from("leads")
+          .select("id")
+          .eq("organization_id", orgId)
+          .or(`phone.eq.${variant},whatsapp.eq.${variant}`)
+          .maybeSingle();
+
+        if (lead) {
+          leadId = lead.id;
+          break;
+        }
+      }
+
+      if (leadId) {
+        await supabase
+          .from("leads")
+          .update({
+            last_reply_at: now,
+            last_inbound_message_at: now,
+            last_inbound_message_text: (text || "").substring(0, 500),
+            updated_at: now,
+          })
+          .eq("id", leadId);
+
+        await wakePausedRuns(supabase, orgId, leadId, now);
+        console.log(`[evolution-webhook] Linked to lead ${leadId}`);
+      } else if (containsAdMarker(text || "")) {
+        await supabase
+          .from("leads")
+          .insert({
+            organization_id: orgId,
+            name: pushName || "Lead WhatsApp",
+            phone: normalizedPhone,
+            whatsapp: normalizedPhone,
+            source: "Meta Ads",
+            canal: "WhatsApp",
+            status: "novo",
+            last_reply_at: now,
+            last_inbound_message_at: now,
+            last_inbound_message_text: (text || "").substring(0, 500),
+          });
+
+        console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
+      }
+    } else {
+      console.log(`[evolution-webhook] Outbound message saved: phone=${normalizedPhone} conv=${conversationId}`);
     }
   }
 
-  // After processing all inbound messages, invoke the worker
-  // to pick up any jobs created by wakePausedRuns
+  // After processing all messages, invoke the worker
   await invokeWorker();
 
   return respond({ ok: true });
@@ -463,7 +497,6 @@ async function wakePausedRuns(
       });
     }
 
-    // Auto-invoke worker to process the newly created jobs
     if (waitJobs.length > 0) {
       await invokeWorker();
     }
