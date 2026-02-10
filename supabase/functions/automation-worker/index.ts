@@ -93,7 +93,7 @@ serve(async (req) => {
             result = await processCondition(supabase, currentNode, job, edges);
             break;
           case "action":
-            result = processAction(currentNode, job);
+            result = await processAction(supabase, currentNode, job);
             break;
           case "message":
             result = await processMessage(supabase, currentNode, job);
@@ -333,14 +333,86 @@ async function processCondition(
   };
 }
 
-function processAction(node: any, job: any): JobResult {
+async function processAction(supabase: any, node: any, job: any): Promise<JobResult> {
   const config = job.payload?.node_config || node.data?.config || {};
+  const actionType = config.actionType || "unknown";
+
+  switch (actionType) {
+    case "move_stage":
+      return await processActionMoveStage(supabase, config, job);
+    case "end_automation":
+      await completeRun(supabase, job);
+      return { status: "done", output: { action_type: "end_automation", ended: true } };
+    default:
+      return {
+        status: "done",
+        output: {
+          action_type: actionType,
+          stub: true,
+          message: "Action registered (execution not implemented yet)",
+        },
+      };
+  }
+}
+
+async function processActionMoveStage(supabase: any, config: any, job: any): Promise<JobResult> {
+  const params = config.params || {};
+  const stageName = params.stage || "";
+
+  if (!stageName) {
+    return { status: "done", output: { error: "Etapa de destino não configurada", skipped: true } };
+  }
+
+  // Load run to get entity_id (lead)
+  const { data: run } = await supabase
+    .from("automation_runs")
+    .select("entity_id, entity_type, organization_id")
+    .eq("id", job.run_id)
+    .single();
+
+  if (!run) {
+    return { status: "done", output: { error: "Run não encontrada", skipped: true } };
+  }
+
+  const leadId = run.entity_type === "lead" ? run.entity_id : null;
+  if (!leadId) {
+    return { status: "done", output: { error: "Entidade não é um lead", skipped: true } };
+  }
+
+  // Find the stage by name in the org
+  const { data: stages } = await supabase
+    .from("crm_stages")
+    .select("id, name")
+    .eq("organization_id", run.organization_id)
+    .ilike("name", stageName);
+
+  const targetStage = stages?.[0];
+  if (!targetStage) {
+    return {
+      status: "done",
+      output: { error: `Etapa "${stageName}" não encontrada`, skipped: true },
+    };
+  }
+
+  // Update lead stage
+  const { error: updateErr } = await supabase
+    .from("crm_leads")
+    .update({ stage: targetStage.id, updated_at: new Date().toISOString() })
+    .eq("id", leadId)
+    .eq("organization_id", run.organization_id);
+
+  if (updateErr) {
+    throw new Error(`Erro ao mover lead: ${updateErr.message}`);
+  }
+
   return {
     status: "done",
     output: {
-      action_type: config.actionType || "unknown",
-      stub: true,
-      message: "Action registered (execution not implemented yet)",
+      action_type: "move_stage",
+      lead_id: leadId,
+      stage_id: targetStage.id,
+      stage_name: targetStage.name,
+      moved: true,
     },
   };
 }

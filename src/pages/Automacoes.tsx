@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, Zap, Play, Pause, Copy, Trash2, ArrowLeft, Loader2,
-  MessageSquare, AlertTriangle, RotateCw,
+  MessageSquare, AlertTriangle, RotateCw, FileText,
 } from "lucide-react";
 import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,7 +29,8 @@ export default function Automacoes() {
   const {
     automations, loading, createAutomation, updateAutomation,
     deleteAutomation, duplicateAutomation, toggleActive,
-    getFlow, saveFlow, listRuns, listLogs, getRunStats, triggerWorker,
+    getFlow, saveFlow, createFromTemplate,
+    listRuns, listLogs, getRunStats, triggerWorker,
   } = useAutomations();
   const { isAdmin } = useAuth();
 
@@ -273,6 +274,18 @@ export default function Automacoes() {
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Worker...</>
                   : <><Play className="h-3.5 w-3.5" /> Executar worker</>
                 }
+              </Button>
+            )}
+            {isAdmin && (
+              <Button
+                variant="outline"
+                className="font-poppins gap-2"
+                onClick={async () => {
+                  const result = await createFromTemplate();
+                  if (result) setEditingAutomation(result);
+                }}
+              >
+                <FileText className="h-4 w-4" /> Template Follow-up
               </Button>
             )}
             {isAdmin && (

@@ -227,10 +227,29 @@ export function useAutomations() {
     }
   };
 
+  const createFromTemplate = async (templateName?: string): Promise<Automation | null> => {
+    if (!orgId || !profile?.id) {
+      toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
+      return null;
+    }
+    const result = await apiCall("create_template", {
+      organization_id: orgId,
+      created_by: profile.id,
+      template_name: templateName,
+    });
+    if (!result.ok) {
+      toast({ title: "Erro ao criar template", description: result.message, variant: "destructive" });
+      return null;
+    }
+    toast({ title: "Sucesso", description: "Automação template criada" });
+    fetchAutomations();
+    return result.automation;
+  };
+
   return {
     automations, loading,
     createAutomation, updateAutomation, deleteAutomation, duplicateAutomation, toggleActive,
-    getFlow, saveFlow,
+    getFlow, saveFlow, createFromTemplate,
     listRuns, listLogs, getRunStats, triggerWorker,
     refresh: fetchAutomations,
   };

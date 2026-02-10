@@ -309,6 +309,90 @@ serve(async (req) => {
         return respond({ ok: true, stats });
       }
 
+      // ─── CREATE TEMPLATE: Follow-up 24h ───
+      case "create_template": {
+        const { organization_id, created_by, template_name } = params;
+        if (!organization_id || !created_by)
+          return respond({ ok: false, message: "organization_id, created_by required" }, 400);
+
+        const tName = template_name || "Follow-up - resposta em 24h";
+
+        // Build template nodes
+        const nodes = [
+          {
+            id: "tpl_trigger",
+            type: "trigger",
+            position: { x: 250, y: 30 },
+            data: { label: "Lead criado", config: { triggerType: "lead_created" } },
+          },
+          {
+            id: "tpl_msg1",
+            type: "message",
+            position: { x: 250, y: 160 },
+            data: { label: "Mensagem inicial", config: { text: "Olá {{lead.name}}, tudo bem? Posso te ajudar?" } },
+          },
+          {
+            id: "tpl_wait",
+            type: "wait_for_reply",
+            position: { x: 250, y: 310 },
+            data: { label: "Aguardar resposta", config: { timeout_amount: 24, timeout_unit: "hours" } },
+          },
+          {
+            id: "tpl_action_stage",
+            type: "action",
+            position: { x: 80, y: 490 },
+            data: { label: "Mover etapa", config: { actionType: "move_stage", params: { stage: "Em atendimento" } } },
+          },
+          {
+            id: "tpl_msg_timeout",
+            type: "message",
+            position: { x: 420, y: 490 },
+            data: { label: "Lembrete", config: { text: "Oi {{lead.name}}, passando para confirmar se ainda precisa de ajuda." } },
+          },
+        ];
+
+        const edges = [
+          { id: "e_trig_msg1", source: "tpl_trigger", target: "tpl_msg1", sourceHandle: "default" },
+          { id: "e_msg1_wait", source: "tpl_msg1", target: "tpl_wait", sourceHandle: "default" },
+          { id: "e_wait_replied", source: "tpl_wait", target: "tpl_action_stage", sourceHandle: "replied" },
+          { id: "e_wait_timeout", source: "tpl_wait", target: "tpl_msg_timeout", sourceHandle: "timeout" },
+        ];
+
+        // Create automation
+        const { data: automation, error: autoErr } = await supabase
+          .from("automations")
+          .insert({
+            organization_id,
+            name: tName,
+            description: "Template: envia mensagem, aguarda 24h e move etapa ou envia lembrete.",
+            channel: "whatsapp",
+            created_by,
+            is_active: false,
+          })
+          .select()
+          .single();
+
+        if (autoErr) return respond({ ok: false, message: autoErr.message }, 500);
+
+        const { error: flowErr } = await supabase
+          .from("automation_flows")
+          .insert({
+            organization_id,
+            automation_id: automation.id,
+            nodes,
+            edges,
+            entry_node_id: "tpl_trigger",
+            version: 1,
+          });
+
+        if (flowErr) {
+          await supabase.from("automations").delete().eq("id", automation.id);
+          return respond({ ok: false, message: flowErr.message }, 500);
+        }
+
+        return respond({ ok: true, automation });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }
