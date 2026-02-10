@@ -14,9 +14,27 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  const respond = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   try {
+    // Optional webhook secret validation via query param or header
+    if (webhookSecret) {
+      const url = new URL(req.url);
+      const tokenParam = url.searchParams.get("token");
+      const tokenHeader = req.headers.get("x-webhook-secret");
+      if (tokenParam !== webhookSecret && tokenHeader !== webhookSecret) {
+        console.warn("[evolution-webhook] Invalid webhook secret");
+        return respond({ ok: false, error: "unauthorized" }, 401);
+      }
+    }
+
     const body = await req.json();
     console.log("[evolution-webhook] Event received:", JSON.stringify(body).substring(0, 500));
 
@@ -32,12 +50,12 @@ serve(async (req) => {
 
     if (!integration) {
       console.log("[evolution-webhook] Unknown instance:", instanceName);
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return respond({ ok: true, message: "unknown instance" });
     }
 
-    // Handle connection updates
+    const orgId = integration.organization_id;
+
+    // ── CONNECTION UPDATE ──
     if (event === "CONNECTION_UPDATE" || event === "connection.update") {
       const state = body.data?.state || body.state;
       let newStatus = "disconnected";
@@ -47,7 +65,6 @@ serve(async (req) => {
       if (state === "open") {
         newStatus = "connected";
         connectedAt = new Date().toISOString();
-        // Try to extract phone number
         phoneNumber = body.data?.phoneNumber || body.data?.wid?.user || null;
       } else if (state === "connecting") {
         newStatus = "qr_pending";
@@ -63,9 +80,7 @@ serve(async (req) => {
         updateData.connected_at = connectedAt;
         updateData.qr_code_data = null;
       }
-      if (phoneNumber) {
-        updateData.phone_number = phoneNumber;
-      }
+      if (phoneNumber) updateData.phone_number = phoneNumber;
       if (newStatus === "disconnected") {
         updateData.qr_code_data = null;
         updateData.connected_at = null;
@@ -78,12 +93,10 @@ serve(async (req) => {
         .eq("id", integration.id);
 
       console.log(`[evolution-webhook] Connection updated: ${newStatus}`);
-      return new Response(JSON.stringify({ ok: true, status: newStatus }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return respond({ ok: true, status: newStatus });
     }
 
-    // Handle QR code updates
+    // ── QR CODE UPDATE ──
     if (event === "QRCODE_UPDATED" || event === "qrcode.updated") {
       const qrCode = body.data?.qrcode?.base64 || body.data?.base64 || null;
       if (qrCode) {
@@ -93,9 +106,10 @@ serve(async (req) => {
           .eq("id", integration.id);
         console.log("[evolution-webhook] QR code updated");
       }
+      return respond({ ok: true });
     }
 
-    // Handle inbound messages
+    // ── INBOUND MESSAGES ──
     if (event === "MESSAGES_UPSERT" || event === "messages.upsert") {
       const messages = body.data || [];
       const msgArray = Array.isArray(messages) ? messages : [messages];
@@ -103,50 +117,113 @@ serve(async (req) => {
       for (const msg of msgArray) {
         if (msg.key?.fromMe) continue;
 
-        const phone = (msg.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "");
-        const text = msg.message?.conversation ||
-                     msg.message?.extendedTextMessage?.text ||
-                     msg.message?.imageMessage?.caption || "";
+        const phone = (msg.key?.remoteJid || "")
+          .replace("@s.whatsapp.net", "")
+          .replace("@c.us", "");
+        const text =
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption || "";
         const pushName = msg.pushName || "";
 
-        if (!phone || !text) continue;
+        if (!phone) continue;
 
+        // Normalize phone: strip leading +, spaces, dashes
+        const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
+
+        // Insert whatsapp_message
         await supabase.from("whatsapp_messages").insert({
-          organization_id: integration.organization_id,
+          organization_id: orgId,
+          instance_name: instanceName,
           direction: "inbound",
-          phone,
-          message_text: text,
+          phone: normalizedPhone,
+          message_text: text || "(mídia)",
           status: "delivered",
           external_message_id: msg.key?.id || null,
           metadata: { pushName, timestamp: msg.messageTimestamp },
         });
 
-        // Find lead by phone
-        const { data: lead } = await supabase
-          .from("leads")
-          .select("id")
-          .eq("organization_id", integration.organization_id)
-          .eq("phone", phone)
-          .maybeSingle();
+        // Find lead by phone (try multiple formats)
+        const phoneVariants = [
+          normalizedPhone,
+          normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
+        ];
 
-        if (lead && msg.key?.id) {
-          await supabase
-            .from("whatsapp_messages")
-            .update({ lead_id: lead.id })
-            .eq("external_message_id", msg.key.id);
+        let leadId: string | null = null;
+
+        for (const variant of phoneVariants) {
+          const { data: lead } = await supabase
+            .from("leads")
+            .select("id")
+            .eq("organization_id", orgId)
+            .or(`phone.eq.${variant},whatsapp.eq.${variant}`)
+            .maybeSingle();
+
+          if (lead) {
+            leadId = lead.id;
+            break;
+          }
         }
 
-        console.log(`[evolution-webhook] Inbound from ${phone}: ${text.substring(0, 50)}`);
+        const now = new Date().toISOString();
+
+        if (leadId) {
+          // Link message to lead
+          if (msg.key?.id) {
+            await supabase
+              .from("whatsapp_messages")
+              .update({ lead_id: leadId })
+              .eq("external_message_id", msg.key.id);
+          }
+
+          // Update lead engagement tracking
+          await supabase
+            .from("leads")
+            .update({
+              last_reply_at: now,
+              last_inbound_message_at: now,
+              last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
+              updated_at: now,
+            })
+            .eq("id", leadId);
+
+          console.log(`[evolution-webhook] Inbound from ${normalizedPhone} linked to lead ${leadId}`);
+        } else {
+          // Auto-create lead from inbound message
+          const { data: newLead } = await supabase
+            .from("leads")
+            .insert({
+              organization_id: orgId,
+              name: pushName || `WhatsApp ${normalizedPhone}`,
+              phone: normalizedPhone,
+              whatsapp: normalizedPhone,
+              source: "whatsapp",
+              canal: "WhatsApp",
+              status: "novo",
+              last_reply_at: now,
+              last_inbound_message_at: now,
+              last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
+            })
+            .select("id")
+            .single();
+
+          if (newLead && msg.key?.id) {
+            await supabase
+              .from("whatsapp_messages")
+              .update({ lead_id: newLead.id })
+              .eq("external_message_id", msg.key.id);
+          }
+
+          console.log(`[evolution-webhook] Auto-created lead for ${normalizedPhone}: ${newLead?.id}`);
+        }
       }
+
+      return respond({ ok: true });
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return respond({ ok: true });
   } catch (err) {
     console.error("[evolution-webhook] Error:", err);
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return respond({ ok: true });
   }
 });

@@ -2644,6 +2644,9 @@ export type Database = {
           estado: string | null
           id: string
           interest: string | null
+          last_inbound_message_at: string | null
+          last_inbound_message_text: string | null
+          last_reply_at: string | null
           name: string
           observations: string | null
           organization_id: string | null
@@ -2664,6 +2667,9 @@ export type Database = {
           estado?: string | null
           id?: string
           interest?: string | null
+          last_inbound_message_at?: string | null
+          last_inbound_message_text?: string | null
+          last_reply_at?: string | null
           name: string
           observations?: string | null
           organization_id?: string | null
@@ -2684,6 +2690,9 @@ export type Database = {
           estado?: string | null
           id?: string
           interest?: string | null
+          last_inbound_message_at?: string | null
+          last_inbound_message_text?: string | null
+          last_reply_at?: string | null
           name?: string
           observations?: string | null
           organization_id?: string | null
@@ -4733,6 +4742,7 @@ export type Database = {
           direction: string
           external_message_id: string | null
           id: string
+          instance_name: string | null
           lead_id: string | null
           message_text: string | null
           metadata: Json | null
@@ -4746,6 +4756,7 @@ export type Database = {
           direction?: string
           external_message_id?: string | null
           id?: string
+          instance_name?: string | null
           lead_id?: string | null
           message_text?: string | null
           metadata?: Json | null
@@ -4759,6 +4770,7 @@ export type Database = {
           direction?: string
           external_message_id?: string | null
           id?: string
+          instance_name?: string | null
           lead_id?: string | null
           message_text?: string | null
           metadata?: Json | null
