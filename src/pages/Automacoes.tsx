@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CRMLayout } from "@/components/layout/CRMLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,23 +22,49 @@ import {
   Copy,
   Trash2,
   ArrowLeft,
-  FileText,
   Loader2,
   MessageSquare,
+  AlertTriangle,
 } from "lucide-react";
-import { useAutomations, Automation } from "@/hooks/useAutomations";
+import { useAutomations, Automation, AutomationFlow } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
 import { AutomationFlowEditor } from "@/components/automations/AutomationFlowEditor";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Node, Edge } from "@xyflow/react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Automacoes() {
-  const { automations, loading, createAutomation, updateAutomation, deleteAutomation, duplicateAutomation, toggleActive } = useAutomations();
+  const {
+    automations, loading, createAutomation, updateAutomation,
+    deleteAutomation, duplicateAutomation, toggleActive,
+    getFlow, saveFlow,
+  } = useAutomations();
   const { isAdmin } = useAuth();
+
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
+  const [currentFlow, setCurrentFlow] = useState<AutomationFlow | null>(null);
+  const [flowLoading, setFlowLoading] = useState(false);
   const [createDialog, setCreateDialog] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+
+  // Load flow when editing automation changes
+  useEffect(() => {
+    if (!editingAutomation) {
+      setCurrentFlow(null);
+      return;
+    }
+    let cancelled = false;
+    setFlowLoading(true);
+    getFlow(editingAutomation.id).then((flow) => {
+      if (!cancelled) {
+        setCurrentFlow(flow);
+        setFlowLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [editingAutomation?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -51,10 +77,12 @@ export default function Automacoes() {
     }
   };
 
-  const handleSaveFlow = async (flow: any) => {
+  const handleSaveFlow = async (flow: { nodes: Node[]; edges: Edge[] }) => {
     if (!editingAutomation) return;
-    await updateAutomation(editingAutomation.id, { flow_definition: flow } as any);
-    setEditingAutomation({ ...editingAutomation, flow_definition: flow });
+    const saved = await saveFlow(editingAutomation.id, flow.nodes, flow.edges);
+    if (saved) {
+      setCurrentFlow(saved);
+    }
   };
 
   const handleToggle = async () => {
@@ -64,6 +92,10 @@ export default function Automacoes() {
       setEditingAutomation({ ...editingAutomation, is_active: !editingAutomation.is_active });
     }
   };
+
+  const hasTrigger = currentFlow
+    ? (currentFlow.nodes as Node[]).some((n) => n.type === "trigger")
+    : false;
 
   // Flow editor view
   if (editingAutomation) {
@@ -88,13 +120,37 @@ export default function Automacoes() {
               <MessageSquare className="h-3 w-3 mr-1" />
               WhatsApp
             </Badge>
+            {currentFlow && (
+              <Badge variant="outline" className="font-poppins text-xs">
+                v{currentFlow.version}
+              </Badge>
+            )}
           </div>
-          <AutomationFlowEditor
-            flowDefinition={editingAutomation.flow_definition}
-            onSave={handleSaveFlow}
-            isActive={editingAutomation.is_active}
-            onToggleActive={handleToggle}
-          />
+
+          {!hasTrigger && !flowLoading && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="font-poppins">
+                Automação sem gatilho — adicione um nó de Gatilho para poder ativá-la.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {flowLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <AutomationFlowEditor
+              flowDefinition={{
+                nodes: (currentFlow?.nodes as Node[]) || [],
+                edges: (currentFlow?.edges as Edge[]) || [],
+              }}
+              onSave={handleSaveFlow}
+              isActive={editingAutomation.is_active}
+              onToggleActive={handleToggle}
+            />
+          )}
         </div>
       </CRMLayout>
     );
