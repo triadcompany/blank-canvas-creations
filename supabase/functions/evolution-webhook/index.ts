@@ -24,7 +24,7 @@ serve(async (req) => {
     });
 
   try {
-    // Optional webhook secret validation via query param or header
+    // Optional webhook secret validation
     if (webhookSecret) {
       const url = new URL(req.url);
       const tokenParam = url.searchParams.get("token");
@@ -70,6 +70,7 @@ serve(async (req) => {
       return await handleInboundMessages(supabase, body, orgId, instanceName);
     }
 
+    // Ignore all other events
     return respond({ ok: true });
   } catch (err) {
     console.error("[evolution-webhook] Error:", err);
@@ -137,30 +138,38 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
   const msgArray = Array.isArray(messages) ? messages : [messages];
 
   for (const msg of msgArray) {
+    // Skip outgoing messages
     if (msg.key?.fromMe) continue;
 
+    // Extract phone from remoteJid
     const phone = (msg.key?.remoteJid || "")
       .replace("@s.whatsapp.net", "")
       .replace("@c.us", "");
+
+    // Extract text — only process text messages
     const text =
       msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption || "";
-    const pushName = msg.pushName || "";
+      msg.message?.extendedTextMessage?.text || null;
+
+    // Ignore non-text messages
+    if (!text) {
+      console.log(`[evolution-webhook] Non-text message from ${phone} — ignored`);
+      continue;
+    }
 
     if (!phone) continue;
 
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
-    const messagePreview = (text || "(mídia)").substring(0, 100);
+    const pushName = msg.pushName || "";
+    const messagePreview = text.substring(0, 100);
 
-    // ── 1) UPSERT whatsapp_thread (Inbox) ──
+    // ── 1) UPSERT whatsapp_thread (conversation) ──
     let threadId: string | null = null;
-    let isNewThread = false;
 
     const { data: existingThread } = await supabase
       .from("whatsapp_threads")
-      .select("id, contact_name, assigned_user_id")
+      .select("id, contact_name, unread_count")
       .eq("organization_id", orgId)
       .eq("contact_phone_e164", normalizedPhone)
       .maybeSingle();
@@ -171,20 +180,18 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
         last_message_at: now,
         last_message_preview: messagePreview,
         instance_name: instanceName,
+        status: "open",
+        unread_count: (existingThread.unread_count || 0) + 1,
       };
       if (pushName && !existingThread.contact_name) {
         threadUpdate.contact_name = pushName;
       }
-      threadUpdate.status = "open";
 
       await supabase
         .from("whatsapp_threads")
         .update(threadUpdate)
         .eq("id", threadId);
     } else {
-      isNewThread = true;
-      // Determine routing bucket from first message
-      const bucket = classifyBucket(text);
       const { data: newThread } = await supabase
         .from("whatsapp_threads")
         .insert({
@@ -193,55 +200,34 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
           contact_phone_e164: normalizedPhone,
           contact_name: pushName || null,
           status: "open",
-          assigned_user_id: null,
           last_message_at: now,
           last_message_preview: messagePreview,
-          routing_bucket: bucket,
-          first_message_text: text ? text.substring(0, 500) : null,
+          unread_count: 1,
+          routing_bucket: containsAdMarker(text) ? "traffic" : "non_traffic",
+          first_message_text: text.substring(0, 500),
           first_message_at: now,
         })
-        .select("id, routing_bucket")
+        .select("id")
         .single();
 
       threadId = newThread?.id || null;
-      console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId} bucket=${bucket}`);
+      console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
     }
 
-    // ── 1b) AUTO-ASSIGN (bucket-aware) ──
-    const shouldAutoAssign =
-      (isNewThread || (existingThread && !existingThread.assigned_user_id)) &&
-      threadId;
-
-    if (shouldAutoAssign) {
-      // For existing threads without assignment, read their bucket from DB
-      let threadBucket = "non_traffic";
-      if (isNewThread) {
-        threadBucket = classifyBucket(text);
-      } else {
-        const { data: threadData } = await supabase
-          .from("whatsapp_threads")
-          .select("routing_bucket")
-          .eq("id", threadId)
-          .maybeSingle();
-        threadBucket = threadData?.routing_bucket || "non_traffic";
-      }
-      await tryAutoAssignThread(supabase, orgId, threadId!, now, threadBucket);
-    }
-
-    // ── 2) ALWAYS save inbound message (with thread_id) ──
-    const { data: savedMsg } = await supabase.from("whatsapp_messages").insert({
+    // ── 2) Save inbound message ──
+    await supabase.from("whatsapp_messages").insert({
       organization_id: orgId,
       instance_name: instanceName,
       thread_id: threadId,
       direction: "inbound",
       phone: normalizedPhone,
-      message_text: text || "(mídia)",
+      message_text: text,
       status: "delivered",
       external_message_id: msg.key?.id || null,
       metadata: { pushName, timestamp: msg.messageTimestamp },
-    }).select("id").single();
+    });
 
-    console.log(`[evolution-webhook] Message saved for phone ${normalizedPhone} thread=${threadId}`);
+    console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} thread=${threadId}`);
 
     // ── 3) Lead matching & engagement ──
     const phoneVariants = [
@@ -266,234 +252,43 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
     }
 
     if (leadId) {
-      if (savedMsg?.id) {
-        await supabase
-          .from("whatsapp_messages")
-          .update({ lead_id: leadId })
-          .eq("id", savedMsg.id);
-      }
-
       await supabase
         .from("leads")
         .update({
           last_reply_at: now,
           last_inbound_message_at: now,
-          last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
+          last_inbound_message_text: text.substring(0, 500),
           updated_at: now,
         })
         .eq("id", leadId);
 
       await wakePausedRuns(supabase, orgId, leadId, now);
-      console.log(`[evolution-webhook] Inbound from ${normalizedPhone} linked to lead ${leadId}`);
-    } else {
-      // ── 4) Ad marker check for auto lead creation ──
-      const hasAdMarker = containsAdMarker(text);
+      console.log(`[evolution-webhook] Linked to lead ${leadId}`);
+    } else if (containsAdMarker(text)) {
+      // Auto-create lead from ad traffic
+      await supabase
+        .from("leads")
+        .insert({
+          organization_id: orgId,
+          name: pushName || "Lead WhatsApp",
+          phone: normalizedPhone,
+          whatsapp: normalizedPhone,
+          source: "Meta Ads",
+          canal: "WhatsApp",
+          status: "novo",
+          last_reply_at: now,
+          last_inbound_message_at: now,
+          last_inbound_message_text: text.substring(0, 500),
+        });
 
-      if (hasAdMarker) {
-        const { data: newLead } = await supabase
-          .from("leads")
-          .insert({
-            organization_id: orgId,
-            name: pushName || "Lead WhatsApp",
-            phone: normalizedPhone,
-            whatsapp: normalizedPhone,
-            source: "Meta Ads",
-            canal: "WhatsApp",
-            status: "novo",
-            last_reply_at: now,
-            last_inbound_message_at: now,
-            last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
-          })
-          .select("id")
-          .single();
-
-        if (newLead && savedMsg?.id) {
-          await supabase
-            .from("whatsapp_messages")
-            .update({ lead_id: newLead.id })
-            .eq("id", savedMsg.id);
-        }
-
-        console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}: ${newLead?.id}`);
-      } else {
-        console.log(`[evolution-webhook] No ad marker from ${normalizedPhone} — lead NOT created (thread=${threadId})`);
-      }
+      console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
     }
   }
 
   return respond({ ok: true });
 }
 
-// ── Helper: Classify bucket from message text ──────────
-function classifyBucket(text: string): string {
-  return containsAdMarker(text) ? "traffic" : "non_traffic";
-}
-
-// ── Auto-assign thread (bucket-aware) ──────────────────
-async function tryAutoAssignThread(
-  supabase: any,
-  orgId: string,
-  threadId: string,
-  now: string,
-  bucket: string
-) {
-  try {
-    // 1) Check if routing is enabled
-    const { data: settings } = await supabase
-      .from("whatsapp_routing_settings")
-      .select("*")
-      .eq("organization_id", orgId)
-      .maybeSingle();
-
-    if (!settings || !settings.enabled) return;
-
-    // 2) Check if this bucket is enabled
-    const bucketEnabled = bucket === "traffic"
-      ? (settings.traffic_enabled !== false)
-      : (settings.non_traffic_enabled !== false);
-
-    if (!bucketEnabled) {
-      console.log(`[evolution-webhook] Bucket ${bucket} disabled — skipping auto-assign`);
-      return;
-    }
-
-    // 3) Check business hours if enabled
-    if (settings.business_hours_enabled && settings.business_hours) {
-      if (!isWithinBusinessHours(settings.business_hours)) {
-        console.log("[evolution-webhook] Outside business hours — skipping auto-assign");
-        return;
-      }
-    }
-
-    // 4) Get eligible members based on bucket-specific roles
-    const allowedRoles: string[] = bucket === "traffic"
-      ? (settings.traffic_roles || settings.only_roles || ["seller", "admin"])
-      : (settings.non_traffic_roles || settings.only_roles || ["seller", "admin"]);
-
-    const { data: eligibleMembers } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("organization_id", orgId)
-      .in("role", allowedRoles);
-
-    if (!eligibleMembers || eligibleMembers.length === 0) {
-      console.log(`[evolution-webhook] No eligible members for bucket=${bucket}`);
-      return;
-    }
-
-    const userIds = eligibleMembers.map((m: any) => m.user_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, user_id, name")
-      .eq("organization_id", orgId)
-      .in("user_id", userIds)
-      .order("name", { ascending: true });
-
-    if (!profiles || profiles.length === 0) {
-      console.log("[evolution-webhook] No profiles found for eligible members");
-      return;
-    }
-
-    // 5) Pick next assignee based on mode
-    let nextProfile: any = null;
-    const mode = settings.mode || "round_robin";
-
-    if (mode === "least_loaded") {
-      // Count open/pending threads for this bucket per eligible profile
-      const profileIds = profiles.map((p: any) => p.id);
-      const { data: threads } = await supabase
-        .from("whatsapp_threads")
-        .select("assigned_user_id")
-        .eq("organization_id", orgId)
-        .eq("routing_bucket", bucket)
-        .in("assigned_user_id", profileIds)
-        .in("status", ["open", "pending"]);
-
-      const loadMap: Record<string, number> = {};
-      for (const p of profiles) loadMap[p.id] = 0;
-      if (threads) {
-        for (const t of threads) {
-          if (t.assigned_user_id && loadMap[t.assigned_user_id] !== undefined) {
-            loadMap[t.assigned_user_id]++;
-          }
-        }
-      }
-
-      const sorted = [...profiles].sort((a: any, b: any) => {
-        const diff = (loadMap[a.id] || 0) - (loadMap[b.id] || 0);
-        if (diff !== 0) return diff;
-        return (a.name || "").localeCompare(b.name || "");
-      });
-
-      nextProfile = sorted[0];
-      console.log(`[evolution-webhook] least_loaded[${bucket}] picks ${nextProfile.name} (load=${loadMap[nextProfile.id]})`);
-    } else {
-      // round_robin per bucket
-      const { data: routingState } = await supabase
-        .from("whatsapp_routing_state")
-        .select("last_assigned_user_id")
-        .eq("organization_id", orgId)
-        .eq("bucket", bucket)
-        .maybeSingle();
-
-      const lastAssigned = routingState?.last_assigned_user_id || null;
-      nextProfile = profiles[0];
-
-      if (lastAssigned) {
-        const lastIndex = profiles.findIndex((p: any) => p.id === lastAssigned);
-        if (lastIndex >= 0 && lastIndex < profiles.length - 1) {
-          nextProfile = profiles[lastIndex + 1];
-        }
-      }
-    }
-
-    // 6) Assign the thread
-    await supabase
-      .from("whatsapp_threads")
-      .update({
-        assigned_user_id: nextProfile.id,
-        assigned_at: now,
-      })
-      .eq("id", threadId);
-
-    // 7) Update routing state per bucket
-    await supabase
-      .from("whatsapp_routing_state")
-      .upsert({
-        organization_id: orgId,
-        bucket,
-        last_assigned_user_id: nextProfile.id,
-        updated_at: now,
-      }, { onConflict: "organization_id,bucket" });
-
-    console.log(`[evolution-webhook] Auto-assigned thread ${threadId} to ${nextProfile.name} (${nextProfile.id}) via ${mode} bucket=${bucket}`);
-  } catch (err) {
-    console.error("[evolution-webhook] Error in auto-assign:", err);
-  }
-}
-
-// ── Helper: Check business hours ──────────────────────────
-function isWithinBusinessHours(bh: any): boolean {
-  try {
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
-    const days: number[] = bh.days || [1, 2, 3, 4, 5];
-
-    if (!days.includes(dayOfWeek)) return false;
-
-    const [startH, startM] = (bh.start || "08:00").split(":").map(Number);
-    const [endH, endM] = (bh.end || "18:00").split(":").map(Number);
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  } catch {
-    return true; // fail-open
-  }
-}
-
-// ── Helper: Check ad marker ──────────────────────────────
+// ── Helper: Check ad marker ──
 function containsAdMarker(text: string): boolean {
   if (!text) return false;
   const normalized = text
@@ -503,7 +298,7 @@ function containsAdMarker(text: string): boolean {
   return normalized.includes("anuncio");
 }
 
-// ── Helper: respond ──────────────────────────────────────
+// ── Helper: respond ──
 function respond(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -515,8 +310,7 @@ function respond(body: Record<string, unknown>, status = 200) {
   });
 }
 
-// ── Helper: Wake paused automation runs ──────────────────
-
+// ── Helper: Wake paused automation runs ──
 async function wakePausedRuns(
   supabase: any,
   orgId: string,
