@@ -14,8 +14,6 @@ import {
   Loader2,
   Inbox as InboxIcon,
   UserPlus,
-  CircleDot,
-  XCircle,
   UserMinus,
   ChevronDown,
 } from 'lucide-react';
@@ -45,12 +43,6 @@ function formatThreadTime(dateStr: string | null) {
   return format(date, 'dd/MM', { locale: ptBR });
 }
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-  open: { label: 'Aberta', color: 'bg-green-500/15 text-green-700 border-green-500/30', icon: CircleDot },
-  pending: { label: 'Pendente', color: 'bg-amber-500/15 text-amber-700 border-amber-500/30', icon: Clock },
-  closed: { label: 'Fechada', color: 'bg-muted text-muted-foreground border-border', icon: XCircle },
-};
-
 // ── Thread List Item ──
 
 function ThreadItem({
@@ -64,9 +56,6 @@ function ThreadItem({
   onClick: () => void;
   assignedName?: string;
 }) {
-  const status = statusConfig[thread.status] || statusConfig.open;
-  const StatusIcon = status.icon;
-
   return (
     <button
       onClick={onClick}
@@ -78,25 +67,21 @@ function ThreadItem({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">
-              {thread.contact_name || thread.contact_phone_e164}
-            </span>
-            <StatusIcon className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-          </div>
-          {thread.contact_name && (
-            <p className="text-xs text-muted-foreground truncate">
-              {thread.contact_phone_e164}
-            </p>
-          )}
+          <span className="font-medium text-sm truncate block">
+            {thread.contact_phone}
+          </span>
         </div>
-        <span className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
-          {formatThreadTime(thread.last_message_at)}
-        </span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {thread.unread_count > 0 && (
+            <Badge className="h-5 min-w-[20px] px-1.5 text-[10px] font-bold bg-primary text-primary-foreground rounded-full flex items-center justify-center">
+              {thread.unread_count}
+            </Badge>
+          )}
+          <span className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
+            {formatThreadTime(thread.last_message_at)}
+          </span>
+        </div>
       </div>
-      <p className="text-xs text-muted-foreground mt-1 truncate">
-        {thread.last_message_preview || 'Sem mensagens'}
-      </p>
       <div className="flex items-center gap-1 mt-1.5">
         <User className="h-3 w-3 text-muted-foreground" />
         <span className="text-[10px] text-muted-foreground">
@@ -122,7 +107,7 @@ function MessageBubble({ message }: { message: InboxMessage }) {
             : 'bg-muted rounded-bl-md'
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.message_text}</p>
+        <p className="whitespace-pre-wrap break-words">{message.body}</p>
         <div
           className={cn(
             'flex items-center justify-end gap-1 mt-1',
@@ -186,7 +171,6 @@ export default function InboxPage() {
     selectThread,
     sendMessage,
     assignThread,
-    updateThreadStatus,
     canSendMessage,
   } = useInbox();
 
@@ -196,10 +180,10 @@ export default function InboxPage() {
 
   const canSend = canSendMessage(selectedThread);
 
-  // Build a lookup map for member names
+  // Build a lookup map for member names (user_id -> name)
   const memberNameMap = React.useMemo(() => {
     const map: Record<string, string> = {};
-    orgMembers.forEach((m) => { map[m.id] = m.name; });
+    orgMembers.forEach((m) => { map[m.user_id] = m.name; });
     return map;
   }, [orgMembers]);
 
@@ -234,13 +218,16 @@ export default function InboxPage() {
     { key: 'unassigned', label: 'Não atribuídas', adminOnly: true },
   ];
 
-  const assignedMemberName = selectedThread?.assigned_user_id
-    ? memberNameMap[selectedThread.assigned_user_id]
+  const assignedMemberName = selectedThread?.assigned_to
+    ? memberNameMap[selectedThread.assigned_to]
     : null;
+
+  // Total unread across all visible threads
+  const totalUnread = threads.reduce((sum, t) => sum + (t.unread_count || 0), 0);
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-background">
-      {/* ── Left Panel: Thread List ── */}
+      {/* ── Left Panel: Conversation List ── */}
       <div
         className={cn(
           'w-full md:w-80 lg:w-96 border-r border-border flex flex-col',
@@ -251,16 +238,23 @@ export default function InboxPage() {
         <div className="p-4 border-b border-border space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-lg">Inbox</h2>
-            <Badge variant="outline" className="text-xs">
-              {threads.length}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {totalUnread > 0 && (
+                <Badge className="bg-primary text-primary-foreground text-xs">
+                  {totalUnread} não lidas
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">
+                {threads.length}
+              </Badge>
+            </div>
           </div>
 
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nome ou telefone..."
+              placeholder="Buscar por telefone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-9 text-sm"
@@ -305,7 +299,7 @@ export default function InboxPage() {
                 thread={thread}
                 selected={thread.id === selectedThreadId}
                 onClick={() => selectThread(thread.id)}
-                assignedName={thread.assigned_user_id ? memberNameMap[thread.assigned_user_id] : undefined}
+                assignedName={thread.assigned_to ? memberNameMap[thread.assigned_to] : undefined}
               />
             ))
           )}
@@ -335,37 +329,27 @@ export default function InboxPage() {
               </Button>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-medium text-sm truncate">
-                    {selectedThread.contact_name || selectedThread.contact_phone_e164}
-                  </h3>
-                  {(() => {
-                    const s = statusConfig[selectedThread.status] || statusConfig.open;
-                    return (
-                      <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0', s.color)}>
-                        {s.label}
-                      </Badge>
-                    );
-                  })()}
-                </div>
+                <h3 className="font-medium text-sm truncate">
+                  {selectedThread.contact_phone}
+                </h3>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Phone className="h-3 w-3" />
-                  <span>{selectedThread.contact_phone_e164}</span>
+                  <span>{selectedThread.contact_phone}</span>
                   <span className="text-border">•</span>
                   <User className="h-3 w-3" />
                   <span>{assignedMemberName || 'Não atribuída'}</span>
                 </div>
               </div>
 
-              {/* Assignment + Status actions */}
+              {/* Assignment actions */}
               <div className="flex items-center gap-1">
-                {/* Assume conversation (any user) */}
-                {selectedThread.assigned_user_id !== profile?.id && (
+                {/* Assume conversation */}
+                {selectedThread.assigned_to !== profile?.user_id && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => handleAssign(profile?.id || null)}
+                    onClick={() => handleAssign(profile?.user_id || null)}
                   >
                     <UserPlus className="h-3.5 w-3.5 mr-1" />
                     Assumir
@@ -391,18 +375,18 @@ export default function InboxPage() {
                           key={member.id}
                           className={cn(
                             'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
-                            selectedThread.assigned_user_id === member.id && 'bg-accent font-medium'
+                            selectedThread.assigned_to === member.user_id && 'bg-accent font-medium'
                           )}
-                          onClick={() => handleAssign(member.id)}
+                          onClick={() => handleAssign(member.user_id)}
                         >
                           <User className="h-3.5 w-3.5 text-muted-foreground" />
                           {member.name}
-                          {member.id === profile?.id && (
+                          {member.user_id === profile?.user_id && (
                             <span className="text-[10px] text-muted-foreground ml-auto">(você)</span>
                           )}
                         </button>
                       ))}
-                      {selectedThread.assigned_user_id && (
+                      {selectedThread.assigned_to && (
                         <>
                           <div className="border-t border-border my-1" />
                           <button
@@ -416,30 +400,6 @@ export default function InboxPage() {
                       )}
                     </PopoverContent>
                   </Popover>
-                )}
-
-                {/* Status actions */}
-                {selectedThread.status !== 'closed' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => updateThreadStatus(selectedThread.id, 'closed')}
-                  >
-                    <XCircle className="h-3.5 w-3.5 mr-1" />
-                    Fechar
-                  </Button>
-                )}
-                {selectedThread.status === 'closed' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => updateThreadStatus(selectedThread.id, 'open')}
-                  >
-                    <CircleDot className="h-3.5 w-3.5 mr-1" />
-                    Reabrir
-                  </Button>
                 )}
               </div>
             </div>
