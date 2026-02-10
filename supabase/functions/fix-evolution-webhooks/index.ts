@@ -6,6 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function generateWebhookToken(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,111 +28,93 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
     const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
-    const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (!evolutionApiKey || !evolutionBaseUrl) {
       return respond({ ok: false, error: "EVOLUTION_API_KEY or EVOLUTION_BASE_URL not configured" }, 500);
     }
 
-    const { organization_id } = await req.json();
+    let body: any = {};
+    try { body = await req.json(); } catch { /* no body */ }
+    const organizationId = body.organization_id;
 
-    // Build the correct webhook URL with token
-    const webhookUrl = webhookSecret
-      ? `${supabaseUrl}/functions/v1/evolution-webhook?token=${encodeURIComponent(webhookSecret)}`
-      : `${supabaseUrl}/functions/v1/evolution-webhook`;
-
-    // Get all active instances
+    // Get integrations that need fixing (no webhook_token)
     let query = supabase
       .from("whatsapp_integrations")
-      .select("id, instance_name, organization_id, status")
+      .select("id, instance_name, organization_id, webhook_token, status")
       .eq("is_active", true);
 
-    if (organization_id) {
-      query = query.eq("organization_id", organization_id);
+    if (organizationId) {
+      query = query.eq("organization_id", organizationId);
     }
 
     const { data: integrations, error } = await query;
-
-    if (error) {
-      return respond({ ok: false, error: error.message }, 500);
-    }
+    if (error) return respond({ ok: false, error: error.message }, 500);
 
     const results: any[] = [];
 
     for (const integration of integrations || []) {
-      try {
-        // Try multiple Evolution API endpoints for setting webhook
-        const endpoints = [
-          {
-            url: `${evolutionBaseUrl}/webhook/instance/${integration.instance_name}`,
-            method: "POST",
-            body: {
-              url: webhookUrl,
-              enabled: true,
-              webhook_by_events: false,
-              webhook_base64: false,
-              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
-            },
-          },
-          {
-            url: `${evolutionBaseUrl}/webhook/set/${integration.instance_name}`,
-            method: "POST",
-            body: {
-              url: webhookUrl,
-              enabled: true,
-              webhook_by_events: false,
-              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
-            },
-          },
-        ];
+      // Generate token if missing
+      const token = integration.webhook_token || generateWebhookToken();
+      const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook?token=${encodeURIComponent(token)}`;
 
-        let success = false;
-        let lastRes: any = null;
-        let lastResText = "";
-
-        for (const endpoint of endpoints) {
-          console.log(`[fix-webhooks] Trying ${endpoint.method} ${endpoint.url}`);
-
-          const res = await fetch(endpoint.url, {
-            method: endpoint.method,
-            headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-            body: JSON.stringify(endpoint.body),
-          });
-
-          lastResText = await res.text();
-          lastRes = res;
-          console.log(`[fix-webhooks] ${endpoint.url}: HTTP ${res.status} - ${lastResText.substring(0, 200)}`);
-
-          if (res.ok) {
-            success = true;
-            break;
-          }
-        }
-
-        results.push({
-          instance_name: integration.instance_name,
-          organization_id: integration.organization_id,
-          status: success ? "updated" : "error",
-          http_status: lastRes?.status,
-          response: lastResText.substring(0, 300),
-        });
-      } catch (err) {
-        results.push({
-          instance_name: integration.instance_name,
-          organization_id: integration.organization_id,
-          status: "error",
-          error: String(err),
-        });
+      // Save token to DB
+      if (!integration.webhook_token) {
+        await supabase
+          .from("whatsapp_integrations")
+          .update({ webhook_token: token, updated_at: new Date().toISOString() })
+          .eq("id", integration.id);
       }
+
+      // Try to update webhook in Evolution API
+      let apiResult = "not_attempted";
+      const endpoints = [
+        { url: `${evolutionBaseUrl}/webhook/set/${integration.instance_name}`, method: "POST" },
+        { url: `${evolutionBaseUrl}/instance/update/${integration.instance_name}`, method: "PUT" },
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          console.log(`[fix-webhooks] ${ep.method} ${ep.url}`);
+          const res = await fetch(ep.url, {
+            method: ep.method,
+            headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+            body: JSON.stringify({
+              webhook: {
+                url: webhookUrl,
+                enabled: true,
+                webhookByEvents: true,
+                events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
+              },
+            }),
+          });
+          const text = await res.text();
+          console.log(`[fix-webhooks] ${ep.method}: HTTP ${res.status} | ${text.substring(0, 200)}`);
+          if (res.ok) {
+            apiResult = "updated";
+            break;
+          } else {
+            apiResult = `failed_${res.status}`;
+          }
+        } catch (err) {
+          apiResult = `error: ${String(err).substring(0, 100)}`;
+        }
+      }
+
+      results.push({
+        instance_name: integration.instance_name,
+        organization_id: integration.organization_id,
+        token_saved: true,
+        had_token: !!integration.webhook_token,
+        api_webhook_update: apiResult,
+      });
     }
 
     return respond({
       ok: true,
-      webhook_url: webhookUrl,
-      has_secret: !!webhookSecret,
-      instances_processed: results.length,
-      results,
+      message: `Processed ${results.length} integration(s)`,
+      fixed: results.filter((r) => !r.had_token).length,
+      details: results,
     });
   } catch (err) {
     console.error("[fix-webhooks] Error:", err);
