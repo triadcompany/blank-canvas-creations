@@ -29,39 +29,11 @@ serve(async (req) => {
       return respond({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }, 500);
     }
 
-    // ── Auth: validate caller ──
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return respond({ error: "Token de autenticação ausente" }, 401);
-    }
-
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !user) {
-      return respond({ error: "Usuário não autenticado" }, 401);
-    }
-
     // ── Parse input ──
     const { organization_id, thread_id, text } = await req.json();
 
     if (!organization_id || !thread_id || !text) {
       return respond({ error: "organization_id, thread_id e text são obrigatórios" }, 400);
-    }
-
-    // ── Validate user belongs to org ──
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, organization_id")
-      .eq("user_id", user.id)
-      .eq("organization_id", organization_id)
-      .maybeSingle();
-
-    if (!profile) {
-      return respond({ error: "Usuário não pertence a esta organização" }, 403);
     }
 
     // ── Get conversation ──
@@ -108,6 +80,7 @@ serve(async (req) => {
 
     const sendData = await sendRes.json();
     const now = new Date().toISOString();
+    const preview = text.substring(0, 100);
 
     if (!sendRes.ok) {
       console.error("[whatsapp-send] Evolution error:", sendData);
@@ -123,23 +96,26 @@ serve(async (req) => {
       return respond({ error: "Erro ao enviar mensagem", details: sendData }, 400);
     }
 
+    const externalId = sendData?.key?.id || sendData?.messageId || null;
+
     // ── Save outbound message ──
     await supabase.from("messages").insert({
       organization_id,
       conversation_id: thread_id,
       direction: "outbound",
       body: text,
+      external_message_id: externalId,
     });
 
-    // ── Update conversation.last_message_at ──
+    // ── Update conversation ──
     await supabase
       .from("conversations")
-      .update({ last_message_at: now })
+      .update({ last_message_at: now, last_message_preview: preview })
       .eq("id", thread_id);
 
     console.log(`[whatsapp-send] Sent to ${phone} in conversation ${thread_id}`);
 
-    return respond({ ok: true });
+    return respond({ ok: true, external_message_id: externalId });
   } catch (err) {
     console.error("[whatsapp-send] Error:", err);
     return respond({ error: String(err) }, 500);
