@@ -2867,6 +2867,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           direction: string
+          external_message_id: string | null
           id: string
           organization_id: string
         }
@@ -2875,6 +2876,7 @@ export type Database = {
           conversation_id: string
           created_at?: string
           direction: string
+          external_message_id?: string | null
           id?: string
           organization_id: string
         }
@@ -2883,6 +2885,7 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           direction?: string
+          external_message_id?: string | null
           id?: string
           organization_id?: string
         }

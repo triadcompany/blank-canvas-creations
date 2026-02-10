@@ -8,8 +8,10 @@ export interface InboxThread {
   organization_id: string;
   instance_name: string;
   contact_phone: string;
+  contact_name: string | null;
   assigned_to: string | null;
   last_message_at: string | null;
+  last_message_preview: string | null;
   unread_count: number;
   created_at: string;
 }
@@ -20,6 +22,7 @@ export interface InboxMessage {
   conversation_id: string;
   direction: string;
   body: string;
+  external_message_id: string | null;
   created_at: string;
 }
 
@@ -77,7 +80,6 @@ export function useInbox() {
         .eq('organization_id', orgId)
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
-      // Filter by assigned_to using auth user id
       const userId = profile?.user_id;
 
       if (filter === 'mine' && userId) {
@@ -87,7 +89,8 @@ export function useInbox() {
       }
 
       if (search.trim()) {
-        query = query.ilike('contact_phone', `%${search}%`);
+        // Search by phone or name
+        query = query.or(`contact_phone.ilike.%${search}%,contact_name.ilike.%${search}%`);
       }
 
       const { data, error } = await query.limit(100);
@@ -129,25 +132,44 @@ export function useInbox() {
     }
   }, [orgId]);
 
-  // Realtime: listen for conversation changes
+  // Realtime: listen for new messages
   useEffect(() => {
     if (!orgId) return;
 
     const channel = supabase
-      .channel('inbox-conversations')
+      .channel('inbox-messages-realtime')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `organization_id=eq.${orgId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as any;
+          // If message belongs to selected thread, add it
+          if (newMsg.conversation_id === selectedThreadId) {
+            setMessages(prev => {
+              // Avoid duplicates
+              if (prev.some(m => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          }
+          // Refresh thread list for updated preview/unread
+          fetchThreads();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'conversations',
           filter: `organization_id=eq.${orgId}`,
         },
         () => {
           fetchThreads();
-          if (selectedThreadId) {
-            fetchMessages(selectedThreadId);
-          }
         }
       )
       .subscribe();
@@ -155,7 +177,7 @@ export function useInbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [orgId, fetchThreads, fetchMessages, selectedThreadId]);
+  }, [orgId, selectedThreadId, fetchThreads]);
 
   // Zero unread_count when selecting a conversation
   const clearUnread = useCallback(async (conversationId: string) => {
@@ -167,7 +189,6 @@ export function useInbox() {
         .eq('id', conversationId)
         .eq('organization_id', orgId);
 
-      // Update locally
       setThreads(prev =>
         prev.map(t => t.id === conversationId ? { ...t, unread_count: 0 } : t)
       );
@@ -192,10 +213,22 @@ export function useInbox() {
     return thread.assigned_to === profile.user_id;
   }, [isAdmin, profile]);
 
-  // Send message
+  // Send message (with optimistic update)
   const sendMessage = useCallback(async (text: string) => {
     if (!orgId || !selectedThreadId || !text.trim()) return;
     setSending(true);
+
+    // Optimistic: add message immediately
+    const optimisticMsg: InboxMessage = {
+      id: `temp-${Date.now()}`,
+      organization_id: orgId,
+      conversation_id: selectedThreadId,
+      direction: 'outbound',
+      body: text.trim(),
+      external_message_id: null,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
 
     try {
       const selectedConv = threads.find(t => t.id === selectedThreadId);
@@ -214,14 +247,13 @@ export function useInbox() {
       const data = res.data as any;
       if (data?.error) throw new Error(data.error);
 
-      await Promise.all([
-        fetchMessages(selectedThreadId),
-        fetchThreads(),
-      ]);
-
-      toast.success('Mensagem enviada');
+      // Refresh to get the real message from DB
+      await fetchMessages(selectedThreadId);
+      await fetchThreads();
     } catch (err: any) {
       console.error('Error sending message:', err);
+      // Remove optimistic message on failure
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
       toast.error(err.message || 'Erro ao enviar mensagem');
     } finally {
       setSending(false);
@@ -248,11 +280,6 @@ export function useInbox() {
     }
   }, [orgId, fetchThreads]);
 
-  // Update conversation status (kept for compatibility, but conversations table doesn't have status)
-  const updateThreadStatus = useCallback(async (_threadId: string, _status: string) => {
-    // No status field in conversations table — no-op
-  }, []);
-
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
   return {
@@ -273,7 +300,6 @@ export function useInbox() {
     selectThread,
     sendMessage,
     assignThread,
-    updateThreadStatus,
     canSendMessage,
     refreshThreads: fetchThreads,
   };
