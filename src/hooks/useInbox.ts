@@ -267,20 +267,26 @@ export function useInbox() {
     );
 
     try {
-      const { error } = await supabase
+      console.log('[Inbox] Assigning conversation:', { threadId, profileId, orgId });
+      const { error, data } = await supabase
         .from('conversations')
         .update({
           assigned_to: profileId,
           assigned_at: profileId ? new Date().toISOString() : null,
         })
         .eq('id', threadId)
-        .eq('organization_id', orgId);
+        .eq('organization_id', orgId)
+        .select('id, assigned_to');
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Inbox] Assignment DB error:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
+        throw error;
+      }
+      console.log('[Inbox] Assignment success:', data);
       toast.success(profileId ? 'Conversa atribuída' : 'Atribuição removida');
     } catch (err: any) {
-      console.error('Error assigning conversation:', err);
-      toast.error('Erro ao atribuir conversa');
+      console.error('[Inbox] Assignment failed:', err);
+      toast.error(err?.message || 'Erro ao atribuir conversa');
       // Revert on error
       await fetchThreads();
     }
