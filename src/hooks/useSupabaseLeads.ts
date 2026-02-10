@@ -305,18 +305,21 @@ export function useSupabaseLeads(pipelineId?: string) {
   };
 
   // Add new lead
-  const addLead = async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'>) => {
+  const addLead = async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => {
     if (!profile) return;
 
-    // Get first stage as default
-    const firstStage = stages.find(s => s.position === 1);
-    if (!firstStage) return;
+    // Use the stage_id passed from the modal, or fall back to the first stage
+    const stageId = (newLeadData as any).stage_id || stages.find(s => s.position === 1)?.id;
+    if (!stageId) return;
+
+    // Remove stage_id from spread to avoid type conflict
+    const { stage_id: _, ...restData } = newLeadData as any;
 
     const leadData = {
-      ...newLeadData,
-      seller_id: profile.id, // Temporário - será atualizado pela distribuição
+      ...restData,
+      seller_id: (newLeadData as any).seller_id || profile.id,
       created_by: profile.id,
-      stage_id: firstStage.id,
+      stage_id: stageId,
       organization_id: profile.organization_id,
     };
 
@@ -396,7 +399,7 @@ export function useSupabaseLeads(pipelineId?: string) {
             lead_phone: finalLead.phone,
             lead_email: finalLead.email,
             lead_source: finalLead.source,
-            stage_name: finalLead.stage?.name || firstStage?.name,
+            stage_name: finalLead.stage?.name || '',
             stage_id: finalLead.stage_id,
             seller_id: finalLead.seller_id,
           },

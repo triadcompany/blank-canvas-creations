@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,12 +22,25 @@ import { Lead } from "@/hooks/useSupabaseLeads";
 import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLeadSources } from "@/hooks/useLeadSources";
+import { supabase } from "@/integrations/supabase/client";
 import { BRAZILIAN_STATES } from "@/lib/brazilian-states";
 
 interface AddLeadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (newLead: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'>) => void;
+  onSave: (newLead: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => void;
+}
+
+interface PipelineOption {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
+interface StageOption {
+  id: string;
+  name: string;
+  position: number;
 }
 
 // Função para formatar valor em moeda brasileira
@@ -47,7 +60,7 @@ const parseCurrency = (value: string): number => {
 };
 
 export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) {
-  const { user, role } = useAuth();
+  const { user, role, profile } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -57,63 +70,103 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
     interest: "",
     price: "",
     observations: "",
-    // Novos campos
     valor_negocio: "",
     servico: "",
     cidade: "",
     estado: ""
   });
+
+  const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
+  const [stages, setStages] = useState<StageOption[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState("");
+  const [selectedStageId, setSelectedStageId] = useState("");
+  const [loadingStages, setLoadingStages] = useState(false);
   
   const { profiles } = useSupabaseProfiles();
   const { leadSources } = useLeadSources();
 
+  // Fetch pipelines on mount
+  const fetchPipelines = useCallback(async () => {
+    if (!profile?.organization_id) return;
+    const { data } = await supabase.rpc('get_org_pipelines', {
+      p_org_id: profile.organization_id,
+    });
+    const list = ((data || []) as any[]).map(p => ({
+      id: p.id,
+      name: p.name,
+      is_default: p.is_default,
+    }));
+    setPipelines(list);
+
+    // Auto-select default pipeline
+    const defaultPipeline = list.find(p => p.is_default) || list[0];
+    if (defaultPipeline) {
+      setSelectedPipelineId(defaultPipeline.id);
+    }
+  }, [profile?.organization_id]);
+
+  // Fetch stages when pipeline changes
+  const fetchStages = useCallback(async (pipelineId: string) => {
+    if (!pipelineId) {
+      setStages([]);
+      setSelectedStageId("");
+      return;
+    }
+    setLoadingStages(true);
+    const { data } = await supabase.rpc('get_pipeline_stages', {
+      p_pipeline_id: pipelineId,
+    });
+    const stageList = ((data || []) as any[])
+      .filter(s => s.is_active !== false)
+      .map(s => ({ id: s.id, name: s.name, position: s.position }))
+      .sort((a, b) => a.position - b.position);
+    setStages(stageList);
+
+    // Auto-select "Andamento" stage or first stage
+    const andamentoStage = stageList.find(s => s.name.toLowerCase() === 'andamento');
+    setSelectedStageId(andamentoStage?.id || stageList[0]?.id || "");
+    setLoadingStages(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      fetchPipelines();
+    }
+  }, [open, fetchPipelines]);
+
+  useEffect(() => {
+    if (selectedPipelineId) {
+      fetchStages(selectedPipelineId);
+    }
+  }, [selectedPipelineId, fetchStages]);
+
   // Filtrar perfis baseado no role do usuário
   const availableProfiles = useMemo(() => {
-    // Se for vendedor (seller), só mostra o próprio usuário
     if (role === 'seller' && user) {
       return profiles.filter(p => p.id === user.id);
     }
-    // Se for admin, mostra todos
     return profiles;
   }, [profiles, role, user]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validação dos campos obrigatórios
-    if (!formData.name.trim()) {
-      alert("Nome é obrigatório");
-      return;
-    }
-    if (!formData.phone.trim()) {
-      alert("Telefone é obrigatório");
-      return;
-    }
-    if (!formData.seller_id.trim()) {
-      alert("Vendedor responsável é obrigatório");
-      return;
-    }
+    if (!formData.name.trim()) { alert("Nome é obrigatório"); return; }
+    if (!formData.phone.trim()) { alert("Telefone é obrigatório"); return; }
+    if (!formData.seller_id.trim()) { alert("Vendedor responsável é obrigatório"); return; }
+    if (!selectedStageId) { alert("Etapa do funil é obrigatória"); return; }
 
-    // Preparar dados para salvar
     const dataToSave = {
       ...formData,
       valor_negocio: formData.valor_negocio ? parseCurrency(formData.valor_negocio) : undefined,
+      stage_id: selectedStageId,
     };
 
     onSave(dataToSave as any);
     setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      seller_id: "",
-      source: "",
-      interest: "",
-      price: "",
-      observations: "",
-      valor_negocio: "",
-      servico: "",
-      cidade: "",
-      estado: ""
+      name: "", email: "", phone: "", seller_id: "", source: "",
+      interest: "", price: "", observations: "", valor_negocio: "",
+      servico: "", cidade: "", estado: ""
     });
     onOpenChange(false);
   };
@@ -254,6 +307,53 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
             </div>
           </div>
 
+          {/* Seção: Pipeline e Etapa */}
+          <div className="space-y-4">
+            <h3 className="font-poppins font-semibold text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              Pipeline e Etapa do Funil
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Pipeline */}
+              <div className="space-y-2">
+                <Label className="font-poppins font-medium">Pipeline *</Label>
+                <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
+                  <SelectTrigger className="font-poppins">
+                    <SelectValue placeholder="Selecione a pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pipelines.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} {p.is_default ? '(Principal)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Etapa */}
+              <div className="space-y-2">
+                <Label className="font-poppins font-medium">Etapa do Funil *</Label>
+                <Select 
+                  value={selectedStageId} 
+                  onValueChange={setSelectedStageId}
+                  disabled={loadingStages || stages.length === 0}
+                >
+                  <SelectTrigger className="font-poppins">
+                    <SelectValue placeholder={loadingStages ? "Carregando..." : "Selecione a etapa"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stages.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
           {/* Seção: Dados Financeiros */}
           <div className="space-y-4">
             <h3 className="font-poppins font-semibold text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
@@ -261,7 +361,6 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
               Dados Financeiros
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Valor do Negócio */}
               <div className="space-y-2">
                 <Label htmlFor="valor-negocio" className="font-poppins font-medium">
                   Valor do Negócio
@@ -273,12 +372,8 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
                   placeholder="R$ 0,00"
                   className="font-poppins"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Valor estimado da venda
-                </p>
+                <p className="text-xs text-muted-foreground">Valor estimado da venda</p>
               </div>
-
-              {/* Serviço/Produto */}
               <div className="space-y-2">
                 <Label htmlFor="servico" className="font-poppins font-medium">
                   Serviço / Produto
@@ -301,11 +396,8 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
               Localização
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Cidade */}
               <div className="space-y-2">
-                <Label htmlFor="cidade" className="font-poppins font-medium">
-                  Cidade
-                </Label>
+                <Label htmlFor="cidade" className="font-poppins font-medium">Cidade</Label>
                 <Input 
                   id="cidade"
                   value={formData.cidade}
@@ -314,12 +406,8 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
                   className="font-poppins"
                 />
               </div>
-
-              {/* Estado */}
               <div className="space-y-2">
-                <Label htmlFor="estado" className="font-poppins font-medium">
-                  Estado
-                </Label>
+                <Label htmlFor="estado" className="font-poppins font-medium">Estado</Label>
                 <Select value={formData.estado} onValueChange={(value) => handleInputChange("estado", value)}>
                   <SelectTrigger className="font-poppins">
                     <SelectValue placeholder="Selecione o estado" />
@@ -338,9 +426,7 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
 
           {/* Observações */}
           <div className="space-y-2">
-            <Label htmlFor="observations" className="font-poppins font-medium">
-              Observações
-            </Label>
+            <Label htmlFor="observations" className="font-poppins font-medium">Observações</Label>
             <Textarea 
               id="observations"
               value={formData.observations}
