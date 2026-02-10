@@ -4789,12 +4789,16 @@ export type Database = {
           created_at: string | null
           created_by: string
           evolution_api_key: string | null
+          evolution_base_url: string | null
           evolution_instance_id: string | null
           id: string
+          instance_name: string | null
           is_active: boolean | null
           n8n_webhook_evolution_notify: string | null
           organization_id: string
           phone_number: string | null
+          provider: string
+          status: string
           updated_at: string | null
           webhook_token: string | null
           webhook_url: string | null
@@ -4804,12 +4808,16 @@ export type Database = {
           created_at?: string | null
           created_by: string
           evolution_api_key?: string | null
+          evolution_base_url?: string | null
           evolution_instance_id?: string | null
           id?: string
+          instance_name?: string | null
           is_active?: boolean | null
           n8n_webhook_evolution_notify?: string | null
           organization_id: string
           phone_number?: string | null
+          provider?: string
+          status?: string
           updated_at?: string | null
           webhook_token?: string | null
           webhook_url?: string | null
@@ -4819,12 +4827,16 @@ export type Database = {
           created_at?: string | null
           created_by?: string
           evolution_api_key?: string | null
+          evolution_base_url?: string | null
           evolution_instance_id?: string | null
           id?: string
+          instance_name?: string | null
           is_active?: boolean | null
           n8n_webhook_evolution_notify?: string | null
           organization_id?: string
           phone_number?: string | null
+          provider?: string
+          status?: string
           updated_at?: string | null
           webhook_token?: string | null
           webhook_url?: string | null
@@ -4834,6 +4846,70 @@ export type Database = {
             foreignKeyName: "whatsapp_integrations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          automation_run_id: string | null
+          created_at: string
+          direction: string
+          external_message_id: string | null
+          id: string
+          lead_id: string | null
+          message_text: string | null
+          metadata: Json | null
+          organization_id: string
+          phone: string
+          status: string
+        }
+        Insert: {
+          automation_run_id?: string | null
+          created_at?: string
+          direction?: string
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          message_text?: string | null
+          metadata?: Json | null
+          organization_id: string
+          phone: string
+          status?: string
+        }
+        Update: {
+          automation_run_id?: string | null
+          created_at?: string
+          direction?: string
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          message_text?: string | null
+          metadata?: Json | null
+          organization_id?: string
+          phone?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_automation_run_id_fkey"
+            columns: ["automation_run_id"]
+            isOneToOne: false
+            referencedRelation: "automation_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
