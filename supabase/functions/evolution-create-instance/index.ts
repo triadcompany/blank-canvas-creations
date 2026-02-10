@@ -17,15 +17,12 @@ function detectQrFormat(raw: string | null): { qr_code_data: string | null; qr_f
   if (!raw) return { qr_code_data: null, qr_format: null };
   if (raw.startsWith("data:image")) return { qr_code_data: raw, qr_format: "data_url" };
   if (raw.startsWith("http://") || raw.startsWith("https://")) return { qr_code_data: raw, qr_format: "url" };
-  // Check if it looks like base64 (long alphanumeric string)
   if (/^[A-Za-z0-9+/=]{50,}$/.test(raw.replace(/\s/g, ""))) return { qr_code_data: raw, qr_format: "base64" };
-  // Fallback: could be a text code for QR generation
   if (raw.length > 10) return { qr_code_data: raw, qr_format: "text" };
   return { qr_code_data: null, qr_format: null };
 }
 
 function extractQrFromResponse(data: Record<string, unknown>): string | null {
-  // Try all known Evolution API QR fields
   const candidates = [
     (data as any)?.base64,
     (data as any)?.qrcode?.base64,
@@ -36,11 +33,8 @@ function extractQrFromResponse(data: Record<string, unknown>): string | null {
     (data as any)?.pairingCode,
     (data as any)?.code,
   ];
-
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.length > 10) {
-      return candidate;
-    }
+    if (typeof candidate === "string" && candidate.length > 10) return candidate;
   }
   return null;
 }
@@ -53,10 +47,15 @@ function isConnectedState(data: Record<string, unknown>): boolean {
   );
 }
 
-function buildWebhookUrl(supabaseUrl: string): string {
-  const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
-  const base = `${supabaseUrl}/functions/v1/evolution-webhook`;
-  return webhookSecret ? `${base}?token=${encodeURIComponent(webhookSecret)}` : base;
+/** Generate a cryptographically random token for webhook auth */
+function generateWebhookToken(): string {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function buildWebhookUrl(supabaseUrl: string, token: string): string {
+  return `${supabaseUrl}/functions/v1/evolution-webhook?token=${encodeURIComponent(token)}`;
 }
 
 serve(async (req) => {
@@ -93,7 +92,11 @@ serve(async (req) => {
     }
 
     console.log(`[evolution-create] === START === org=${organization_id} instance=${instance_name}`);
-    console.log(`[evolution-create] Base URL: ${evolutionBaseUrl}`);
+
+    // ──── Generate per-org webhook token ────
+    const webhookToken = generateWebhookToken();
+    const webhookUrl = buildWebhookUrl(supabaseUrl, webhookToken);
+    console.log(`[evolution-create] Generated webhook token (len=${webhookToken.length}), URL: ${webhookUrl.substring(0, 80)}...`);
 
     // ──── Step 1: Create instance ────
     const createUrl = `${evolutionBaseUrl}/instance/create`;
@@ -108,7 +111,7 @@ serve(async (req) => {
         qrcode: true,
         reject_call: false,
         webhook: {
-          url: buildWebhookUrl(supabaseUrl),
+          url: webhookUrl,
           enabled: true,
           webhookByEvents: true,
           events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
@@ -126,25 +129,23 @@ serve(async (req) => {
 
     if (!createRes.ok) {
       if (createText.includes("already") || createText.includes("exists") || createText.includes("instance_already") || createStatus === 403) {
-        console.log("[evolution-create] Instance already exists");
+        console.log("[evolution-create] Instance already exists — will update webhook");
         instanceExists = true;
+
+        // Update webhook URL on existing instance
+        await updateEvolutionWebhook(evolutionBaseUrl, evolutionApiKey, instance_name, webhookUrl);
       } else {
         return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: `Erro ao criar instância (HTTP ${createStatus})`, debug: createText.substring(0, 300) }, 400);
       }
     } else {
       try {
         const createData = JSON.parse(createText);
-        console.log(`[evolution-create] Create keys: ${JSON.stringify(Object.keys(createData))}`);
-
         if (isConnectedState(createData)) {
           connected = true;
         } else {
           rawQr = extractQrFromResponse(createData);
-          if (rawQr) console.log(`[evolution-create] QR from create (len=${rawQr.length}, prefix=${rawQr.substring(0, 30)})`);
         }
-      } catch {
-        console.log("[evolution-create] Create response not JSON");
-      }
+      } catch { /* not JSON */ }
     }
 
     // ──── Step 2: Connect/start session ────
@@ -153,47 +154,34 @@ serve(async (req) => {
       console.log(`[evolution-create] Step 2: GET ${connectUrl}`);
 
       const connectRes = await fetch(connectUrl, { method: "GET", headers: { apikey: evolutionApiKey } });
-      const connectStatus = connectRes.status;
       const connectText = await connectRes.text();
-      console.log(`[evolution-create] Step 2: HTTP ${connectStatus} | body: ${connectText.substring(0, 800)}`);
+      console.log(`[evolution-create] Step 2: HTTP ${connectRes.status} | body: ${connectText.substring(0, 800)}`);
 
       if (connectRes.ok) {
         try {
           const connectData = JSON.parse(connectText);
-          console.log(`[evolution-create] Connect keys: ${JSON.stringify(Object.keys(connectData))}`);
-
           if (isConnectedState(connectData)) {
             connected = true;
           } else {
             rawQr = extractQrFromResponse(connectData);
-            if (rawQr) console.log(`[evolution-create] QR from connect (len=${rawQr.length}, prefix=${rawQr.substring(0, 30)})`);
           }
-        } catch {
-          console.log("[evolution-create] Connect response not JSON");
-        }
+        } catch { /* not JSON */ }
       }
     }
 
     // ──── Step 3: Retry loop (10 × 2s = 20s max) ────
     if (!connected && !rawQr) {
       console.log("[evolution-create] Step 3: Retry loop (10 attempts × 2s)");
-
       for (let i = 1; i <= 10; i++) {
         await sleep(2000);
-        const retryUrl = `${evolutionBaseUrl}/instance/connect/${instance_name}`;
-        console.log(`[evolution-create] Retry ${i}/10: GET ${retryUrl}`);
-
         try {
-          const r = await fetch(retryUrl, { method: "GET", headers: { apikey: evolutionApiKey } });
+          const r = await fetch(`${evolutionBaseUrl}/instance/connect/${instance_name}`, { method: "GET", headers: { apikey: evolutionApiKey } });
           const rText = await r.text();
-          console.log(`[evolution-create] Retry ${i}: HTTP ${r.status} | body: ${rText.substring(0, 400)}`);
-
           if (r.ok) {
             const rData = JSON.parse(rText);
             if (isConnectedState(rData)) { connected = true; break; }
             const q = extractQrFromResponse(rData);
-            if (q) { rawQr = q; console.log(`[evolution-create] QR on retry ${i} (len=${q.length})`); break; }
-            else { console.log(`[evolution-create] Retry ${i}: no QR field found in keys: ${JSON.stringify(Object.keys(rData))}`); }
+            if (q) { rawQr = q; break; }
           }
         } catch (err) {
           console.error(`[evolution-create] Retry ${i} error:`, err);
@@ -207,6 +195,7 @@ serve(async (req) => {
       await supabase.from("whatsapp_integrations").upsert({
         organization_id, provider: "evolution", instance_name,
         status: "connected", qr_code_data: null,
+        webhook_token: webhookToken,
         connected_at: new Date().toISOString(), is_active: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id" });
@@ -215,11 +204,11 @@ serve(async (req) => {
     }
 
     const { qr_code_data, qr_format } = detectQrFormat(rawQr);
-    console.log(`[evolution-create] RESULT: qr_pending | qr_format=${qr_format} | qr_data=${qr_code_data ? `present (len=${qr_code_data.length})` : "null"}`);
 
     await supabase.from("whatsapp_integrations").upsert({
       organization_id, provider: "evolution", instance_name,
-      status: "qr_pending", qr_code_data: qr_code_data,
+      status: "qr_pending", qr_code_data,
+      webhook_token: webhookToken,
       is_active: true, updated_at: new Date().toISOString(),
     }, { onConflict: "organization_id" });
 
@@ -236,3 +225,38 @@ serve(async (req) => {
     return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: String(err) }, 500);
   }
 });
+
+/** Update the webhook URL on an existing Evolution instance */
+async function updateEvolutionWebhook(baseUrl: string, apiKey: string, instanceName: string, webhookUrl: string) {
+  const endpoints = [
+    { url: `${baseUrl}/webhook/set/${instanceName}`, method: "POST" },
+    { url: `${baseUrl}/instance/update/${instanceName}`, method: "PUT" },
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      console.log(`[evolution-create] Updating webhook: ${ep.method} ${ep.url}`);
+      const res = await fetch(ep.url, {
+        method: ep.method,
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify({
+          webhook: {
+            url: webhookUrl,
+            enabled: true,
+            webhookByEvents: true,
+            events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
+          },
+        }),
+      });
+      const text = await res.text();
+      console.log(`[evolution-create] Webhook update ${ep.method}: HTTP ${res.status} | ${text.substring(0, 200)}`);
+      if (res.ok) {
+        console.log("[evolution-create] Webhook URL updated successfully");
+        return;
+      }
+    } catch (err) {
+      console.error(`[evolution-create] Webhook update error (${ep.method}):`, err);
+    }
+  }
+  console.warn("[evolution-create] Could not update webhook via API — will rely on auto-repair");
+}
