@@ -25,9 +25,11 @@ import {
   ExternalLink,
   MessageSquare,
   CreditCard,
+  Inbox,
 } from "lucide-react";
 import { WhatsAppLeadNotifications } from "@/components/settings/WhatsAppLeadNotifications";
 import { EvolutionIntegration } from "@/components/settings/EvolutionIntegration";
+import { InboxRoutingSettings } from "@/components/settings/InboxRoutingSettings";
 import BillingSettings from "@/components/settings/BillingSettings";
 import {
   Dialog,
@@ -92,6 +94,7 @@ export function Settings() {
     { id: "usuarios", label: "Usuários", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: GitBranch },
     { id: "whatsapp-evolution", label: "WhatsApp (Evolution)", icon: MessageSquare },
+    { id: "inbox-routing", label: "Inbox (Distribuição)", icon: Inbox },
     { id: "whatsapp-notifications", label: "Notificações WhatsApp", icon: Bell },
     { id: "notifications", label: "Notificações", icon: Bell },
   ];
@@ -408,6 +411,8 @@ export function Settings() {
         return renderPipelineSection();
       case "whatsapp-evolution":
         return <EvolutionIntegration />;
+      case "inbox-routing":
+        return <InboxRoutingSettings />;
       case "whatsapp-notifications":
         return <WhatsAppLeadNotifications />;
       case "notifications":
