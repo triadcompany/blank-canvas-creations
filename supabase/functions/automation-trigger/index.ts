@@ -164,6 +164,26 @@ serve(async (req) => {
       console.log(`[automation-trigger] Run ${run.id} created for automation ${automation.id}`);
     }
 
+    // Auto-invoke worker to process newly created jobs immediately
+    if (runsCreated.length > 0) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      try {
+        const workerRes = await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({}),
+        });
+        const workerData = await workerRes.json();
+        console.log(`[automation-trigger] Worker invoked: processed=${workerData.processed}, failed=${workerData.failed}`);
+      } catch (workerErr) {
+        console.error("[automation-trigger] Failed to invoke worker:", workerErr);
+      }
+    }
+
     return respond({
       ok: true,
       message: `${runsCreated.length} run(s) created`,

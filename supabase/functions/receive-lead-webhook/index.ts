@@ -198,6 +198,34 @@ serve(async (req) => {
     // Log the webhook reception
     console.log(`Lead created via webhook: ${lead.id} for org: ${organizationId}, assigned to seller: ${finalSellerId}`);
 
+    // Fire automation trigger for lead_created
+    try {
+      const triggerRes = await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          trigger_type: "lead_created",
+          entity_type: "lead",
+          entity_id: lead.id,
+          context: {
+            lead_name: lead.name,
+            lead_phone: lead.phone,
+            lead_email: lead.email,
+            source: lead.source,
+            stage_id: lead.stage_id,
+          },
+        }),
+      });
+      const triggerData = await triggerRes.json();
+      console.log(`[receive-lead-webhook] Automation trigger result:`, triggerData);
+    } catch (triggerErr) {
+      console.error("[receive-lead-webhook] Failed to fire automation trigger:", triggerErr);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

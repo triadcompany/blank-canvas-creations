@@ -285,6 +285,10 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
     }
   }
 
+  // After processing all inbound messages, invoke the worker
+  // to pick up any jobs created by wakePausedRuns
+  await invokeWorker();
+
   return respond({ ok: true });
 }
 
@@ -388,7 +392,32 @@ async function wakePausedRuns(
         data: { lead_id: leadId, reply_at: replyTimestamp },
       });
     }
+
+    // Auto-invoke worker to process the newly created jobs
+    if (waitJobs.length > 0) {
+      await invokeWorker();
+    }
   } catch (err) {
     console.error("[evolution-webhook] Error waking paused runs:", err);
+  }
+}
+
+// ── Helper: Invoke automation-worker ──
+async function invokeWorker() {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const res = await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    console.log(`[evolution-webhook] Worker invoked: processed=${data.processed}, failed=${data.failed}`);
+  } catch (err) {
+    console.error("[evolution-webhook] Failed to invoke worker:", err);
   }
 }
