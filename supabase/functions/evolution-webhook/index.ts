@@ -183,6 +183,8 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
         .eq("id", threadId);
     } else {
       isNewThread = true;
+      // Determine routing bucket from first message
+      const bucket = classifyBucket(text);
       const { data: newThread } = await supabase
         .from("whatsapp_threads")
         .insert({
@@ -194,21 +196,36 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
           assigned_user_id: null,
           last_message_at: now,
           last_message_preview: messagePreview,
+          routing_bucket: bucket,
+          first_message_text: text ? text.substring(0, 500) : null,
+          first_message_at: now,
         })
-        .select("id")
+        .select("id, routing_bucket")
         .single();
 
       threadId = newThread?.id || null;
-      console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
+      console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId} bucket=${bucket}`);
     }
 
-    // ── 1b) AUTO-ASSIGN via round-robin ──
+    // ── 1b) AUTO-ASSIGN (bucket-aware) ──
     const shouldAutoAssign =
       (isNewThread || (existingThread && !existingThread.assigned_user_id)) &&
       threadId;
 
     if (shouldAutoAssign) {
-      await tryAutoAssignThread(supabase, orgId, threadId!, now);
+      // For existing threads without assignment, read their bucket from DB
+      let threadBucket = "non_traffic";
+      if (isNewThread) {
+        threadBucket = classifyBucket(text);
+      } else {
+        const { data: threadData } = await supabase
+          .from("whatsapp_threads")
+          .select("routing_bucket")
+          .eq("id", threadId)
+          .maybeSingle();
+        threadBucket = threadData?.routing_bucket || "non_traffic";
+      }
+      await tryAutoAssignThread(supabase, orgId, threadId!, now, threadBucket);
     }
 
     // ── 2) ALWAYS save inbound message (with thread_id) ──
@@ -307,12 +324,18 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
   return respond({ ok: true });
 }
 
-// ── Auto-assign thread via round-robin ──────────────────
+// ── Helper: Classify bucket from message text ──────────
+function classifyBucket(text: string): string {
+  return containsAdMarker(text) ? "traffic" : "non_traffic";
+}
+
+// ── Auto-assign thread (bucket-aware) ──────────────────
 async function tryAutoAssignThread(
   supabase: any,
   orgId: string,
   threadId: string,
-  now: string
+  now: string,
+  bucket: string
 ) {
   try {
     // 1) Check if routing is enabled
@@ -324,7 +347,17 @@ async function tryAutoAssignThread(
 
     if (!settings || !settings.enabled) return;
 
-    // 2) Check business hours if enabled
+    // 2) Check if this bucket is enabled
+    const bucketEnabled = bucket === "traffic"
+      ? (settings.traffic_enabled !== false)
+      : (settings.non_traffic_enabled !== false);
+
+    if (!bucketEnabled) {
+      console.log(`[evolution-webhook] Bucket ${bucket} disabled — skipping auto-assign`);
+      return;
+    }
+
+    // 3) Check business hours if enabled
     if (settings.business_hours_enabled && settings.business_hours) {
       if (!isWithinBusinessHours(settings.business_hours)) {
         console.log("[evolution-webhook] Outside business hours — skipping auto-assign");
@@ -332,8 +365,10 @@ async function tryAutoAssignThread(
       }
     }
 
-    // 3) Get eligible members based on only_roles
-    const allowedRoles: string[] = settings.only_roles || ["seller", "admin"];
+    // 4) Get eligible members based on bucket-specific roles
+    const allowedRoles: string[] = bucket === "traffic"
+      ? (settings.traffic_roles || settings.only_roles || ["seller", "admin"])
+      : (settings.non_traffic_roles || settings.only_roles || ["seller", "admin"]);
 
     const { data: eligibleMembers } = await supabase
       .from("user_roles")
@@ -342,11 +377,10 @@ async function tryAutoAssignThread(
       .in("role", allowedRoles);
 
     if (!eligibleMembers || eligibleMembers.length === 0) {
-      console.log("[evolution-webhook] No eligible members for auto-assign");
+      console.log(`[evolution-webhook] No eligible members for bucket=${bucket}`);
       return;
     }
 
-    // Get profile ids (user_id from user_roles -> profiles.user_id -> profiles.id)
     const userIds = eligibleMembers.map((m: any) => m.user_id);
     const { data: profiles } = await supabase
       .from("profiles")
@@ -360,17 +394,18 @@ async function tryAutoAssignThread(
       return;
     }
 
-    // 4) Pick next assignee based on mode
+    // 5) Pick next assignee based on mode
     let nextProfile: any = null;
     const mode = settings.mode || "round_robin";
 
     if (mode === "least_loaded") {
-      // Count open/pending threads per eligible profile
+      // Count open/pending threads for this bucket per eligible profile
       const profileIds = profiles.map((p: any) => p.id);
       const { data: threads } = await supabase
         .from("whatsapp_threads")
         .select("assigned_user_id")
         .eq("organization_id", orgId)
+        .eq("routing_bucket", bucket)
         .in("assigned_user_id", profileIds)
         .in("status", ["open", "pending"]);
 
@@ -384,7 +419,6 @@ async function tryAutoAssignThread(
         }
       }
 
-      // Sort by load ascending, then by name for deterministic tiebreak
       const sorted = [...profiles].sort((a: any, b: any) => {
         const diff = (loadMap[a.id] || 0) - (loadMap[b.id] || 0);
         if (diff !== 0) return diff;
@@ -392,13 +426,14 @@ async function tryAutoAssignThread(
       });
 
       nextProfile = sorted[0];
-      console.log(`[evolution-webhook] least_loaded picks ${nextProfile.name} (load=${loadMap[nextProfile.id]})`);
+      console.log(`[evolution-webhook] least_loaded[${bucket}] picks ${nextProfile.name} (load=${loadMap[nextProfile.id]})`);
     } else {
-      // round_robin (default)
+      // round_robin per bucket
       const { data: routingState } = await supabase
         .from("whatsapp_routing_state")
         .select("last_assigned_user_id")
         .eq("organization_id", orgId)
+        .eq("bucket", bucket)
         .maybeSingle();
 
       const lastAssigned = routingState?.last_assigned_user_id || null;
@@ -412,7 +447,7 @@ async function tryAutoAssignThread(
       }
     }
 
-    // 5) Assign the thread
+    // 6) Assign the thread
     await supabase
       .from("whatsapp_threads")
       .update({
@@ -421,16 +456,17 @@ async function tryAutoAssignThread(
       })
       .eq("id", threadId);
 
-    // 6) Update routing state (used by round-robin, but kept in sync for both)
+    // 7) Update routing state per bucket
     await supabase
       .from("whatsapp_routing_state")
       .upsert({
         organization_id: orgId,
+        bucket,
         last_assigned_user_id: nextProfile.id,
         updated_at: now,
-      }, { onConflict: "organization_id" });
+      }, { onConflict: "organization_id,bucket" });
 
-    console.log(`[evolution-webhook] Auto-assigned thread ${threadId} to ${nextProfile.name} (${nextProfile.id}) via ${mode}`);
+    console.log(`[evolution-webhook] Auto-assigned thread ${threadId} to ${nextProfile.name} (${nextProfile.id}) via ${mode} bucket=${bucket}`);
   } catch (err) {
     console.error("[evolution-webhook] Error in auto-assign:", err);
   }
