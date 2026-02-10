@@ -13,7 +13,11 @@ import {
   Cog,
   ListTodo,
   Building2,
-  CalendarClock
+  CalendarClock,
+  MailCheck,
+  MessageSquare,
+  PlayCircle,
+  ChevronDown,
 } from "lucide-react";
 
 import {
@@ -66,22 +70,28 @@ const navigationItems = [
     icon: CalendarClock,
   },
   {
-    title: "Pipelines",
-    url: "/pipelines",
-    icon: Cog,
-    adminOnly: true,
-  },
-  {
     title: "Relatórios",
     url: "/reports", 
     icon: BarChart3,
+  },
+];
+
+const adminItems = [
+  {
+    title: "Pipelines",
+    url: "/pipelines",
+    icon: Cog,
   },
   {
     title: "Configurações",
     url: "/settings",
     icon: Settings,
-    adminOnly: true,
   },
+];
+
+const followupChildren = [
+  { title: "Templates", url: "/settings?tab=templates", icon: MessageSquare },
+  { title: "Cadências", url: "/settings?tab=cadences", icon: PlayCircle },
 ];
 
 export function CRMSidebar() {
@@ -89,6 +99,15 @@ export function CRMSidebar() {
   const location = useLocation();
   const { isAdmin } = useAuth();
   const currentPath = location.pathname;
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get('tab');
+
+  const isFollowupActive = currentPath === '/settings' && (currentTab === 'templates' || currentTab === 'cadences');
+  const [followupOpen, setFollowupOpen] = React.useState(isFollowupActive);
+
+  React.useEffect(() => {
+    if (isFollowupActive) setFollowupOpen(true);
+  }, [isFollowupActive]);
 
   const isActive = (path: string) => currentPath === path;
   const getNavClass = (active: boolean) =>
@@ -119,9 +138,7 @@ export function CRMSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
-              {navigationItems
-                .filter(item => !item.adminOnly || isAdmin)
-                .map((item) => (
+              {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink
@@ -139,6 +156,71 @@ export function CRMSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-poppins font-medium text-muted-foreground">
+              {open && "ADMINISTRAÇÃO"}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="space-y-1">
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 ${getNavClass(isActive(item.url))}`}
+                      >
+                        <item.icon className="h-5 w-5 flex-shrink-0" />
+                        {open && (
+                          <span className="font-poppins font-medium">{item.title}</span>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+
+                {/* Follow-up collapsible group */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setFollowupOpen(!followupOpen)}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                      isFollowupActive
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <MailCheck className="h-5 w-5 flex-shrink-0" />
+                      {open && <span className="font-poppins font-medium">Follow-up</span>}
+                    </div>
+                    {open && (
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${followupOpen ? "rotate-180" : ""}`} />
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                {followupOpen && open && followupChildren.map((child) => (
+                  <SidebarMenuItem key={child.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={child.url}
+                        className={`flex items-center space-x-3 px-3 py-1.5 ml-4 pl-3 border-l-2 border-border rounded-lg transition-all duration-200 ${
+                          currentTab === child.url.split('tab=')[1]
+                            ? "bg-primary text-primary-foreground font-medium"
+                            : "hover:bg-accent hover:text-accent-foreground"
+                        }`}
+                      >
+                        <child.icon className="h-4 w-4 flex-shrink-0" />
+                        <span className="font-poppins font-medium text-sm">{child.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {open && (
           <div className="mt-auto p-4">
