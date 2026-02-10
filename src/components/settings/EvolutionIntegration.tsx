@@ -99,6 +99,7 @@ export function EvolutionIntegration() {
 
     setActionLoading(true);
     try {
+      console.log("[EvolutionIntegration] Connecting instance:", instanceName);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-create-instance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -108,16 +109,29 @@ export function EvolutionIntegration() {
         }),
       });
       const data = await res.json();
+      console.log("[EvolutionIntegration] Connect response:", { status: res.status, data });
+
       if (!res.ok) throw new Error(data.error || "Erro ao criar instância");
 
       if (data.connected) {
         toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
-      } else {
+      } else if (data.warning) {
+        toast({
+          title: "Instância criada",
+          description: data.warning,
+        });
+      } else if (data.qr_code) {
         toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
+      } else {
+        toast({
+          title: "Instância criada",
+          description: "Clique em 'Atualizar QR' para obter o QR Code",
+        });
       }
       await fetchIntegration();
     } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      console.error("[EvolutionIntegration] Connect error:", err);
+      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
@@ -126,20 +140,34 @@ export function EvolutionIntegration() {
   const handleRefreshQR = async () => {
     setActionLoading(true);
     try {
+      console.log("[EvolutionIntegration] Refreshing QR...");
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-qr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ organization_id: profile?.organization_id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao buscar QR");
+      console.log("[EvolutionIntegration] Refresh QR response:", { status: res.status, hasQr: !!data.qr_code, connected: data.connected });
 
-      if (data.connected) {
+      if (!res.ok) {
+        // 408 = QR not available yet
+        if (res.status === 408) {
+          toast({
+            title: "QR não disponível",
+            description: data.error || "Tente novamente em alguns segundos",
+          });
+        } else {
+          throw new Error(data.error || "Erro ao buscar QR");
+        }
+      } else if (data.connected) {
         toast({ title: "WhatsApp conectado!", description: "Seu WhatsApp já está vinculado" });
+      } else if (data.qr_code) {
+        toast({ title: "QR atualizado!", description: "Escaneie o QR code" });
       }
       await fetchIntegration();
     } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      console.error("[EvolutionIntegration] Refresh QR error:", err);
+      toast({ title: "Erro ao buscar QR", description: err.message, variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
@@ -353,6 +381,10 @@ export function EvolutionIntegration() {
                       src={integration.qr_code_data.startsWith("data:") ? integration.qr_code_data : `data:image/png;base64,${integration.qr_code_data}`}
                       alt="QR Code WhatsApp"
                       className="w-72 h-72 mx-auto"
+                      onError={(e) => {
+                        console.error("[EvolutionIntegration] QR image failed to load");
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
                     />
                   </div>
                 ) : (
