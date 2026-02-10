@@ -4786,18 +4786,18 @@ export type Database = {
       whatsapp_integrations: {
         Row: {
           api_key: string | null
+          connected_at: string | null
           created_at: string | null
-          created_by: string
           evolution_api_key: string | null
-          evolution_base_url: string | null
           evolution_instance_id: string | null
           id: string
-          instance_name: string | null
+          instance_name: string
           is_active: boolean | null
           n8n_webhook_evolution_notify: string | null
           organization_id: string
           phone_number: string | null
           provider: string
+          qr_code_data: string | null
           status: string
           updated_at: string | null
           webhook_token: string | null
@@ -4805,18 +4805,18 @@ export type Database = {
         }
         Insert: {
           api_key?: string | null
+          connected_at?: string | null
           created_at?: string | null
-          created_by: string
           evolution_api_key?: string | null
-          evolution_base_url?: string | null
           evolution_instance_id?: string | null
           id?: string
-          instance_name?: string | null
+          instance_name: string
           is_active?: boolean | null
           n8n_webhook_evolution_notify?: string | null
           organization_id: string
           phone_number?: string | null
           provider?: string
+          qr_code_data?: string | null
           status?: string
           updated_at?: string | null
           webhook_token?: string | null
@@ -4824,18 +4824,18 @@ export type Database = {
         }
         Update: {
           api_key?: string | null
+          connected_at?: string | null
           created_at?: string | null
-          created_by?: string
           evolution_api_key?: string | null
-          evolution_base_url?: string | null
           evolution_instance_id?: string | null
           id?: string
-          instance_name?: string | null
+          instance_name?: string
           is_active?: boolean | null
           n8n_webhook_evolution_notify?: string | null
           organization_id?: string
           phone_number?: string | null
           provider?: string
+          qr_code_data?: string | null
           status?: string
           updated_at?: string | null
           webhook_token?: string | null
