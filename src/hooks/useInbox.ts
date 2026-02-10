@@ -129,6 +129,34 @@ export function useInbox() {
     }
   }, [orgId]);
 
+  // Realtime: listen for conversation changes
+  useEffect(() => {
+    if (!orgId) return;
+
+    const channel = supabase
+      .channel('inbox-conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `organization_id=eq.${orgId}`,
+        },
+        () => {
+          fetchThreads();
+          if (selectedThreadId) {
+            fetchMessages(selectedThreadId);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orgId, fetchThreads, fetchMessages, selectedThreadId]);
+
   // Zero unread_count when selecting a conversation
   const clearUnread = useCallback(async (conversationId: string) => {
     if (!orgId) return;

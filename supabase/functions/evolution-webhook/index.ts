@@ -163,8 +163,78 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
     const now = new Date().toISOString();
     const pushName = msg.pushName || "";
     const messagePreview = text.substring(0, 100);
+    const externalMessageId = msg.key?.id || null;
 
-    // ── 1) UPSERT whatsapp_thread (conversation) ──
+    // ── 1) UPSERT into conversations table (Inbox source) ──
+    let conversationId: string | null = null;
+
+    const { data: existingConv } = await supabase
+      .from("conversations")
+      .select("id, unread_count")
+      .eq("organization_id", orgId)
+      .eq("instance_name", instanceName)
+      .eq("contact_phone", normalizedPhone)
+      .maybeSingle();
+
+    if (existingConv) {
+      conversationId = existingConv.id;
+      await supabase
+        .from("conversations")
+        .update({
+          last_message_at: now,
+          unread_count: (existingConv.unread_count || 0) + 1,
+        })
+        .eq("id", conversationId);
+    } else {
+      const { data: newConv } = await supabase
+        .from("conversations")
+        .insert({
+          organization_id: orgId,
+          instance_name: instanceName,
+          contact_phone: normalizedPhone,
+          last_message_at: now,
+          unread_count: 1,
+          assigned_to: null,
+        })
+        .select("id")
+        .single();
+
+      conversationId = newConv?.id || null;
+      console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
+    }
+
+    // ── 2) Save inbound message to messages table (Inbox source) ──
+    if (conversationId) {
+      // Idempotency: skip if externalMessageId already exists
+      if (externalMessageId) {
+        const { data: existingMsg } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("conversation_id", conversationId)
+          .eq("body", text)
+          .eq("direction", "inbound")
+          .limit(1)
+          .maybeSingle();
+
+        if (!existingMsg) {
+          await supabase.from("messages").insert({
+            organization_id: orgId,
+            conversation_id: conversationId,
+            direction: "inbound",
+            body: text,
+          });
+        }
+      } else {
+        await supabase.from("messages").insert({
+          organization_id: orgId,
+          conversation_id: conversationId,
+          direction: "inbound",
+          body: text,
+        });
+      }
+    }
+
+    // ── 3) Also persist to legacy whatsapp_threads / whatsapp_messages ──
     let threadId: string | null = null;
 
     const { data: existingThread } = await supabase
@@ -214,7 +284,7 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
       console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
     }
 
-    // ── 2) Save inbound message ──
+    // Save to legacy whatsapp_messages
     await supabase.from("whatsapp_messages").insert({
       organization_id: orgId,
       instance_name: instanceName,
@@ -223,13 +293,13 @@ async function handleInboundMessages(supabase: any, body: any, orgId: string, in
       phone: normalizedPhone,
       message_text: text,
       status: "delivered",
-      external_message_id: msg.key?.id || null,
+      external_message_id: externalMessageId,
       metadata: { pushName, timestamp: msg.messageTimestamp },
     });
 
-    console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} thread=${threadId}`);
+    console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} conv=${conversationId} thread=${threadId}`);
 
-    // ── 3) Lead matching & engagement ──
+    // ── 4) Lead matching & engagement ──
     const phoneVariants = [
       normalizedPhone,
       normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
