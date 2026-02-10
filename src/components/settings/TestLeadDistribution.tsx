@@ -2,20 +2,22 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Play, RotateCcw, Users, Target } from "lucide-react";
+import { Play, Users, Megaphone, MessageCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function TestLeadDistribution() {
-  const { toast } = useToast();
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [settings, setSettings] = useState<any>(null);
-  const [distributionUsers, setDistributionUsers] = useState<any[]>([]);
+  const [selectedBucket, setSelectedBucket] = useState<'traffic' | 'non_traffic'>('traffic');
   const [recentAssignments, setRecentAssignments] = useState<any[]>([]);
+  const [filterBucket, setFilterBucket] = useState<string>('all');
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [lastResult, setLastResult] = useState<{ user: string; bucket: string; mode: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -24,48 +26,22 @@ export function TestLeadDistribution() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Carregar settings
-      const { data: settingsData } = await supabase
-        .from('lead_distribution_settings')
-        .select('*')
-        .eq('organization_id', profile?.organization_id)
-        .single();
+      const [profilesRes, threadsRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, name, user_id')
+          .eq('organization_id', profile?.organization_id),
+        supabase
+          .from('whatsapp_threads')
+          .select('id, assigned_user_id, routing_bucket, created_at')
+          .eq('organization_id', profile?.organization_id)
+          .not('assigned_user_id', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]);
 
-      setSettings(settingsData);
-
-      // Carregar usuários da distribuição
-      if (settingsData) {
-        const { data: usersData } = await supabase
-          .from('lead_distribution_users')
-          .select('*')
-          .eq('distribution_setting_id', settingsData.id)
-          .order('order_position');
-
-        setDistributionUsers(usersData || []);
-      }
-
-      // Carregar profiles
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('id, name, user_id')
-        .eq('organization_id', profile?.organization_id);
-
-      setProfiles(profilesData || []);
-
-      // Carregar últimas atribuições
-      const { data: assignmentsData } = await supabase
-        .from('lead_assignment')
-        .select(`
-          id,
-          assigned_at,
-          assigned_user_id,
-          lead_id
-        `)
-        .order('assigned_at', { ascending: false })
-        .limit(10);
-
-      setRecentAssignments(assignmentsData || []);
-
+      setProfiles(profilesRes.data || []);
+      setRecentAssignments(threadsRes.data || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -75,145 +51,83 @@ export function TestLeadDistribution() {
 
   const simulateLead = async () => {
     setTesting(true);
+    setLastResult(null);
     try {
-      // Buscar o primeiro pipeline ativo da organização
-      const { data: pipeline, error: pipelineError } = await supabase
-        .from('pipelines')
-        .select('id')
+      // Read bucket settings
+      const { data: bucketSettings } = await supabase
+        .from('whatsapp_routing_bucket_settings')
+        .select('*')
         .eq('organization_id', profile?.organization_id)
-        .eq('is_active', true)
-        .limit(1)
-        .single();
+        .eq('bucket', selectedBucket)
+        .maybeSingle();
 
-      if (pipelineError || !pipeline) {
-        throw new Error('Nenhum pipeline ativo encontrado para esta organização');
+      if (!bucketSettings || !bucketSettings.enabled) {
+        toast.error(`Bucket "${selectedBucket === 'traffic' ? 'Tráfego' : 'Não-tráfego'}" está desabilitado`);
+        return;
       }
 
-      // Buscar o primeiro estágio do pipeline
-      const { data: stage, error: stageError } = await supabase
-        .from('pipeline_stages')
-        .select('id')
-        .eq('pipeline_id', pipeline.id)
-        .order('position', { ascending: true })
-        .limit(1)
-        .single();
+      const mode = bucketSettings.mode as string;
+      let assignedUserId: string | null = null;
 
-      if (stageError || !stage) {
-        throw new Error('Nenhum estágio encontrado no pipeline');
+      if (mode === 'fixed_user') {
+        assignedUserId = bucketSettings.fixed_user_id;
+      } else {
+        // Round-robin simulation
+        const userIds = (bucketSettings.auto_assign_user_ids as string[]) || [];
+        if (userIds.length === 0) {
+          toast.error('Nenhum usuário configurado para round-robin neste bucket');
+          return;
+        }
+
+        // Get current state
+        const { data: stateData } = await supabase
+          .from('whatsapp_routing_state')
+          .select('last_assigned_user_id')
+          .eq('organization_id', profile?.organization_id)
+          .eq('bucket', selectedBucket)
+          .maybeSingle();
+
+        let nextIdx = 0;
+        if (stateData?.last_assigned_user_id) {
+          const lastIdx = userIds.indexOf(stateData.last_assigned_user_id);
+          nextIdx = (lastIdx + 1) % userIds.length;
+        }
+        assignedUserId = userIds[nextIdx];
       }
 
-      // Criar lead de teste
-      const testLead = {
-        name: `Lead Teste ${new Date().toLocaleTimeString('pt-BR')}`,
-        phone: `+5511${Math.floor(900000000 + Math.random() * 99999999)}`,
-        email: `teste${Date.now()}@teste.com`,
-        source: 'Teste Manual',
-        interest: 'Simulação de rodízio',
-        observations: 'Lead criado para testar distribuição automática',
-        organization_id: profile?.organization_id,
-        seller_id: profile?.id,
-        created_by: profile?.id,
-        stage_id: stage.id
-      };
-
-      const { data: newLead, error: leadError } = await supabase
-        .from('leads')
-        .insert([testLead])
-        .select()
-        .single();
-
-      if (leadError) throw leadError;
-
-      // Chamar função de distribuição
-      const { data: result, error: distError } = await (supabase
-        .rpc as any)('distribute_lead', {
-          p_lead_id: newLead.id,
-          p_organization_id: profile?.organization_id
-        });
-
-      if (distError) {
-        console.error('Erro na distribuição:', distError);
-        throw distError;
+      if (!assignedUserId) {
+        toast.error('Nenhum usuário encontrado para atribuição');
+        return;
       }
 
-      const resultData = result as any;
-      console.log('Resultado da distribuição:', resultData);
+      const userName = getUserName(assignedUserId);
+      const bucketLabel = selectedBucket === 'traffic' ? 'Tráfego' : 'Não-tráfego';
+      const modeLabel = mode === 'fixed_user' ? 'Usuário único' : 'Round-robin';
 
-      // Buscar o nome do vendedor atribuído
-      let assignedUserName = 'desconhecido';
-      if (resultData?.assigned_user_id) {
-        const user = profiles.find(p => p.user_id === resultData.assigned_user_id);
-        assignedUserName = user?.name || 'Vendedor';
-      }
-
-      toast({
-        title: "Lead distribuído!",
-        description: resultData?.already_assigned 
-          ? "Lead já estava atribuído"
-          : `Lead atribuído para ${assignedUserName} via ${resultData?.mode || 'round-robin'}`,
-      });
-
-      // Recarregar dados
-      await loadData();
-
+      setLastResult({ user: userName, bucket: bucketLabel, mode: modeLabel });
+      toast.success(`Simulação: ${userName} receberia o lead (${bucketLabel}, ${modeLabel})`);
     } catch (error: any) {
-      console.error('Erro ao simular lead:', error);
-      toast({
-        title: "Erro ao simular lead",
-        description: error.message || 'Erro desconhecido',
-        variant: "destructive",
-      });
+      console.error('Erro ao simular:', error);
+      toast.error(error.message || 'Erro ao simular');
     } finally {
       setTesting(false);
     }
   };
 
-  const resetCursor = async () => {
-    try {
-      await (supabase.rpc as any)('reset_distribution_cursor', {
-        p_organization_id: profile?.organization_id
-      });
-
-      toast({
-        title: "Cursor resetado",
-        description: "A distribuição voltará ao primeiro usuário",
-      });
-
-      await loadData();
-    } catch (error: any) {
-      toast({
-        title: "Erro ao resetar cursor",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
   const getUserName = (userId: string) => {
-    const user = profiles.find(p => p.user_id === userId);
+    const user = profiles.find(p => p.user_id === userId || p.id === userId);
     return user?.name || 'Usuário desconhecido';
   };
 
-  const getNextUser = () => {
-    if (!settings || !distributionUsers.length) return null;
-    
-    if (settings.mode === 'manual') {
-      return getUserName(settings.manual_receiver_id);
-    }
-
-    const cursor = settings.rr_cursor || 0;
-    const activeUsers = distributionUsers.filter(u => u.is_active);
-    if (!activeUsers.length) return null;
-    
-    const nextIndex = cursor % activeUsers.length;
-    return getUserName(activeUsers[nextIndex].user_id);
-  };
+  const filteredAssignments = filterBucket === 'all'
+    ? recentAssignments
+    : recentAssignments.filter(a => a.routing_bucket === filterBucket);
 
   if (loading) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
           <p className="mt-2 text-sm text-muted-foreground">Carregando...</p>
         </CardContent>
       </Card>
@@ -222,60 +136,7 @@ export function TestLeadDistribution() {
 
   return (
     <div className="space-y-6">
-      {/* Estado Atual */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Estado da Distribuição
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Modo</p>
-              <Badge variant={settings?.mode === 'auto' ? 'default' : 'secondary'}>
-                {settings?.mode === 'manual' ? 'Manual' : 'Automático (Round-robin)'}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Próximo na fila</p>
-              <p className="font-semibold">{getNextUser() || 'N/A'}</p>
-            </div>
-            {settings?.mode === 'auto' && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Cursor atual</p>
-                <p className="font-semibold">{settings?.rr_cursor || 0}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Usuários ativos</p>
-              <p className="font-semibold">{distributionUsers.filter(u => u.is_active).length}</p>
-            </div>
-          </div>
-
-          {settings?.mode === 'auto' && distributionUsers.length > 0 && (
-            <div>
-              <p className="text-sm text-muted-foreground mb-2">Ordem de rodízio:</p>
-              <div className="flex flex-wrap gap-2">
-                {distributionUsers
-                  .filter(u => u.is_active)
-                  .sort((a, b) => a.order_position - b.order_position)
-                  .map((user, idx) => (
-                    <Badge 
-                      key={user.id}
-                      variant={idx === (settings.rr_cursor % distributionUsers.filter(u => u.is_active).length) ? 'default' : 'outline'}
-                    >
-                      {idx + 1}. {getUserName(user.user_id)}
-                    </Badge>
-                  ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Ações */}
+      {/* Testar */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -285,65 +146,97 @@ export function TestLeadDistribution() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Simule o recebimento de um lead via webhook para validar o rodízio
+            Simule a distribuição de um lead para validar as filas por bucket.
           </p>
-          <div className="flex gap-2">
-            <Button 
-              onClick={simulateLead}
-              disabled={testing || !settings?.is_auto_distribution_enabled}
-              className="btn-gradient text-white"
-            >
-              {testing ? 'Criando lead...' : 'Simular Lead'}
-            </Button>
-            {settings?.mode === 'auto' && (
-              <Button 
-                variant="outline" 
-                onClick={resetCursor}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Resetar Cursor
-              </Button>
-            )}
-          </div>
-          {!settings?.is_auto_distribution_enabled && (
-            <p className="text-sm text-orange-600">
-              ⚠️ Distribuição automática desabilitada. Ative nas configurações.
+
+          <div className="space-y-2">
+            <Label className="text-sm">Bucket para simulação</Label>
+            <Select value={selectedBucket} onValueChange={(v) => setSelectedBucket(v as any)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="traffic">
+                  <span className="flex items-center gap-2">
+                    <Megaphone className="h-3.5 w-3.5" /> Tráfego (Ads)
+                  </span>
+                </SelectItem>
+                <SelectItem value="non_traffic">
+                  <span className="flex items-center gap-2">
+                    <MessageCircle className="h-3.5 w-3.5" /> Não-tráfego (Orgânico)
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {selectedBucket === 'traffic'
+                ? 'Simula primeira mensagem contendo "anuncio"'
+                : 'Simula primeira mensagem comum (sem marcador de anúncio)'}
             </p>
+          </div>
+
+          <Button onClick={simulateLead} disabled={testing}>
+            {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+            Simular Lead
+          </Button>
+
+          {lastResult && (
+            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+              <p className="text-sm font-medium">Resultado da simulação:</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="default">{lastResult.user}</Badge>
+                <Badge variant="outline">{lastResult.bucket}</Badge>
+                <Badge variant="secondary">{lastResult.mode}</Badge>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Últimas Atribuições */}
+      {/* Últimas atribuições */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Últimas Atribuições
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Últimas Atribuições
+            </CardTitle>
+            <Select value={filterBucket} onValueChange={setFilterBucket}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="traffic">Tráfego</SelectItem>
+                <SelectItem value="non_traffic">Não-tráfego</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          {recentAssignments.length === 0 ? (
+          {filteredAssignments.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              Nenhuma atribuição ainda. Simule um lead para começar.
+              Nenhuma atribuição encontrada.
             </p>
           ) : (
             <div className="space-y-2">
-              {recentAssignments.map((assignment, idx) => (
-                <div 
-                  key={assignment.id}
+              {filteredAssignments.map((a, idx) => (
+                <div
+                  key={a.id}
                   className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                 >
                   <div className="flex items-center gap-3">
                     <Badge variant="outline">#{idx + 1}</Badge>
                     <div>
-                      <p className="font-medium text-sm">
-                        {getUserName(assignment.assigned_user_id)}
-                      </p>
+                      <p className="font-medium text-sm">{getUserName(a.assigned_user_id)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(assignment.assigned_at).toLocaleString('pt-BR')}
+                        {new Date(a.created_at).toLocaleString('pt-BR')}
                       </p>
                     </div>
                   </div>
+                  <Badge variant={a.routing_bucket === 'traffic' ? 'default' : 'secondary'}>
+                    {a.routing_bucket === 'traffic' ? 'Tráfego' : 'Orgânico'}
+                  </Badge>
                 </div>
               ))}
             </div>

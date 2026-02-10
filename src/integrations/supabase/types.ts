@@ -4805,6 +4805,39 @@ export type Database = {
           },
         ]
       }
+      whatsapp_routing_bucket_settings: {
+        Row: {
+          auto_assign_user_ids: Json
+          bucket: string
+          enabled: boolean
+          fixed_user_id: string | null
+          id: string
+          mode: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_assign_user_ids?: Json
+          bucket: string
+          enabled?: boolean
+          fixed_user_id?: string | null
+          id?: string
+          mode?: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_assign_user_ids?: Json
+          bucket?: string
+          enabled?: boolean
+          fixed_user_id?: string | null
+          id?: string
+          mode?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_routing_settings: {
         Row: {
           assign_on: string
