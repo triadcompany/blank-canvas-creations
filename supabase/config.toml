@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.receive-lead-webhook]
 verify_jwt = false
+
+[functions.ai-analyze-conversation]
+verify_jwt = false

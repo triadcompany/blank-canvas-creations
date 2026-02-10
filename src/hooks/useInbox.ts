@@ -20,6 +20,7 @@ export interface InboxThread {
   profile_picture_updated_at: string | null;
   lead_id: string | null;
   lead_stage_name?: string | null;
+  ai_mode: string;
 }
 
 export interface InboxMessage {
@@ -388,6 +389,26 @@ export function useInbox() {
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
+  // Toggle ai_mode for a conversation
+  const toggleAiMode = useCallback(async (threadId: string, newMode: string) => {
+    if (!orgId) return;
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ ai_mode: newMode } as any)
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+      if (error) throw error;
+      setThreads(prev =>
+        prev.map(t => t.id === threadId ? { ...t, ai_mode: newMode } : t)
+      );
+      toast.success(newMode === 'assisted' ? 'IA Assistente ativada' : 'IA desativada');
+    } catch (err: any) {
+      console.error('Error toggling ai_mode:', err);
+      toast.error('Erro ao alterar modo da IA');
+    }
+  }, [orgId]);
+
   return {
     threads,
     messages,
@@ -410,5 +431,6 @@ export function useInbox() {
     canSendMessage,
     refreshThreads: fetchThreads,
     createLeadFromConversation,
+    toggleAiMode,
   };
 }

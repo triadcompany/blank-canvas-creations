@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ExternalLink,
   Plus,
+  Sparkles,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
+import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 
 // ── Helpers ──
 
@@ -312,6 +314,7 @@ export default function InboxPage() {
     assignThread,
     canSendMessage,
     createLeadFromConversation,
+    toggleAiMode,
   } = useInbox();
 
   const navigate = useNavigate();
@@ -500,6 +503,17 @@ export default function InboxPage() {
                 </div>
               </div>
 
+              {/* AI mode toggle */}
+              <Button
+                variant={selectedThread.ai_mode === 'assisted' ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => toggleAiMode(selectedThread.id, selectedThread.ai_mode === 'assisted' ? 'off' : 'assisted')}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                IA {selectedThread.ai_mode === 'assisted' ? 'On' : 'Off'}
+              </Button>
+
               {/* Lead action */}
               {selectedThread.lead_id ? (
                 <Button
@@ -604,6 +618,16 @@ export default function InboxPage() {
               )}
               <div ref={messagesEndRef} />
             </ScrollArea>
+
+            {/* AI Suggestion Panel */}
+            {selectedThread.ai_mode === 'assisted' && profile?.organization_id && (
+              <AiSuggestionPanel
+                conversationId={selectedThread.id}
+                organizationId={profile.organization_id}
+                aiMode={selectedThread.ai_mode}
+                onUseSuggestion={(text) => setMessageText(text)}
+              />
+            )}
 
             {/* Send Bar */}
             <div className="p-3 border-t border-border bg-card/30">
