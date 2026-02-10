@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { Edge, Node } from "@xyflow/react";
+
+const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
 
 export interface Automation {
   id: string;
@@ -10,119 +12,91 @@ export interface Automation {
   description: string | null;
   channel: string;
   is_active: boolean;
-  flow_definition: any;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface AutomationLog {
+export interface AutomationFlow {
   id: string;
+  organization_id: string;
   automation_id: string;
-  node_id: string | null;
-  node_type: string | null;
-  status: string;
-  message: string | null;
-  metadata: any;
+  nodes: Node[];
+  edges: Edge[];
+  entry_node_id: string | null;
+  version: number;
   created_at: string;
-  lead_id: string | null;
+  updated_at: string;
 }
 
-const INITIAL_FLOW = {
-  nodes: [
-    {
-      id: "trigger_initial",
-      type: "trigger",
-      position: { x: 250, y: 50 },
-      data: { label: "Gatilho", config: { triggerType: "lead_created" } },
-    },
-  ],
-  edges: [],
-};
+async function apiCall(action: string, params: Record<string, unknown>) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...params }),
+  });
+  return res.json();
+}
 
 export function useAutomations() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { profile, user } = useAuth();
+  const { profile } = useAuth();
   const { toast } = useToast();
 
-  const fetchAutomations = useCallback(async () => {
-    if (!profile?.organization_id) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("automations")
-      .select("*")
-      .eq("organization_id", profile.organization_id)
-      .order("created_at", { ascending: false });
+  const orgId = profile?.organization_id;
 
-    if (error) {
-      console.error("Error fetching automations:", error);
+  const fetchAutomations = useCallback(async () => {
+    if (!orgId) return;
+    setLoading(true);
+    const result = await apiCall("list", { organization_id: orgId });
+    if (result.ok) {
+      setAutomations(result.automations || []);
     } else {
-      setAutomations((data as any[]) || []);
+      console.error("Error fetching automations:", result.message);
     }
     setLoading(false);
-  }, [profile?.organization_id]);
+  }, [orgId]);
 
   useEffect(() => {
     fetchAutomations();
   }, [fetchAutomations]);
 
-  const createAutomation = async (name: string, description?: string) => {
-    if (!profile?.organization_id || !profile?.id) {
-      console.error("createAutomation: missing org or profile", { org: profile?.organization_id, profileId: profile?.id });
+  const createAutomation = async (name: string, description?: string): Promise<Automation | null> => {
+    if (!orgId || !profile?.id) {
       toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
       return null;
     }
-
-    const { data, error } = await supabase
-      .from("automations")
-      .insert({
-        name,
-        description: description || null,
-        organization_id: profile.organization_id,
-        created_by: profile.id,
-        channel: "whatsapp",
-        is_active: false,
-        flow_definition: INITIAL_FLOW,
-      } as any)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase insert error:", error);
-      toast({ title: "Erro ao criar automação", description: error.message, variant: "destructive" });
+    const result = await apiCall("create", {
+      organization_id: orgId,
+      name,
+      description: description || null,
+      created_by: profile.id,
+      channel: "whatsapp",
+    });
+    if (!result.ok) {
+      toast({ title: "Erro ao criar automação", description: result.message, variant: "destructive" });
       return null;
     }
-
     toast({ title: "Sucesso", description: "Automação criada" });
     fetchAutomations();
-    return data as any as Automation;
+    return result.automation;
   };
 
-  const updateAutomation = async (id: string, updates: Partial<Automation>) => {
-    const { error } = await supabase
-      .from("automations")
-      .update(updates as any)
-      .eq("id", id);
-
-    if (error) {
-      console.error("Supabase update error:", error);
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+  const updateAutomation = async (id: string, updates: Partial<Automation>): Promise<boolean> => {
+    const result = await apiCall("update", { id, updates });
+    if (!result.ok) {
+      toast({ title: "Erro", description: result.message, variant: "destructive" });
       return false;
     }
     fetchAutomations();
     return true;
   };
 
-  const deleteAutomation = async (id: string) => {
-    const { error } = await supabase
-      .from("automations")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      console.error("Supabase delete error:", error);
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+  const deleteAutomation = async (id: string): Promise<boolean> => {
+    const result = await apiCall("delete", { id });
+    if (!result.ok) {
+      toast({ title: "Erro", description: result.message, variant: "destructive" });
       return false;
     }
     toast({ title: "Sucesso", description: "Automação excluída" });
@@ -130,46 +104,62 @@ export function useAutomations() {
     return true;
   };
 
-  const duplicateAutomation = async (automation: Automation) => {
-    if (!profile?.organization_id || !profile?.id) return null;
-    const { data, error } = await supabase
-      .from("automations")
-      .insert({
-        name: `${automation.name} (cópia)`,
-        description: automation.description,
-        organization_id: profile.organization_id,
-        created_by: profile.id,
-        channel: automation.channel,
-        is_active: false,
-        flow_definition: automation.flow_definition,
-      } as any)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase duplicate error:", error);
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+  const duplicateAutomation = async (automation: Automation): Promise<Automation | null> => {
+    if (!orgId || !profile?.id) return null;
+    const result = await apiCall("duplicate", {
+      id: automation.id,
+      organization_id: orgId,
+      created_by: profile.id,
+    });
+    if (!result.ok) {
+      toast({ title: "Erro", description: result.message, variant: "destructive" });
       return null;
     }
     toast({ title: "Sucesso", description: "Automação duplicada" });
     fetchAutomations();
-    return data as any as Automation;
+    return result.automation;
   };
 
-  const toggleActive = async (id: string, isActive: boolean) => {
-    return updateAutomation(id, { is_active: !isActive } as any);
+  const toggleActive = async (id: string, isActive: boolean): Promise<boolean> => {
+    return updateAutomation(id, { is_active: !isActive });
   };
 
-  const fetchLogs = async (automationId: string) => {
-    const { data, error } = await supabase
-      .from("automation_logs")
-      .select("*")
-      .eq("automation_id", automationId)
-      .order("created_at", { ascending: false })
-      .limit(100);
+  // ─── Flow operations ───
 
-    if (error) return [];
-    return (data as any[]) as AutomationLog[];
+  const getFlow = async (automationId: string): Promise<AutomationFlow | null> => {
+    const result = await apiCall("get_flow", { automation_id: automationId });
+    if (result.ok && result.flow) return result.flow;
+    return null;
+  };
+
+  const saveFlow = async (
+    automationId: string,
+    nodes: Node[],
+    edges: Edge[]
+  ): Promise<AutomationFlow | null> => {
+    if (!orgId) return null;
+
+    // Validate max 1 trigger
+    const triggers = nodes.filter((n) => n.type === "trigger");
+    if (triggers.length > 1) {
+      toast({ title: "Erro", description: "Só pode haver 1 nó de gatilho por automação.", variant: "destructive" });
+      return null;
+    }
+
+    const result = await apiCall("save_flow", {
+      automation_id: automationId,
+      organization_id: orgId,
+      nodes,
+      edges,
+    });
+
+    if (!result.ok) {
+      toast({ title: "Erro ao salvar fluxo", description: result.message, variant: "destructive" });
+      return null;
+    }
+
+    toast({ title: "Salvo", description: `Fluxo salvo (versão ${result.flow.version})` });
+    return result.flow;
   };
 
   return {
@@ -180,7 +170,8 @@ export function useAutomations() {
     deleteAutomation,
     duplicateAutomation,
     toggleActive,
-    fetchLogs,
+    getFlow,
+    saveFlow,
     refresh: fetchAutomations,
   };
 }
