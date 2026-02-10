@@ -27,6 +27,9 @@ import {
   CalendarClock,
   MessageSquare,
   Crown,
+  MailCheck,
+  PlayCircle,
+  ChevronDown,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -88,6 +91,15 @@ export function CRMSidebarWithAuth() {
   const navigate = useNavigate();
   const { profile, signOut, isAdmin } = useAuth();
   const { subscription, loading: subscriptionLoading } = useSubscription();
+  
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get('tab');
+  const isFollowupActive = location.pathname === '/settings' && (currentTab === 'templates' || currentTab === 'cadences');
+  const [followupOpen, setFollowupOpen] = React.useState(isFollowupActive);
+
+  React.useEffect(() => {
+    if (isFollowupActive) setFollowupOpen(true);
+  }, [isFollowupActive]);
 
   const getPlanLabel = () => {
     if (subscriptionLoading) return "...";
@@ -162,6 +174,53 @@ export function CRMSidebarWithAuth() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+
+                {/* Follow-up collapsible group */}
+                <SidebarMenuItem>
+                  <button
+                    onClick={() => setFollowupOpen(!followupOpen)}
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm transition-all duration-200 cursor-pointer ${
+                      isFollowupActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                        : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <MailCheck className="h-4 w-4" />
+                      <span className="font-poppins">Follow-up</span>
+                    </div>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${followupOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </SidebarMenuItem>
+
+                {followupOpen && (
+                  <>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton 
+                        asChild 
+                        isActive={currentTab === 'templates'}
+                        className="font-poppins ml-4 border-l-2 border-border"
+                      >
+                        <NavLink to="/settings?tab=templates">
+                          <MessageSquare className="h-4 w-4" />
+                          <span>Templates</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton 
+                        asChild 
+                        isActive={currentTab === 'cadences'}
+                        className="font-poppins ml-4 border-l-2 border-border"
+                      >
+                        <NavLink to="/settings?tab=cadences">
+                          <PlayCircle className="h-4 w-4" />
+                          <span>Cadências</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
