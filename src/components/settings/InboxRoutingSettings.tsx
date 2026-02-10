@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Inbox, Loader2, Save, Clock, Users } from 'lucide-react';
+import { Inbox, Loader2, Save, Clock, Users, Megaphone, MessageCircle } from 'lucide-react';
 
 interface RoutingSettings {
   id?: string;
@@ -26,6 +26,10 @@ interface RoutingSettings {
   only_roles: string[];
   business_hours_enabled: boolean;
   business_hours: { start: string; end: string; days: number[] } | null;
+  traffic_enabled: boolean;
+  non_traffic_enabled: boolean;
+  traffic_roles: string[];
+  non_traffic_roles: string[];
 }
 
 const DAYS = [
@@ -37,6 +41,35 @@ const DAYS = [
   { value: 6, label: 'Sáb' },
   { value: 0, label: 'Dom' },
 ];
+
+const AVAILABLE_ROLES = ['seller', 'admin'] as const;
+const ROLE_LABELS: Record<string, string> = {
+  seller: 'Vendedores',
+  admin: 'Administradores',
+};
+
+function RoleBadges({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (role: string) => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      {AVAILABLE_ROLES.map((role) => (
+        <Badge
+          key={role}
+          variant={selected.includes(role) ? 'default' : 'outline'}
+          className="cursor-pointer select-none"
+          onClick={() => onToggle(role)}
+        >
+          {ROLE_LABELS[role] || role}
+        </Badge>
+      ))}
+    </div>
+  );
+}
 
 export function InboxRoutingSettings() {
   const { profile } = useAuth();
@@ -50,6 +83,10 @@ export function InboxRoutingSettings() {
     only_roles: ['seller', 'admin'],
     business_hours_enabled: false,
     business_hours: { start: '08:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+    traffic_enabled: true,
+    non_traffic_enabled: true,
+    traffic_roles: ['seller', 'admin'],
+    non_traffic_roles: ['seller', 'admin'],
   });
 
   const orgId = profile?.organization_id;
@@ -76,6 +113,10 @@ export function InboxRoutingSettings() {
           only_roles: (data.only_roles as string[]) || ['seller', 'admin'],
           business_hours_enabled: data.business_hours_enabled,
           business_hours: (data.business_hours as any) || { start: '08:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+          traffic_enabled: (data as any).traffic_enabled !== false,
+          non_traffic_enabled: (data as any).non_traffic_enabled !== false,
+          traffic_roles: ((data as any).traffic_roles as string[]) || ['seller', 'admin'],
+          non_traffic_roles: ((data as any).non_traffic_roles as string[]) || ['seller', 'admin'],
         });
       }
     } catch (err) {
@@ -101,6 +142,10 @@ export function InboxRoutingSettings() {
         only_roles: settings.only_roles,
         business_hours_enabled: settings.business_hours_enabled,
         business_hours: settings.business_hours,
+        traffic_enabled: settings.traffic_enabled,
+        non_traffic_enabled: settings.non_traffic_enabled,
+        traffic_roles: settings.traffic_roles,
+        non_traffic_roles: settings.non_traffic_roles,
         updated_at: new Date().toISOString(),
       };
 
@@ -127,20 +172,21 @@ export function InboxRoutingSettings() {
     }
   };
 
-  const toggleRole = (role: string) => {
-    setSettings((prev) => {
-      const roles = prev.only_roles.includes(role)
-        ? prev.only_roles.filter((r) => r !== role)
-        : [...prev.only_roles, role];
-      return { ...prev, only_roles: roles.length > 0 ? roles : prev.only_roles };
-    });
-  };
-
   const toggleDay = (day: number) => {
     setSettings((prev) => {
       const bh = prev.business_hours || { start: '08:00', end: '18:00', days: [] };
       const days = bh.days.includes(day) ? bh.days.filter((d) => d !== day) : [...bh.days, day];
       return { ...prev, business_hours: { ...bh, days } };
+    });
+  };
+
+  const toggleBucketRole = (bucket: 'traffic' | 'non_traffic', role: string) => {
+    const key = bucket === 'traffic' ? 'traffic_roles' : 'non_traffic_roles';
+    setSettings((prev) => {
+      const roles = prev[key].includes(role)
+        ? prev[key].filter((r) => r !== role)
+        : [...prev[key], role];
+      return { ...prev, [key]: roles.length > 0 ? roles : prev[key] };
     });
   };
 
@@ -221,25 +267,73 @@ export function InboxRoutingSettings() {
             </Select>
           </div>
 
-          {/* Papéis */}
-          <div className="space-y-2">
-            <Label className="font-poppins text-sm flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Quem pode receber conversas
-            </Label>
-            <div className="flex gap-2">
-              {['seller', 'admin'].map((role) => (
-                <Badge
-                  key={role}
-                  variant={settings.only_roles.includes(role) ? 'default' : 'outline'}
-                  className="cursor-pointer select-none"
-                  onClick={() => toggleRole(role)}
-                >
-                  {role === 'seller' ? 'Vendedores' : 'Administradores'}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          {/* Bucket: Tráfego (Ads) */}
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-orange-500/10 flex items-center justify-center">
+                    <Megaphone className="h-4 w-4 text-orange-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Tráfego (Ads)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Mensagens com marcador de anúncio — fila separada
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.traffic_enabled}
+                  onCheckedChange={(checked) => setSettings((s) => ({ ...s, traffic_enabled: checked }))}
+                />
+              </div>
+              {settings.traffic_enabled && (
+                <div className="pt-2 border-t border-border space-y-2">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" /> Quem recebe conversas de tráfego
+                  </Label>
+                  <RoleBadges
+                    selected={settings.traffic_roles}
+                    onToggle={(role) => toggleBucketRole('traffic', role)}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Bucket: Não-tráfego (Orgânico) */}
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center">
+                    <MessageCircle className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Orgânico / Clientes</p>
+                    <p className="text-xs text-muted-foreground">
+                      Mensagens sem marcador de anúncio — fila separada
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.non_traffic_enabled}
+                  onCheckedChange={(checked) => setSettings((s) => ({ ...s, non_traffic_enabled: checked }))}
+                />
+              </div>
+              {settings.non_traffic_enabled && (
+                <div className="pt-2 border-t border-border space-y-2">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" /> Quem recebe conversas orgânicas
+                  </Label>
+                  <RoleBadges
+                    selected={settings.non_traffic_roles}
+                    onToggle={(role) => toggleBucketRole('non_traffic', role)}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Horário comercial */}
           <Card>

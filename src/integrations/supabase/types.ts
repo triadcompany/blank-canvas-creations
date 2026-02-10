@@ -4813,8 +4813,12 @@ export type Database = {
           enabled: boolean
           id: string
           mode: string
+          non_traffic_enabled: boolean
+          non_traffic_roles: Json
           only_roles: Json
           organization_id: string
+          traffic_enabled: boolean
+          traffic_roles: Json
           updated_at: string
         }
         Insert: {
@@ -4824,8 +4828,12 @@ export type Database = {
           enabled?: boolean
           id?: string
           mode?: string
+          non_traffic_enabled?: boolean
+          non_traffic_roles?: Json
           only_roles?: Json
           organization_id: string
+          traffic_enabled?: boolean
+          traffic_roles?: Json
           updated_at?: string
         }
         Update: {
@@ -4835,26 +4843,33 @@ export type Database = {
           enabled?: boolean
           id?: string
           mode?: string
+          non_traffic_enabled?: boolean
+          non_traffic_roles?: Json
           only_roles?: Json
           organization_id?: string
+          traffic_enabled?: boolean
+          traffic_roles?: Json
           updated_at?: string
         }
         Relationships: []
       }
       whatsapp_routing_state: {
         Row: {
+          bucket: string
           id: string
           last_assigned_user_id: string | null
           organization_id: string
           updated_at: string
         }
         Insert: {
+          bucket?: string
           id?: string
           last_assigned_user_id?: string | null
           organization_id: string
           updated_at?: string
         }
         Update: {
+          bucket?: string
           id?: string
           last_assigned_user_id?: string | null
           organization_id?: string
@@ -4869,11 +4884,14 @@ export type Database = {
           contact_name: string | null
           contact_phone_e164: string
           created_at: string
+          first_message_at: string | null
+          first_message_text: string | null
           id: string
           instance_name: string
           last_message_at: string | null
           last_message_preview: string | null
           organization_id: string
+          routing_bucket: string
           status: string
           updated_at: string
         }
@@ -4883,11 +4901,14 @@ export type Database = {
           contact_name?: string | null
           contact_phone_e164: string
           created_at?: string
+          first_message_at?: string | null
+          first_message_text?: string | null
           id?: string
           instance_name: string
           last_message_at?: string | null
           last_message_preview?: string | null
           organization_id: string
+          routing_bucket?: string
           status?: string
           updated_at?: string
         }
@@ -4897,11 +4918,14 @@ export type Database = {
           contact_name?: string | null
           contact_phone_e164?: string
           created_at?: string
+          first_message_at?: string | null
+          first_message_text?: string | null
           id?: string
           instance_name?: string
           last_message_at?: string | null
           last_message_preview?: string | null
           organization_id?: string
+          routing_bucket?: string
           status?: string
           updated_at?: string
         }
