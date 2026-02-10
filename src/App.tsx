@@ -23,7 +23,7 @@ import NotFound from "./pages/NotFound";
 import Mensagens from "./pages/Mensagens";
 import LandingPage from "./pages/LandingPage";
 import Prospeccao from "./pages/Prospeccao";
-import Followups from "./pages/Followups";
+import Automacoes from "./pages/Automacoes";
 import Onboarding from "./pages/Onboarding";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
@@ -134,9 +134,9 @@ const App = () => {
                 </CRMLayout>
               </ProtectedRoute>
             } />
-            <Route path="/follow-ups" element={
+            <Route path="/automacoes" element={
               <ProtectedRoute>
-                <Followups />
+                <Automacoes />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

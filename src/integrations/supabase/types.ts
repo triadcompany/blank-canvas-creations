@@ -361,6 +361,170 @@ export type Database = {
           },
         ]
       }
+      automation_logs: {
+        Row: {
+          automation_id: string
+          created_at: string | null
+          id: string
+          lead_id: string | null
+          message: string | null
+          metadata: Json | null
+          node_id: string | null
+          node_type: string | null
+          organization_id: string
+          status: string
+        }
+        Insert: {
+          automation_id: string
+          created_at?: string | null
+          id?: string
+          lead_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          node_id?: string | null
+          node_type?: string | null
+          organization_id: string
+          status?: string
+        }
+        Update: {
+          automation_id?: string
+          created_at?: string | null
+          id?: string
+          lead_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          node_id?: string | null
+          node_type?: string | null
+          organization_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_logs_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automations: {
+        Row: {
+          channel: string
+          created_at: string | null
+          created_by: string
+          description: string | null
+          flow_definition: Json
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          channel?: string
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          flow_definition?: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          flow_definition?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_events: {
         Row: {
           all_day: boolean | null
