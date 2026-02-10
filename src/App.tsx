@@ -25,6 +25,7 @@ import LandingPage from "./pages/LandingPage";
 import Prospeccao from "./pages/Prospeccao";
 import Automacoes from "./pages/Automacoes";
 import Onboarding from "./pages/Onboarding";
+import InboxPage from "./pages/Inbox";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -137,6 +138,13 @@ const App = () => {
             <Route path="/automacoes" element={
               <ProtectedRoute>
                 <Automacoes />
+              </ProtectedRoute>
+            } />
+            <Route path="/inbox" element={
+              <ProtectedRoute>
+                <CRMLayout>
+                  <InboxPage />
+                </CRMLayout>
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

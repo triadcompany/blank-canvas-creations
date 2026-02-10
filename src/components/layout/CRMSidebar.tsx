@@ -12,6 +12,7 @@ import {
   List,
   Cog,
   ListTodo,
+  Inbox,
   Building2,
   CalendarClock,
   MailCheck,
@@ -53,6 +54,11 @@ const navigationItems = [
     title: "Tarefas",
     url: "/tarefas",
     icon: ListTodo,
+  },
+  {
+    title: "Inbox",
+    url: "/inbox",
+    icon: Inbox,
   },
   {
     title: "Veículos",
