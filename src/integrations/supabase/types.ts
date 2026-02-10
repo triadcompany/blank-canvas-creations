@@ -4841,6 +4841,27 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_routing_state: {
+        Row: {
+          id: string
+          last_assigned_user_id: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          last_assigned_user_id?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          last_assigned_user_id?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_threads: {
         Row: {
           assigned_at: string | null
