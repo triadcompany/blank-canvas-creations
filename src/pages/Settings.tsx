@@ -32,6 +32,8 @@ import {
   PlayCircle,
   Instagram,
   CreditCard,
+  ChevronDown,
+  MailCheck,
 } from "lucide-react";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
@@ -87,18 +89,34 @@ export function Settings() {
     setEditingProfile(null);
   };
 
-  const settingsItems = [
-    { id: "billing", icon: CreditCard, label: "Planos e Cobrança", active: activeTab === "billing" },
-    { id: "profile", icon: User, label: "Meu Perfil", active: activeTab === "profile" },
-    { id: "vendors", icon: Users, label: "Usuários", active: activeTab === "vendors" },
-    { id: "pipeline", icon: Workflow, label: "Pipeline", active: activeTab === "pipeline" },
-    { id: "templates", icon: MessageSquare, label: "Templates Follow-up", active: activeTab === "templates" },
-    { id: "cadences", icon: PlayCircle, label: "Cadências", active: activeTab === "cadences" },
-    { id: "instagram", icon: Instagram, label: "Instagram", active: activeTab === "instagram" },
-    { id: "webhooks", icon: Webhook, label: "Webhooks", active: activeTab === "webhooks" },
-    { id: "distribution", icon: Users, label: "Distribuição de Leads", active: activeTab === "distribution" },
-    { id: "sources", icon: MapPin, label: "Origens de Leads", active: activeTab === "sources" },
-    { id: "notifications", icon: Bell, label: "Notificações", active: activeTab === "notifications" },
+  const isFollowupTab = activeTab === "templates" || activeTab === "cadences";
+  const [followupOpen, setFollowupOpen] = useState(isFollowupTab);
+
+  useEffect(() => {
+    if (isFollowupTab) setFollowupOpen(true);
+  }, [isFollowupTab]);
+
+  type MenuItem = { id: string; icon: any; label: string; children?: MenuItem[] };
+
+  const settingsItems: MenuItem[] = [
+    { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
+    { id: "profile", icon: User, label: "Meu Perfil" },
+    { id: "vendors", icon: Users, label: "Usuários" },
+    { id: "pipeline", icon: Workflow, label: "Pipeline" },
+    { 
+      id: "followup-group", 
+      icon: MailCheck, 
+      label: "Follow-up",
+      children: [
+        { id: "templates", icon: MessageSquare, label: "Templates" },
+        { id: "cadences", icon: PlayCircle, label: "Cadências" },
+      ]
+    },
+    { id: "instagram", icon: Instagram, label: "Instagram" },
+    { id: "webhooks", icon: Webhook, label: "Webhooks" },
+    { id: "distribution", icon: Users, label: "Distribuição de Leads" },
+    { id: "sources", icon: MapPin, label: "Origens de Leads" },
+    { id: "notifications", icon: Bell, label: "Notificações" },
   ];
 
   const renderContent = () => {
@@ -450,21 +468,62 @@ export function Settings() {
         <div className="space-y-2">
           <Card className="card-gradient border-0">
             <CardContent className="p-4">
-              <div className="space-y-2">
-                {settingsItems.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
-                      item.active 
-                        ? "bg-primary text-primary-foreground font-medium" 
-                        : "hover:bg-accent hover:text-accent-foreground"
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    <span className="font-poppins text-sm">{item.label}</span>
-                  </button>
-                ))}
+              <div className="space-y-1">
+                {settingsItems.map((item) => {
+                  if (item.children) {
+                    return (
+                      <div key={item.id}>
+                        <button
+                          onClick={() => setFollowupOpen(!followupOpen)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all duration-200 ${
+                            isFollowupTab
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "hover:bg-accent hover:text-accent-foreground"
+                          }`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <item.icon className="h-4 w-4" />
+                            <span className="font-poppins text-sm">{item.label}</span>
+                          </div>
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${followupOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {followupOpen && (
+                          <div className="ml-4 mt-1 space-y-1 border-l-2 border-border pl-3">
+                            {item.children.map((child) => (
+                              <button
+                                key={child.id}
+                                onClick={() => setActiveTab(child.id)}
+                                className={`w-full flex items-center space-x-3 px-3 py-1.5 rounded-lg text-left transition-all duration-200 ${
+                                  activeTab === child.id
+                                    ? "bg-primary text-primary-foreground font-medium"
+                                    : "hover:bg-accent hover:text-accent-foreground"
+                                }`}
+                              >
+                                <child.icon className="h-3.5 w-3.5" />
+                                <span className="font-poppins text-sm">{child.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
+                        activeTab === item.id
+                          ? "bg-primary text-primary-foreground font-medium" 
+                          : "hover:bg-accent hover:text-accent-foreground"
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span className="font-poppins text-sm">{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
