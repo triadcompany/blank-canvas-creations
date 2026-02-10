@@ -95,8 +95,7 @@ export function Settings() {
     { id: "templates", icon: MessageSquare, label: "Templates Follow-up", active: activeTab === "templates" },
     { id: "cadences", icon: PlayCircle, label: "Cadências", active: activeTab === "cadences" },
     { id: "instagram", icon: Instagram, label: "Instagram", active: activeTab === "instagram" },
-    { id: "integration", icon: Webhook, label: "Integração", active: activeTab === "integration" },
-    { id: "n8n", icon: Zap, label: "Automação n8n", active: activeTab === "n8n" },
+    { id: "webhooks", icon: Webhook, label: "Webhooks", active: activeTab === "webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads", active: activeTab === "distribution" },
     { id: "test-distribution", icon: Play, label: "Testar Distribuição", active: activeTab === "test-distribution" },
     { id: "sources", icon: MapPin, label: "Origens de Leads", active: activeTab === "sources" },
@@ -119,10 +118,14 @@ export function Settings() {
         return <FollowupCadencesManagement />;
       case "instagram":
         return <InstagramSettings />;
-      case "integration":
-        return <WebhookIntegration />;
-      case "n8n":
-        return <N8nIntegration />;
+      case "webhooks":
+        return (
+          <div className="space-y-8">
+            <WebhookIntegration />
+            <Separator />
+            <N8nIntegration />
+          </div>
+        );
       case "distribution":
         return <LeadDistribution />;
       case "test-distribution":
