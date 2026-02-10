@@ -360,22 +360,56 @@ async function tryAutoAssignThread(
       return;
     }
 
-    // 4) Pick next assignee (round-robin)
-    const { data: routingState } = await supabase
-      .from("whatsapp_routing_state")
-      .select("last_assigned_user_id")
-      .eq("organization_id", orgId)
-      .maybeSingle();
+    // 4) Pick next assignee based on mode
+    let nextProfile: any = null;
+    const mode = settings.mode || "round_robin";
 
-    const lastAssigned = routingState?.last_assigned_user_id || null;
-    let nextProfile: any = profiles[0]; // default to first
+    if (mode === "least_loaded") {
+      // Count open/pending threads per eligible profile
+      const profileIds = profiles.map((p: any) => p.id);
+      const { data: threads } = await supabase
+        .from("whatsapp_threads")
+        .select("assigned_user_id")
+        .eq("organization_id", orgId)
+        .in("assigned_user_id", profileIds)
+        .in("status", ["open", "pending"]);
 
-    if (lastAssigned) {
-      const lastIndex = profiles.findIndex((p: any) => p.id === lastAssigned);
-      if (lastIndex >= 0 && lastIndex < profiles.length - 1) {
-        nextProfile = profiles[lastIndex + 1];
+      const loadMap: Record<string, number> = {};
+      for (const p of profiles) loadMap[p.id] = 0;
+      if (threads) {
+        for (const t of threads) {
+          if (t.assigned_user_id && loadMap[t.assigned_user_id] !== undefined) {
+            loadMap[t.assigned_user_id]++;
+          }
+        }
       }
-      // else wrap around to first (already default)
+
+      // Sort by load ascending, then by name for deterministic tiebreak
+      const sorted = [...profiles].sort((a: any, b: any) => {
+        const diff = (loadMap[a.id] || 0) - (loadMap[b.id] || 0);
+        if (diff !== 0) return diff;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+
+      nextProfile = sorted[0];
+      console.log(`[evolution-webhook] least_loaded picks ${nextProfile.name} (load=${loadMap[nextProfile.id]})`);
+    } else {
+      // round_robin (default)
+      const { data: routingState } = await supabase
+        .from("whatsapp_routing_state")
+        .select("last_assigned_user_id")
+        .eq("organization_id", orgId)
+        .maybeSingle();
+
+      const lastAssigned = routingState?.last_assigned_user_id || null;
+      nextProfile = profiles[0];
+
+      if (lastAssigned) {
+        const lastIndex = profiles.findIndex((p: any) => p.id === lastAssigned);
+        if (lastIndex >= 0 && lastIndex < profiles.length - 1) {
+          nextProfile = profiles[lastIndex + 1];
+        }
+      }
     }
 
     // 5) Assign the thread
@@ -387,7 +421,7 @@ async function tryAutoAssignThread(
       })
       .eq("id", threadId);
 
-    // 6) Update routing state
+    // 6) Update routing state (used by round-robin, but kept in sync for both)
     await supabase
       .from("whatsapp_routing_state")
       .upsert({
@@ -396,7 +430,7 @@ async function tryAutoAssignThread(
         updated_at: now,
       }, { onConflict: "organization_id" });
 
-    console.log(`[evolution-webhook] Auto-assigned thread ${threadId} to ${nextProfile.name} (${nextProfile.id})`);
+    console.log(`[evolution-webhook] Auto-assigned thread ${threadId} to ${nextProfile.name} (${nextProfile.id}) via ${mode}`);
   } catch (err) {
     console.error("[evolution-webhook] Error in auto-assign:", err);
   }
