@@ -315,6 +315,7 @@ export default function InboxPage() {
     canSendMessage,
     createLeadFromConversation,
     toggleAiMode,
+    refreshThreads,
   } = useInbox();
 
   const navigate = useNavigate();
@@ -626,6 +627,7 @@ export default function InboxPage() {
                 organizationId={profile.organization_id}
                 aiMode={selectedThread.ai_mode}
                 onUseSuggestion={(text) => setMessageText(text)}
+                onStageApplied={() => refreshThreads()}
               />
             )}
 

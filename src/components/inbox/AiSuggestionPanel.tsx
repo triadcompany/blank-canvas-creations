@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Send, X, Loader2, Lightbulb } from 'lucide-react';
+import { Sparkles, Send, X, Loader2, Lightbulb, ArrowRight, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,16 @@ interface AiSuggestion {
   summary: string;
   suggested_reply: string;
   suggested_actions: string[];
+  suggested_action_type: string | null;
+  suggested_pipeline_id: string | null;
+  suggested_stage_id: string | null;
+  suggested_stage_name: string | null;
+  suggested_reason: string | null;
   confidence: number;
+  current_stage_name: string | null;
+  current_stage_id: string | null;
+  lead_id: string | null;
+  ai_interaction_id: string | null;
 }
 
 interface AiSuggestionPanelProps {
@@ -20,25 +29,21 @@ interface AiSuggestionPanelProps {
   organizationId: string;
   aiMode: string;
   onUseSuggestion: (text: string) => void;
+  onStageApplied?: () => void;
 }
 
 const intentLabels: Record<string, string> = {
   interest: 'Interesse',
+  purchase_interest: 'Interesse de compra',
   question: 'Pergunta',
   objection: 'Objeção',
   complaint: 'Reclamação',
   closing: 'Fechamento',
   greeting: 'Saudação',
+  no_interest: 'Sem interesse',
+  scheduling: 'Agendamento',
   other: 'Outro',
   unknown: 'Indefinido',
-};
-
-const actionLabels: Record<string, string> = {
-  'move_stage:Andamento': 'Mover para Andamento',
-  'move_stage:Qualificado': 'Mover para Qualificado',
-  'move_stage:Proposta': 'Mover para Proposta',
-  qualify_lead: 'Qualificar lead',
-  schedule_followup: 'Agendar follow-up',
 };
 
 export function AiSuggestionPanel({
@@ -46,11 +51,14 @@ export function AiSuggestionPanel({
   organizationId,
   aiMode,
   onUseSuggestion,
+  onStageApplied,
 }: AiSuggestionPanelProps) {
   const [loading, setLoading] = useState(false);
   const [suggestion, setSuggestion] = useState<AiSuggestion | null>(null);
   const [editedReply, setEditedReply] = useState('');
   const [showPanel, setShowPanel] = useState(false);
+  const [applyingStage, setApplyingStage] = useState(false);
+  const [stageApplied, setStageApplied] = useState(false);
 
   if (aiMode === 'off') return null;
 
@@ -58,6 +66,7 @@ export function AiSuggestionPanel({
     setLoading(true);
     setSuggestion(null);
     setShowPanel(true);
+    setStageApplied(false);
 
     try {
       const res = await supabase.functions.invoke('ai-analyze-conversation', {
@@ -90,11 +99,54 @@ export function AiSuggestionPanel({
   const handleClose = () => {
     setShowPanel(false);
     setSuggestion(null);
+    setStageApplied(false);
+  };
+
+  const handleApplyStage = async () => {
+    if (!suggestion?.suggested_stage_id || !suggestion?.lead_id) return;
+    setApplyingStage(true);
+
+    try {
+      // Update the lead's stage_id directly
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({ stage_id: suggestion.suggested_stage_id } as any)
+        .eq('id', suggestion.lead_id);
+
+      if (updateError) throw updateError;
+
+      // Log the action to ai_stage_actions
+      await supabase.from('ai_stage_actions' as any).insert({
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        lead_id: suggestion.lead_id,
+        from_stage_id: suggestion.current_stage_id,
+        from_stage_name: suggestion.current_stage_name,
+        to_stage_id: suggestion.suggested_stage_id,
+        to_stage_name: suggestion.suggested_stage_name,
+        suggested_pipeline_id: suggestion.suggested_pipeline_id,
+        suggested_reason: suggestion.suggested_reason,
+        suggested_action_type: suggestion.suggested_action_type,
+        ai_interaction_id: suggestion.ai_interaction_id,
+        applied_by: (await supabase.auth.getUser()).data.user?.id,
+        applied_at: new Date().toISOString(),
+        status: 'applied',
+      });
+
+      setStageApplied(true);
+      toast.success(`Etapa atualizada para "${suggestion.suggested_stage_name}"`);
+      onStageApplied?.();
+    } catch (err: any) {
+      console.error('Error applying stage:', err);
+      toast.error(err.message || 'Erro ao aplicar etapa');
+    } finally {
+      setApplyingStage(false);
+    }
   };
 
   return (
     <>
-      {/* Trigger button - shown when panel is closed */}
+      {/* Trigger button */}
       {!showPanel && (
         <Button
           variant="ghost"
@@ -160,16 +212,75 @@ export function AiSuggestionPanel({
                 placeholder="Edite a sugestão antes de usar..."
               />
 
-              {/* Suggested actions (read-only) */}
-              {suggestion.suggested_actions.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] text-muted-foreground">Ações sugeridas:</span>
-                  {suggestion.suggested_actions.map((action, i) => (
-                    <Badge key={i} variant="outline" className="text-[10px] h-5 bg-background">
-                      {actionLabels[action] || action}
+              {/* Stage suggestion section */}
+              {suggestion.suggested_stage_id && suggestion.lead_id && (
+                <div className="border border-border rounded-lg p-3 bg-background space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[10px] h-5 bg-primary/5 text-primary border-primary/20">
+                      <ArrowRight className="h-3 w-3 mr-1" />
+                      Sugestão de etapa
                     </Badge>
-                  ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Mover para:</span>
+                    <span className="font-medium">
+                      {suggestion.current_stage_name && (
+                        <>
+                          <span className="text-muted-foreground">{suggestion.current_stage_name}</span>
+                          <ArrowRight className="inline h-3 w-3 mx-1 text-muted-foreground" />
+                        </>
+                      )}
+                      <span className="text-primary font-semibold">{suggestion.suggested_stage_name}</span>
+                    </span>
+                  </div>
+
+                  {suggestion.suggested_reason && (
+                    <p className="text-[11px] text-muted-foreground">
+                      💡 {suggestion.suggested_reason}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    {stageApplied ? (
+                      <Badge variant="secondary" className="text-[10px] h-6 bg-green-500/10 text-green-700">
+                        <Check className="h-3 w-3 mr-1" />
+                        Aplicada
+                      </Badge>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={handleApplyStage}
+                          disabled={applyingStage}
+                          className="h-7 text-xs gap-1"
+                        >
+                          {applyingStage ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3" />
+                          )}
+                          Aplicar etapa
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground"
+                          onClick={() => setSuggestion(s => s ? { ...s, suggested_stage_id: null } : null)}
+                        >
+                          Ignorar
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
+              )}
+
+              {/* Stage reason when no suggestion */}
+              {!suggestion.suggested_stage_id && suggestion.suggested_reason && (
+                <p className="text-[10px] text-muted-foreground italic">
+                  ℹ️ Etapa: {suggestion.suggested_reason}
+                </p>
               )}
 
               {/* Action buttons */}

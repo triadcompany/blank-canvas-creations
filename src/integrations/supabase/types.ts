@@ -92,6 +92,85 @@ export type Database = {
           },
         ]
       }
+      ai_stage_actions: {
+        Row: {
+          ai_interaction_id: string | null
+          applied_at: string | null
+          applied_by: string | null
+          conversation_id: string
+          created_at: string
+          from_stage_id: string | null
+          from_stage_name: string | null
+          id: string
+          lead_id: string | null
+          organization_id: string
+          status: string
+          suggested_action_type: string | null
+          suggested_pipeline_id: string | null
+          suggested_reason: string | null
+          to_stage_id: string | null
+          to_stage_name: string | null
+        }
+        Insert: {
+          ai_interaction_id?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          conversation_id: string
+          created_at?: string
+          from_stage_id?: string | null
+          from_stage_name?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id: string
+          status?: string
+          suggested_action_type?: string | null
+          suggested_pipeline_id?: string | null
+          suggested_reason?: string | null
+          to_stage_id?: string | null
+          to_stage_name?: string | null
+        }
+        Update: {
+          ai_interaction_id?: string | null
+          applied_at?: string | null
+          applied_by?: string | null
+          conversation_id?: string
+          created_at?: string
+          from_stage_id?: string | null
+          from_stage_name?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id?: string
+          status?: string
+          suggested_action_type?: string | null
+          suggested_pipeline_id?: string | null
+          suggested_reason?: string | null
+          to_stage_id?: string | null
+          to_stage_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_stage_actions_ai_interaction_id_fkey"
+            columns: ["ai_interaction_id"]
+            isOneToOne: false
+            referencedRelation: "ai_interactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_stage_actions_applied_by_fkey"
+            columns: ["applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_stage_actions_applied_by_fkey"
+            columns: ["applied_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           anotacoes: string | null
