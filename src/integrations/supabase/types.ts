@@ -1473,6 +1473,7 @@ export type Database = {
       }
       evolution_webhook_logs: {
         Row: {
+          auth_status: string | null
           created_at: string
           detected_organization_id: string | null
           error_message: string | null
@@ -1484,6 +1485,7 @@ export type Database = {
           remote_jid: string | null
         }
         Insert: {
+          auth_status?: string | null
           created_at?: string
           detected_organization_id?: string | null
           error_message?: string | null
@@ -1495,6 +1497,7 @@ export type Database = {
           remote_jid?: string | null
         }
         Update: {
+          auth_status?: string | null
           created_at?: string
           detected_organization_id?: string | null
           error_message?: string | null
@@ -4923,6 +4926,8 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean | null
+          last_webhook_error: string | null
+          last_webhook_event_at: string | null
           n8n_webhook_evolution_notify: string | null
           organization_id: string
           phone_number: string | null
@@ -4942,6 +4947,8 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean | null
+          last_webhook_error?: string | null
+          last_webhook_event_at?: string | null
           n8n_webhook_evolution_notify?: string | null
           organization_id: string
           phone_number?: string | null
@@ -4961,6 +4968,8 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean | null
+          last_webhook_error?: string | null
+          last_webhook_event_at?: string | null
           n8n_webhook_evolution_notify?: string | null
           organization_id?: string
           phone_number?: string | null

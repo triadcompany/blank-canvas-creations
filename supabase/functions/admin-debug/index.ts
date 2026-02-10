@@ -25,8 +25,6 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
-
-    // All actions require org_id
     const body = req.method === "POST" ? await req.json() : {};
     const orgId = url.searchParams.get("org_id") || body.organization_id;
 
@@ -43,22 +41,42 @@ serve(async (req) => {
         profileId
           ? supabase.from("profiles").select("id, name, email, organization_id, clerk_user_id").eq("id", profileId).maybeSingle()
           : supabase.from("profiles").select("id, name, email, organization_id, clerk_user_id").eq("organization_id", orgId).limit(5),
-        supabase.from("whatsapp_integrations").select("id, instance_name, status, phone_number, connected_at, organization_id").eq("organization_id", orgId),
+        supabase.from("whatsapp_integrations")
+          .select("id, instance_name, status, phone_number, connected_at, organization_id, webhook_token, last_webhook_event_at, last_webhook_error")
+          .eq("organization_id", orgId),
       ]);
 
       const roleResult = await supabase.from("user_roles").select("user_id, role, organization_id").eq("organization_id", orgId);
+
+      // Build webhook diagnostics
+      const integrations = integrationResult.data || [];
+      const webhookDiagnostics = integrations.map((i: any) => {
+        let webhook_status = "NOT_REGISTERED";
+        if (i.webhook_token) {
+          webhook_status = i.last_webhook_error ? "INVALID_TOKEN" : "OK";
+        }
+        return {
+          instance_name: i.instance_name,
+          webhook_status,
+          has_token: !!i.webhook_token,
+          last_webhook_event_at: i.last_webhook_event_at,
+          last_webhook_error: i.last_webhook_error,
+        };
+      });
 
       return respond({
         organization: orgResult.data,
         profiles: profileId ? (profileResult.data ? [profileResult.data] : []) : (profileResult.data || []),
         roles: roleResult.data || [],
-        whatsapp_integrations: integrationResult.data || [],
+        whatsapp_integrations: integrations,
+        webhook_diagnostics: webhookDiagnostics,
         diagnostics: {
           org_exists: !!orgResult.data,
           org_active: orgResult.data?.is_active ?? false,
           profiles_count: profileId ? (profileResult.data ? 1 : 0) : (profileResult.data?.length || 0),
-          integrations_count: integrationResult.data?.length || 0,
-          has_connected_whatsapp: (integrationResult.data || []).some((i: any) => i.status === "connected"),
+          integrations_count: integrations.length,
+          has_connected_whatsapp: integrations.some((i: any) => i.status === "connected"),
+          has_webhook_token: integrations.some((i: any) => !!i.webhook_token),
         },
       });
     }
@@ -74,7 +92,9 @@ serve(async (req) => {
           .eq("organization_id", orgId)
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(5),
-        supabase.from("whatsapp_integrations").select("instance_name, status, organization_id").eq("organization_id", orgId),
+        supabase.from("whatsapp_integrations")
+          .select("instance_name, status, organization_id, webhook_token, last_webhook_event_at, last_webhook_error")
+          .eq("organization_id", orgId),
       ]);
 
       return respond({
@@ -90,9 +110,14 @@ serve(async (req) => {
           instanceName: c.instance_name,
           unreadCount: c.unread_count,
           createdAt: c.created_at,
-          organizationId: orgId,
         })),
-        registeredInstances: integrationResult.data || [],
+        registeredInstances: (integrationResult.data || []).map((i: any) => ({
+          instance_name: i.instance_name,
+          status: i.status,
+          webhook_status: i.webhook_token ? (i.last_webhook_error ? "INVALID_TOKEN" : "OK") : "NOT_REGISTERED",
+          last_webhook_event_at: i.last_webhook_event_at,
+          last_webhook_error: i.last_webhook_error,
+        })),
       });
     }
 
@@ -105,7 +130,6 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(20);
 
-      // Also get events where org was NOT detected (useful for debugging)
       const { data: unlinkedLogs } = await supabase
         .from("evolution_webhook_logs")
         .select("*")
@@ -121,6 +145,7 @@ serve(async (req) => {
           eventType: l.event_type,
           remoteJid: l.remote_jid,
           detectedOrganizationId: l.detected_organization_id,
+          authStatus: l.auth_status,
           processingResult: l.processing_result,
           errorMessage: l.error_message,
           createdAt: l.created_at,
@@ -130,6 +155,7 @@ serve(async (req) => {
           instanceName: l.instance_name,
           eventType: l.event_type,
           remoteJid: l.remote_jid,
+          authStatus: l.auth_status,
           errorMessage: l.error_message,
           createdAt: l.created_at,
         })),

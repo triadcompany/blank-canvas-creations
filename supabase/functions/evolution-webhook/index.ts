@@ -14,107 +14,172 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const respond = (body: Record<string, unknown>, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
   try {
-    // Optional webhook secret validation
-    if (webhookSecret) {
-      const url = new URL(req.url);
-      const tokenParam = url.searchParams.get("token");
-      const tokenHeader = req.headers.get("x-webhook-secret");
-      if (tokenParam !== webhookSecret && tokenHeader !== webhookSecret) {
-        console.warn("[evolution-webhook] Invalid webhook secret. Token param:", tokenParam ? "present" : "missing", "Header:", tokenHeader ? "present" : "missing");
-        console.warn("[evolution-webhook] HINT: Reconnect WhatsApp to fix the webhook URL with the correct token.");
-        // Log the rejected event for debugging
-        try {
-          const bodyText = await req.text();
-          const bodyPreview = bodyText.substring(0, 200);
-          console.warn("[evolution-webhook] Rejected payload preview:", bodyPreview);
-        } catch { /* ignore */ }
-        return respond({ ok: false, error: "unauthorized" }, 401);
-      }
-    }
+    // Clone request so we can read body multiple times
+    const bodyText = await req.text();
+    let parsedBody: any = {};
+    try { parsedBody = JSON.parse(bodyText); } catch { /* not JSON */ }
 
-    const body = await req.json();
-    console.log("[evolution-webhook] Event received:", JSON.stringify(body).substring(0, 500));
-
-    const event = body.event || body.action;
-    const instanceName = body.instance || body.instanceName;
+    const event = parsedBody.event || parsedBody.action || "unknown";
+    const instanceName = parsedBody.instance || parsedBody.instanceName || "unknown";
 
     // Extract remoteJid for logging
-    const msgData = body.data || {};
+    const msgData = parsedBody.data || {};
     const msgArray = Array.isArray(msgData) ? msgData : [msgData];
     const firstMsg = msgArray[0] || {};
     const remoteJid = firstMsg?.key?.remoteJid || firstMsg?.remoteJid || null;
 
-    // Find integration by instance name
+    // ──── PRE-AUTH LOGGING: Always log the event, even before token validation ────
+    const url = new URL(req.url);
+    const tokenParam = url.searchParams.get("token");
+    const tokenHeader = req.headers.get("x-webhook-secret");
+
+    // Find integration by instance name to get per-org webhook_token
     const { data: integration } = await supabase
       .from("whatsapp_integrations")
-      .select("id, organization_id, status")
+      .select("id, organization_id, status, webhook_token, instance_name")
       .eq("instance_name", instanceName)
       .maybeSingle();
 
-    if (!integration) {
-      console.log("[evolution-webhook] Unknown instance:", instanceName);
-      // Log unlinked event
-      await logWebhookEvent(supabase, {
-        instance_name: instanceName,
-        event_type: event,
-        remote_jid: remoteJid,
-        detected_organization_id: null,
-        processing_result: "unknown_instance",
-        error_message: `No whatsapp_integration found for instance: ${instanceName}`,
-        payload: { event, instanceName, remoteJid },
-      });
-      return respond({ ok: true, message: "unknown instance" });
+    const orgId = integration?.organization_id || null;
+    const expectedToken = integration?.webhook_token || null;
+
+    // ──── TOKEN VALIDATION (per-org token from DB) ────
+    let authStatus = "ok";
+    const globalSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+
+    if (expectedToken) {
+      // Per-org token validation (preferred)
+      if (tokenParam !== expectedToken && tokenHeader !== expectedToken) {
+        // Also accept global secret as fallback
+        if (globalSecret && (tokenParam === globalSecret || tokenHeader === globalSecret)) {
+          authStatus = "ok_global_fallback";
+        } else {
+          authStatus = tokenParam ? "invalid_token" : "missing_token";
+        }
+      }
+    } else if (globalSecret) {
+      // Legacy: global secret validation
+      if (tokenParam !== globalSecret && tokenHeader !== globalSecret) {
+        authStatus = tokenParam ? "invalid_token" : "missing_token";
+      }
     }
+    // If no token configured at all, allow (backward compat)
 
-    const orgId = integration.organization_id;
-
-    // Log every event for debugging
+    // Log EVERY event with auth status
     await logWebhookEvent(supabase, {
       instance_name: instanceName,
       event_type: event,
       remote_jid: remoteJid,
       detected_organization_id: orgId,
-      processing_result: "processing",
-      payload: { event, instanceName, remoteJid, hasData: !!body.data },
+      processing_result: authStatus === "ok" || authStatus === "ok_global_fallback" ? "processing" : "auth_rejected",
+      error_message: authStatus !== "ok" && authStatus !== "ok_global_fallback" ? `Auth failed: ${authStatus}` : null,
+      auth_status: authStatus,
+      payload: { event, instanceName, remoteJid, hasData: !!parsedBody.data },
     });
+
+    // Update diagnostic fields on integration
+    if (integration) {
+      const diagUpdate: Record<string, unknown> = {
+        last_webhook_event_at: new Date().toISOString(),
+      };
+      if (authStatus !== "ok" && authStatus !== "ok_global_fallback") {
+        diagUpdate.last_webhook_error = `Auth failed: ${authStatus} at ${new Date().toISOString()}`;
+      } else {
+        diagUpdate.last_webhook_error = null;
+      }
+      await supabase.from("whatsapp_integrations").update(diagUpdate).eq("id", integration.id);
+    }
+
+    // If auth failed, attempt auto-repair then reject
+    if (authStatus !== "ok" && authStatus !== "ok_global_fallback") {
+      console.warn(`[evolution-webhook] Auth failed: ${authStatus} for instance=${instanceName}`);
+
+      // ──── AUTO-REPAIR: Re-register webhook with correct token ────
+      if (integration && expectedToken) {
+        await attemptWebhookAutoRepair(supabaseUrl, integration.instance_name, expectedToken);
+      }
+
+      return respond({ ok: false, error: "unauthorized", auth_status: authStatus }, 401);
+    }
+
+    if (!integration) {
+      console.log("[evolution-webhook] Unknown instance:", instanceName);
+      return respond({ ok: true, message: "unknown instance" });
+    }
 
     // ── CONNECTION UPDATE ──
     if (event === "CONNECTION_UPDATE" || event === "connection.update") {
-      return await handleConnectionUpdate(supabase, body, integration);
+      return await handleConnectionUpdate(supabase, parsedBody, integration);
     }
 
     // ── QR CODE UPDATE ──
     if (event === "QRCODE_UPDATED" || event === "qrcode.updated") {
-      return await handleQrCodeUpdate(supabase, body, integration);
+      return await handleQrCodeUpdate(supabase, parsedBody, integration);
     }
 
     // ── MESSAGES (inbound + outbound) ──
     if (event === "MESSAGES_UPSERT" || event === "messages.upsert") {
-      return await handleMessages(supabase, body, orgId, instanceName);
+      return await handleMessages(supabase, parsedBody, orgId!, instanceName);
     }
 
     // ── MESSAGE STATUS UPDATES ──
     if (event === "MESSAGES_UPDATE" || event === "messages.update") {
-      return await handleMessageStatusUpdate(supabase, body, orgId);
+      return await handleMessageStatusUpdate(supabase, parsedBody, orgId!);
     }
 
-    // Ignore all other events
     return respond({ ok: true });
   } catch (err) {
     console.error("[evolution-webhook] Error:", err);
     return respond({ ok: true });
   }
 });
+
+// ── AUTO-REPAIR: Re-register webhook URL in Evolution with correct per-org token ──
+async function attemptWebhookAutoRepair(supabaseUrl: string, instanceName: string, token: string) {
+  const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+  const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+  if (!evolutionBaseUrl || !evolutionApiKey) {
+    console.warn("[evolution-webhook] Cannot auto-repair: missing EVOLUTION_BASE_URL or EVOLUTION_API_KEY");
+    return;
+  }
+
+  const correctUrl = `${supabaseUrl}/functions/v1/evolution-webhook?token=${encodeURIComponent(token)}`;
+  console.log(`[evolution-webhook] AUTO-REPAIR: Updating webhook for instance=${instanceName}`);
+
+  const endpoints = [
+    { url: `${evolutionBaseUrl}/webhook/set/${instanceName}`, method: "POST" },
+    { url: `${evolutionBaseUrl}/instance/update/${instanceName}`, method: "PUT" },
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep.url, {
+        method: ep.method,
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({
+          webhook: {
+            url: correctUrl,
+            enabled: true,
+            webhookByEvents: true,
+            events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
+          },
+        }),
+      });
+      const text = await res.text();
+      console.log(`[evolution-webhook] AUTO-REPAIR ${ep.method}: HTTP ${res.status} | ${text.substring(0, 200)}`);
+      if (res.ok) {
+        console.log("[evolution-webhook] AUTO-REPAIR: Webhook URL fixed! Next event should succeed.");
+        return;
+      }
+    } catch (err) {
+      console.error(`[evolution-webhook] AUTO-REPAIR error (${ep.method}):`, err);
+    }
+  }
+  console.warn("[evolution-webhook] AUTO-REPAIR: Could not update webhook via any endpoint");
+}
 
 // ── CONNECTION UPDATE handler ──
 async function handleConnectionUpdate(supabase: any, body: any, integration: any) {
@@ -183,30 +248,18 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
   for (const msg of msgArray) {
     const isFromMe = msg.key?.fromMe === true;
-
-    // Extract phone from remoteJid
-    const phone = (msg.key?.remoteJid || "")
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "");
-
+    const phone = (msg.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "");
     if (!phone) continue;
 
-    // Extract text
-    const text =
-      msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text || null;
-
-    // For non-text: create a placeholder
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || null;
     const mediaType = msg.message?.imageMessage ? "imagem"
       : msg.message?.videoMessage ? "vídeo"
       : msg.message?.audioMessage ? "áudio"
       : msg.message?.documentMessage ? "documento"
       : msg.message?.stickerMessage ? "sticker"
       : null;
-
     const displayBody = text || (mediaType ? `📎 (${mediaType})` : null);
 
-    // Skip if no content at all
     if (!displayBody) {
       console.log(`[evolution-webhook] Empty message from ${phone} — ignored`);
       continue;
@@ -214,7 +267,6 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
-    // Extract contact name from multiple possible fields
     const pushName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || "";
     const messagePreview = displayBody.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
@@ -238,13 +290,9 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
     if (existingConv) {
       conversationId = existingConv.id;
-      // Only increment unread for inbound
       if (!isFromMe) {
         convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
       }
-      // Update contact_name from WhatsApp if:
-      // - we have a pushName AND
-      // - name is empty, equals the phone, or was previously set by whatsapp (not manually edited)
       if (pushName && pushName !== normalizedPhone) {
         const currentName = existingConv.contact_name || "";
         const nameSource = existingConv.contact_name_source || "whatsapp";
@@ -254,16 +302,12 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           convUpdate.contact_name_source = "whatsapp";
         }
       }
-      await supabase
-        .from("conversations")
-        .update(convUpdate)
-        .eq("id", conversationId);
+      await supabase.from("conversations").update(convUpdate).eq("id", conversationId);
 
-      // Fetch profile picture with 24h cache
       if (!isFromMe) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
-        const needsRefresh = !existingConv.profile_picture_url || 
-          !picUpdatedAt || 
+        const needsRefresh = !existingConv.profile_picture_url ||
+          !picUpdatedAt ||
           (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
         if (needsRefresh) {
           fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
@@ -289,13 +333,12 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       conversationId = newConv?.id || null;
       console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
 
-      // Fetch profile picture for new conversation
       if (conversationId && !isFromMe) {
         fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
       }
     }
 
-    // ── 2) Save message to messages table (idempotent by external ID) ──
+    // ── 2) Save message ──
     if (conversationId && externalMessageId) {
       const { data: existingMsg } = await supabase
         .from("messages")
@@ -345,11 +388,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         if (pushName && !existingThread.contact_name) {
           threadUpdate.contact_name = pushName;
         }
-
-        await supabase
-          .from("whatsapp_threads")
-          .update(threadUpdate)
-          .eq("id", threadId);
+        await supabase.from("whatsapp_threads").update(threadUpdate).eq("id", threadId);
       } else {
         const { data: newThread } = await supabase
           .from("whatsapp_threads")
@@ -373,7 +412,6 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
       }
 
-      // Save to legacy whatsapp_messages
       await supabase.from("whatsapp_messages").insert({
         organization_id: orgId,
         instance_name: instanceName,
@@ -388,14 +426,13 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} conv=${conversationId} thread=${threadId}`);
 
-      // ── 4) Lead matching & engagement (inbound only) ──
+      // ── 4) Lead matching & engagement ──
       const phoneVariants = [
         normalizedPhone,
         normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
       ];
 
       let leadId: string | null = null;
-
       for (const variant of phoneVariants) {
         const { data: lead } = await supabase
           .from("leads")
@@ -403,42 +440,32 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           .eq("organization_id", orgId)
           .or(`phone.eq.${variant},whatsapp.eq.${variant}`)
           .maybeSingle();
-
-        if (lead) {
-          leadId = lead.id;
-          break;
-        }
+        if (lead) { leadId = lead.id; break; }
       }
 
       if (leadId) {
-        await supabase
-          .from("leads")
-          .update({
-            last_reply_at: now,
-            last_inbound_message_at: now,
-            last_inbound_message_text: (text || "").substring(0, 500),
-            updated_at: now,
-          })
-          .eq("id", leadId);
+        await supabase.from("leads").update({
+          last_reply_at: now,
+          last_inbound_message_at: now,
+          last_inbound_message_text: (text || "").substring(0, 500),
+          updated_at: now,
+        }).eq("id", leadId);
 
         await wakePausedRuns(supabase, orgId, leadId, now);
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       } else if (containsAdMarker(text || "")) {
-        await supabase
-          .from("leads")
-          .insert({
-            organization_id: orgId,
-            name: pushName || "Lead WhatsApp",
-            phone: normalizedPhone,
-            whatsapp: normalizedPhone,
-            source: "Meta Ads",
-            canal: "WhatsApp",
-            status: "novo",
-            last_reply_at: now,
-            last_inbound_message_at: now,
-            last_inbound_message_text: (text || "").substring(0, 500),
-          });
-
+        await supabase.from("leads").insert({
+          organization_id: orgId,
+          name: pushName || "Lead WhatsApp",
+          phone: normalizedPhone,
+          whatsapp: normalizedPhone,
+          source: "Meta Ads",
+          canal: "WhatsApp",
+          status: "novo",
+          last_reply_at: now,
+          last_inbound_message_at: now,
+          last_inbound_message_text: (text || "").substring(0, 500),
+        });
         console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
       }
     } else {
@@ -446,36 +473,22 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
     }
   }
 
-  // After processing all messages, invoke the worker
   await invokeWorker();
-
   return respond({ ok: true });
 }
 
 // ── Helper: Fetch profile picture from Evolution API ──
-async function fetchAndSaveProfilePicture(
-  supabase: any,
-  instanceName: string,
-  phone: string,
-  conversationId: string
-) {
+async function fetchAndSaveProfilePicture(supabase: any, instanceName: string, phone: string, conversationId: string) {
   try {
     const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
     const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
-
     if (!evolutionBaseUrl || !evolutionApiKey) return;
 
-    const res = await fetch(
-      `${evolutionBaseUrl}/chat/fetchProfilePictureUrl/${instanceName}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: evolutionApiKey,
-        },
-        body: JSON.stringify({ number: phone }),
-      }
-    );
+    const res = await fetch(`${evolutionBaseUrl}/chat/fetchProfilePictureUrl/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+      body: JSON.stringify({ number: phone }),
+    });
 
     if (!res.ok) {
       console.log(`[evolution-webhook] Profile picture fetch failed for ${phone}: ${res.status}`);
@@ -485,24 +498,14 @@ async function fetchAndSaveProfilePicture(
     const data = await res.json();
     const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
 
-    const updateData: Record<string, unknown> = {
-      profile_picture_updated_at: new Date().toISOString(),
-    };
-    if (pictureUrl) {
-      updateData.profile_picture_url = pictureUrl;
-    }
-    await supabase
-      .from("conversations")
-      .update(updateData)
-      .eq("id", conversationId);
+    const updateData: Record<string, unknown> = { profile_picture_updated_at: new Date().toISOString() };
+    if (pictureUrl) updateData.profile_picture_url = pictureUrl;
+    await supabase.from("conversations").update(updateData).eq("id", conversationId);
 
     if (pictureUrl) {
       console.log(`[evolution-webhook] Profile picture saved for ${phone}`);
-    } else {
-      console.log(`[evolution-webhook] No profile picture available for ${phone}, timestamp updated`);
     }
   } catch (err) {
-    // Non-critical — don't fail the webhook
     console.log(`[evolution-webhook] Profile picture fetch error for ${phone}:`, err);
   }
 }
@@ -510,10 +513,7 @@ async function fetchAndSaveProfilePicture(
 // ── Helper: Check ad marker ──
 function containsAdMarker(text: string): boolean {
   if (!text) return false;
-  const normalized = text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return normalized.includes("anuncio");
 }
 
@@ -529,14 +529,15 @@ function respond(body: Record<string, unknown>, status = 200) {
   });
 }
 
-// ── Helper: Log webhook event for debugging ──
+// ── Helper: Log webhook event ──
 async function logWebhookEvent(supabase: any, data: {
   instance_name?: string;
   event_type?: string;
   remote_jid?: string;
   detected_organization_id?: string | null;
   processing_result?: string;
-  error_message?: string;
+  error_message?: string | null;
+  auth_status?: string;
   payload?: any;
 }) {
   try {
@@ -547,6 +548,7 @@ async function logWebhookEvent(supabase: any, data: {
       detected_organization_id: data.detected_organization_id || null,
       processing_result: data.processing_result || null,
       error_message: data.error_message || null,
+      auth_status: data.auth_status || null,
       payload: data.payload || null,
     });
   } catch (err) {
@@ -555,12 +557,7 @@ async function logWebhookEvent(supabase: any, data: {
 }
 
 // ── Helper: Wake paused automation runs ──
-async function wakePausedRuns(
-  supabase: any,
-  orgId: string,
-  leadId: string,
-  replyTimestamp: string
-) {
+async function wakePausedRuns(supabase: any, orgId: string, leadId: string, replyTimestamp: string) {
   try {
     const { data: waitJobs } = await supabase
       .from("automation_jobs")
@@ -575,10 +572,7 @@ async function wakePausedRuns(
     console.log(`[evolution-webhook] Waking ${waitJobs.length} paused run(s) for lead ${leadId}`);
 
     for (const job of waitJobs) {
-      await supabase
-        .from("automation_jobs")
-        .update({ status: "done", last_error: null })
-        .eq("id", job.id);
+      await supabase.from("automation_jobs").update({ status: "done", last_error: null }).eq("id", job.id);
 
       const { data: flow } = await supabase
         .from("automation_flows")
@@ -593,14 +587,9 @@ async function wakePausedRuns(
       const nodes: any[] = flow.nodes || [];
       const edges: any[] = flow.edges || [];
 
-      const repliedEdge = edges.find(
-        (e: any) => e.source === job.node_id && e.sourceHandle === "replied"
-      );
+      const repliedEdge = edges.find((e: any) => e.source === job.node_id && e.sourceHandle === "replied");
 
-      await supabase
-        .from("automation_runs")
-        .update({ status: "running" })
-        .eq("id", job.run_id);
+      await supabase.from("automation_runs").update({ status: "running" }).eq("id", job.run_id);
 
       if (repliedEdge) {
         const nextNode = nodes.find((n: any) => n.id === repliedEdge.target);
@@ -611,10 +600,7 @@ async function wakePausedRuns(
             run_id: job.run_id,
             node_id: nextNode.id,
             job_type: nextNode.type || "action",
-            payload: {
-              node_config: nextNode.data?.config || {},
-              node_label: nextNode.data?.label || "",
-            },
+            payload: { node_config: nextNode.data?.config || {}, node_label: nextNode.data?.label || "" },
             scheduled_for: new Date().toISOString(),
             status: "pending",
             attempts: 0,
@@ -633,9 +619,7 @@ async function wakePausedRuns(
       });
     }
 
-    if (waitJobs.length > 0) {
-      await invokeWorker();
-    }
+    if (waitJobs.length > 0) await invokeWorker();
   } catch (err) {
     console.error("[evolution-webhook] Error waking paused runs:", err);
   }
@@ -648,10 +632,7 @@ async function invokeWorker() {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const res = await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceKey}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
       body: JSON.stringify({}),
     });
     const data = await res.json();
