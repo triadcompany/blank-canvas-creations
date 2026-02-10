@@ -872,6 +872,7 @@ export type Database = {
           instance_name: string
           last_message_at: string | null
           last_message_preview: string | null
+          lead_id: string | null
           organization_id: string
           profile_picture_updated_at: string | null
           profile_picture_url: string | null
@@ -888,6 +889,7 @@ export type Database = {
           instance_name: string
           last_message_at?: string | null
           last_message_preview?: string | null
+          lead_id?: string | null
           organization_id: string
           profile_picture_updated_at?: string | null
           profile_picture_url?: string | null
@@ -904,6 +906,7 @@ export type Database = {
           instance_name?: string
           last_message_at?: string | null
           last_message_preview?: string | null
+          lead_id?: string | null
           organization_id?: string
           profile_picture_updated_at?: string | null
           profile_picture_url?: string | null
@@ -922,6 +925,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {

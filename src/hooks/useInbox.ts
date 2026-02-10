@@ -18,6 +18,8 @@ export interface InboxThread {
   created_at: string;
   profile_picture_url: string | null;
   profile_picture_updated_at: string | null;
+  lead_id: string | null;
+  lead_stage_name?: string | null;
 }
 
 export interface InboxMessage {
@@ -50,7 +52,6 @@ export function useInbox() {
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   const orgId = profile?.organization_id;
-  // Use profile.id (UUID) for assignment — profile.user_id is null for Clerk users
   const myProfileId = profile?.id;
 
   // Fetch org members for assignment dropdown
@@ -73,7 +74,7 @@ export function useInbox() {
     fetchOrgMembers();
   }, [fetchOrgMembers]);
 
-  // Fetch conversations
+  // Fetch conversations with lead info
   const fetchThreads = useCallback(async () => {
     if (!orgId) return;
     setLoadingThreads(true);
@@ -81,7 +82,7 @@ export function useInbox() {
     try {
       let query = supabase
         .from('conversations')
-        .select('*')
+        .select('*, lead:leads!lead_id(id, stage_id, stage:pipeline_stages!stage_id(name))')
         .eq('organization_id', orgId)
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
@@ -97,7 +98,14 @@ export function useInbox() {
 
       const { data, error } = await query.limit(100);
       if (error) throw error;
-      setThreads((data as any[]) || []);
+
+      const mapped = (data || []).map((row: any) => ({
+        ...row,
+        lead_id: row.lead_id || null,
+        lead_stage_name: row.lead?.stage?.name || null,
+        lead: undefined, // remove nested object from thread
+      }));
+      setThreads(mapped);
     } catch (err: any) {
       console.error('Error fetching conversations:', err);
       toast.error('Erro ao carregar conversas');
@@ -256,11 +264,10 @@ export function useInbox() {
     }
   }, [orgId, selectedThreadId, threads, fetchMessages, fetchThreads]);
 
-  // Assign conversation — uses profile.id (UUID)
+  // Assign conversation
   const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
     if (!orgId) return;
 
-    // Optimistic update
     setThreads(prev =>
       prev.map(t => t.id === threadId
         ? { ...t, assigned_to: profileId, assigned_at: profileId ? new Date().toISOString() : null }
@@ -289,10 +296,95 @@ export function useInbox() {
     } catch (err: any) {
       console.error('[Inbox] Assignment failed:', err);
       toast.error(err?.message || 'Erro ao atribuir conversa');
-      // Revert on error
       await fetchThreads();
     }
   }, [orgId, fetchThreads]);
+
+  // Create lead from conversation and link them
+  const createLeadFromConversation = useCallback(async (
+    conversationId: string,
+    leadData: {
+      name: string;
+      phone: string;
+      email?: string;
+      seller_id: string;
+      source?: string;
+      interest?: string;
+      observations?: string;
+      valor_negocio?: number;
+      servico?: string;
+      cidade?: string;
+      estado?: string;
+      stage_id: string;
+    }
+  ): Promise<string | null> => {
+    if (!orgId || !profile) return null;
+
+    try {
+      // 1. Create the lead
+      const { data: newLead, error: leadError } = await supabase
+        .from('leads')
+        .insert({
+          ...leadData,
+          created_by: profile.id,
+          organization_id: orgId,
+        })
+        .select('id')
+        .single();
+
+      if (leadError) throw leadError;
+
+      // 2. Link conversation -> lead
+      const { error: linkError } = await supabase
+        .from('conversations')
+        .update({ lead_id: newLead.id } as any)
+        .eq('id', conversationId)
+        .eq('organization_id', orgId);
+
+      if (linkError) throw linkError;
+
+      // 3. Update local state
+      setThreads(prev =>
+        prev.map(t => t.id === conversationId ? { ...t, lead_id: newLead.id } : t)
+      );
+
+      // 4. Auto-distribute (non-blocking)
+      (supabase.rpc as any)('distribute_lead', {
+        p_lead_id: newLead.id,
+        p_organization_id: orgId,
+      }).then((res: any) => {
+        if (res.error) console.error('Lead distribution error:', res.error);
+      });
+
+      // 5. Automation trigger (non-blocking)
+      fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organization_id: orgId,
+          trigger_type: "lead_created",
+          entity_type: "lead",
+          entity_id: newLead.id,
+          context: {
+            lead_name: leadData.name,
+            lead_phone: leadData.phone,
+            lead_email: leadData.email || '',
+            lead_source: leadData.source || '',
+            stage_id: leadData.stage_id,
+            seller_id: leadData.seller_id,
+          },
+        }),
+      }).catch(err => console.error("Automation trigger error:", err));
+
+      toast.success('Lead criado e vinculado à conversa');
+      await fetchThreads();
+      return newLead.id;
+    } catch (err: any) {
+      console.error('Error creating lead from conversation:', err);
+      toast.error(err.message || 'Erro ao criar lead');
+      return null;
+    }
+  }, [orgId, profile, fetchThreads]);
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
@@ -317,5 +409,6 @@ export function useInbox() {
     assignThread,
     canSendMessage,
     refreshThreads: fetchThreads,
+    createLeadFromConversation,
   };
 }
