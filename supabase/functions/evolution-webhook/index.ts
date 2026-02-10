@@ -187,6 +187,9 @@ serve(async (req) => {
             })
             .eq("id", leadId);
 
+          // ── Wake paused automation runs waiting for reply from this lead ──
+          await wakePausedRuns(supabase, orgId, leadId, now);
+
           console.log(`[evolution-webhook] Inbound from ${normalizedPhone} linked to lead ${leadId}`);
         } else {
           // Auto-create lead from inbound message
@@ -227,3 +230,94 @@ serve(async (req) => {
     return respond({ ok: true });
   }
 });
+
+// ── Helper: Wake paused automation runs ──────────────────
+
+async function wakePausedRuns(
+  supabase: any,
+  orgId: string,
+  leadId: string,
+  replyTimestamp: string
+) {
+  try {
+    // Find pending wait_for_reply_timeout jobs for this lead
+    const { data: waitJobs } = await supabase
+      .from("automation_jobs")
+      .select("id, run_id, automation_id, node_id, organization_id, payload")
+      .eq("organization_id", orgId)
+      .eq("job_type", "wait_for_reply_timeout")
+      .eq("status", "pending")
+      .filter("payload->>lead_id", "eq", leadId);
+
+    if (!waitJobs || waitJobs.length === 0) return;
+
+    console.log(`[evolution-webhook] Waking ${waitJobs.length} paused run(s) for lead ${leadId}`);
+
+    for (const job of waitJobs) {
+      // 1) Mark the timeout job as done (replied)
+      await supabase
+        .from("automation_jobs")
+        .update({ status: "done", last_error: null })
+        .eq("id", job.id);
+
+      // 2) Load the flow to find the "replied" edge
+      const { data: flow } = await supabase
+        .from("automation_flows")
+        .select("nodes, edges")
+        .eq("automation_id", job.automation_id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!flow) continue;
+
+      const nodes: any[] = flow.nodes || [];
+      const edges: any[] = flow.edges || [];
+
+      // Find the "replied" edge from this node
+      const repliedEdge = edges.find(
+        (e: any) => e.source === job.node_id && e.sourceHandle === "replied"
+      );
+
+      // 3) Resume the run
+      await supabase
+        .from("automation_runs")
+        .update({ status: "running" })
+        .eq("id", job.run_id);
+
+      // 4) Schedule the next node if replied edge exists
+      if (repliedEdge) {
+        const nextNode = nodes.find((n: any) => n.id === repliedEdge.target);
+        if (nextNode) {
+          await supabase.from("automation_jobs").insert({
+            organization_id: orgId,
+            automation_id: job.automation_id,
+            run_id: job.run_id,
+            node_id: nextNode.id,
+            job_type: nextNode.type || "action",
+            payload: {
+              node_config: nextNode.data?.config || {},
+              node_label: nextNode.data?.label || "",
+            },
+            scheduled_for: new Date().toISOString(),
+            status: "pending",
+            attempts: 0,
+          });
+        }
+      }
+
+      // 5) Log
+      await supabase.from("automation_logs").insert({
+        organization_id: orgId,
+        automation_id: job.automation_id,
+        run_id: job.run_id,
+        node_id: job.node_id,
+        level: "info",
+        message: "Resposta recebida — run retomada pelo caminho 'Respondeu'",
+        data: { lead_id: leadId, reply_at: replyTimestamp },
+      });
+    }
+  } catch (err) {
+    console.error("[evolution-webhook] Error waking paused runs:", err);
+  }
+}
