@@ -161,36 +161,16 @@ Deno.serve(async (req) => {
       console.log('Role created: admin');
     }
 
-    // Create default pipeline for the organization
-    const defaultStages = [
-      { name: 'Novo Lead', order_position: 0 },
-      { name: 'Contato Inicial', order_position: 1 },
-      { name: 'Qualificação', order_position: 2 },
-      { name: 'Proposta', order_position: 3 },
-      { name: 'Negociação', order_position: 4 },
-      { name: 'Fechamento', order_position: 5 },
-      { name: 'Ganho', order_position: 6 },
-      { name: 'Perdido', order_position: 7 },
-    ];
+    // Create default pipeline via idempotent RPC
+    const { data: pipelineId, error: pipelineError } = await supabaseAdmin.rpc('seed_default_pipeline', {
+      p_org_id: newOrg.id,
+      p_created_by: clerkUserId,
+    });
 
-    const { data: pipeline, error: pipelineError } = await supabaseAdmin
-      .from('pipelines')
-      .insert({
-        name: 'Pipeline Principal',
-        organization_id: newOrg.id,
-        is_default: true,
-      })
-      .select('id')
-      .single();
-
-    if (!pipelineError && pipeline) {
-      const stagesToInsert = defaultStages.map(stage => ({
-        ...stage,
-        pipeline_id: pipeline.id,
-      }));
-
-      await supabaseAdmin.from('pipeline_stages').insert(stagesToInsert);
-      console.log('Default pipeline created');
+    if (!pipelineError && pipelineId) {
+      console.log('Default pipeline created:', pipelineId);
+    } else if (pipelineError) {
+      console.warn('Pipeline seed error (non-critical):', pipelineError);
     }
 
     return new Response(
