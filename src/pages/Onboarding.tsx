@@ -96,7 +96,26 @@ export default function Onboarding() {
 
       console.log("✅ Admin role created");
 
-      // 4. Create default pipeline via idempotent seed function
+      // 4. Create default lead sources
+      const defaultSources = ["Meta Ads", "Google Ads", "Orgânico", "Site", "Indicação"];
+      const { error: sourcesError } = await supabase
+        .from("lead_sources")
+        .insert(
+          defaultSources.map((name) => ({
+            name,
+            organization_id: newOrg.id,
+            created_by: clerkUserId,
+            is_active: true,
+          }))
+        );
+
+      if (sourcesError) {
+        console.warn("⚠️ Lead sources seed error (non-critical):", sourcesError);
+      } else {
+        console.log("✅ Default lead sources created");
+      }
+
+      // 5. Create default pipeline via idempotent seed function
       const { data: pipelineId, error: seedError } = await supabase.rpc('seed_default_pipeline', {
         p_org_id: newOrg.id,
         p_created_by: clerkUserId,
