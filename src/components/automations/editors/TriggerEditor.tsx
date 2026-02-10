@@ -8,6 +8,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { AI_EVENT_OPTIONS } from "@/services/automationEventBus";
 
 interface TriggerEditorProps {
   config: any;
@@ -21,6 +23,7 @@ const triggerTypes = [
   { value: "lead_from_whatsapp", label: "Lead via WhatsApp" },
   { value: "tag_added", label: "Tag adicionada" },
   { value: "form_submitted", label: "Formulário enviado" },
+  { value: "event", label: "📡 Evento do sistema (Event Bus)" },
 ];
 
 export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
@@ -44,6 +47,70 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
           </SelectContent>
         </Select>
       </div>
+
+      {/* ── Event Bus trigger config ── */}
+      {config.triggerType === "event" && (
+        <div className="space-y-4 border border-border rounded-lg p-3 bg-muted/30">
+          <div>
+            <Label className="font-poppins text-sm">Evento</Label>
+            <Select
+              value={config.triggerEventName || ""}
+              onValueChange={(v) => onChange({ ...config, triggerEventName: v })}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Selecione o evento" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_EVENT_OPTIONS.map((e) => (
+                  <SelectItem key={e.value} value={e.value}>
+                    {e.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Permitir disparo por IA</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Se ativado, eventos gerados por IA podem disparar esta automação
+              </p>
+            </div>
+            <Switch
+              checked={config.allowAiTriggers ?? false}
+              onCheckedChange={(v) => onChange({ ...config, allowAiTriggers: v })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Permitir disparo por humano</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Se ativado, eventos confirmados por humanos podem disparar esta automação
+              </p>
+            </div>
+            <Switch
+              checked={config.allowHumanTriggers ?? true}
+              onCheckedChange={(v) => onChange({ ...config, allowHumanTriggers: v })}
+            />
+          </div>
+
+          <div>
+            <Label className="font-poppins text-sm">Throttle (segundos)</Label>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Tempo mínimo entre disparos (0 = sem limite)
+            </p>
+            <Input
+              type="number"
+              className="mt-1.5 w-32"
+              min={0}
+              value={config.throttleSeconds ?? 0}
+              onChange={(e) => onChange({ ...config, throttleSeconds: parseInt(e.target.value) || 0 })}
+            />
+          </div>
+        </div>
+      )}
 
       {config.triggerType === "lead_stage_changed" && (
         <div className="space-y-3">

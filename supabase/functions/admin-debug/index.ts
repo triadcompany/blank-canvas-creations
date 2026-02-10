@@ -163,7 +163,52 @@ serve(async (req) => {
       });
     }
 
-    return respond({ error: `Unknown action: ${action}. Use org-context, inbox-stats, or last-evolution-events` }, 400);
+    // ──── ACTION: automation-events ────
+    if (action === "automation-events") {
+      const [eventsResult, runsResult] = await Promise.all([
+        supabase
+          .from("automation_events")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("automation_event_runs")
+          .select("*")
+          .eq("organization_id", orgId)
+          .order("started_at", { ascending: false })
+          .limit(20),
+      ]);
+
+      return respond({
+        organizationId: orgId,
+        events: (eventsResult.data || []).map((e: any) => ({
+          id: e.id,
+          eventName: e.event_name,
+          entityType: e.entity_type,
+          leadId: e.lead_id,
+          conversationId: e.conversation_id,
+          source: e.source,
+          status: e.status,
+          error: e.error,
+          createdAt: e.created_at,
+          processedAt: e.processed_at,
+          idempotencyKey: e.idempotency_key,
+        })),
+        eventRuns: (runsResult.data || []).map((r: any) => ({
+          id: r.id,
+          automationEventId: r.automation_event_id,
+          automationId: r.automation_id,
+          status: r.status,
+          skippedReason: r.skipped_reason,
+          error: r.error,
+          startedAt: r.started_at,
+          finishedAt: r.finished_at,
+        })),
+      });
+    }
+
+    return respond({ error: `Unknown action: ${action}. Use org-context, inbox-stats, last-evolution-events, or automation-events` }, 400);
   } catch (err) {
     console.error("[admin-debug] Error:", err);
     return respond({ error: String(err) }, 500);

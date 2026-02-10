@@ -6,6 +6,7 @@ import { Sparkles, Send, X, Loader2, Lightbulb, ArrowRight, Check } from 'lucide
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { publishAutomationEvent, AI_EVENTS } from '@/services/automationEventBus';
 
 interface AiSuggestion {
   intent: string;
@@ -115,6 +116,8 @@ export function AiSuggestionPanel({
 
       if (updateError) throw updateError;
 
+      const currentUser = (await supabase.auth.getUser()).data.user;
+
       // Log the action to ai_stage_actions
       await supabase.from('ai_stage_actions' as any).insert({
         organization_id: organizationId,
@@ -128,9 +131,42 @@ export function AiSuggestionPanel({
         suggested_reason: suggestion.suggested_reason,
         suggested_action_type: suggestion.suggested_action_type,
         ai_interaction_id: suggestion.ai_interaction_id,
-        applied_by: (await supabase.auth.getUser()).data.user?.id,
+        applied_by: currentUser?.id,
         applied_at: new Date().toISOString(),
         status: 'applied',
+      });
+
+      // ── PUBLISH EVENT TO EVENT BUS ──
+      const eventName = suggestion.suggested_action_type === 'qualify'
+        ? AI_EVENTS.LEAD_QUALIFIED_BY_AI
+        : suggestion.suggested_action_type === 'followup'
+          ? AI_EVENTS.LEAD_FOLLOWUP_NEEDED_BY_AI
+          : AI_EVENTS.LEAD_STAGE_CHANGED_BY_AI;
+
+      await publishAutomationEvent({
+        organizationId,
+        eventName,
+        entityType: 'lead',
+        entityId: suggestion.lead_id,
+        conversationId,
+        leadId: suggestion.lead_id,
+        payload: {
+          from_stage_id: suggestion.current_stage_id,
+          from_stage_name: suggestion.current_stage_name,
+          to_stage_id: suggestion.suggested_stage_id,
+          to_stage_name: suggestion.suggested_stage_name,
+          pipeline_id: suggestion.suggested_pipeline_id,
+          reason: suggestion.suggested_reason,
+          confidence: suggestion.confidence,
+          applied_by_profile_id: currentUser?.id,
+          action_type: suggestion.suggested_action_type,
+        },
+        source: 'ai',
+        sourceAiInteractionId: suggestion.ai_interaction_id || undefined,
+        idempotencyParts: [
+          conversationId,
+          suggestion.suggested_stage_id,
+        ],
       });
 
       setStageApplied(true);

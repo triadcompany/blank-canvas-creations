@@ -299,6 +299,110 @@ export type Database = {
           },
         ]
       }
+      automation_event_runs: {
+        Row: {
+          automation_event_id: string
+          automation_id: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          organization_id: string
+          output: Json | null
+          skipped_reason: string | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          automation_event_id: string
+          automation_id: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id: string
+          output?: Json | null
+          skipped_reason?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          automation_event_id?: string
+          automation_id?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          output?: Json | null
+          skipped_reason?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_event_runs_automation_event_id_fkey"
+            columns: ["automation_event_id"]
+            isOneToOne: false
+            referencedRelation: "automation_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_events: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          error: string | null
+          event_name: string
+          id: string
+          idempotency_key: string | null
+          lead_id: string | null
+          opportunity_id: string | null
+          organization_id: string
+          payload: Json | null
+          processed_at: string | null
+          source: string
+          source_ai_interaction_id: string | null
+          status: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          error?: string | null
+          event_name: string
+          id?: string
+          idempotency_key?: string | null
+          lead_id?: string | null
+          opportunity_id?: string | null
+          organization_id: string
+          payload?: Json | null
+          processed_at?: string | null
+          source?: string
+          source_ai_interaction_id?: string | null
+          status?: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          error?: string | null
+          event_name?: string
+          id?: string
+          idempotency_key?: string | null
+          lead_id?: string | null
+          opportunity_id?: string | null
+          organization_id?: string
+          payload?: Json | null
+          processed_at?: string | null
+          source?: string
+          source_ai_interaction_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       automation_flows: {
         Row: {
           automation_id: string
@@ -506,6 +610,8 @@ export type Database = {
       }
       automations: {
         Row: {
+          allow_ai_triggers: boolean | null
+          allow_human_triggers: boolean | null
           channel: string
           created_at: string
           created_by: string
@@ -514,9 +620,14 @@ export type Database = {
           is_active: boolean
           name: string
           organization_id: string
+          throttle_seconds: number | null
+          trigger_event_name: string | null
+          trigger_type: string | null
           updated_at: string
         }
         Insert: {
+          allow_ai_triggers?: boolean | null
+          allow_human_triggers?: boolean | null
           channel?: string
           created_at?: string
           created_by: string
@@ -525,9 +636,14 @@ export type Database = {
           is_active?: boolean
           name: string
           organization_id: string
+          throttle_seconds?: number | null
+          trigger_event_name?: string | null
+          trigger_type?: string | null
           updated_at?: string
         }
         Update: {
+          allow_ai_triggers?: boolean | null
+          allow_human_triggers?: boolean | null
           channel?: string
           created_at?: string
           created_by?: string
@@ -536,6 +652,9 @@ export type Database = {
           is_active?: boolean
           name?: string
           organization_id?: string
+          throttle_seconds?: number | null
+          trigger_event_name?: string | null
+          trigger_type?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -942,6 +1061,7 @@ export type Database = {
       conversations: {
         Row: {
           ai_mode: string
+          ai_state: string | null
           assigned_at: string | null
           assigned_to: string | null
           contact_name: string | null
@@ -960,6 +1080,7 @@ export type Database = {
         }
         Insert: {
           ai_mode?: string
+          ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null
@@ -978,6 +1099,7 @@ export type Database = {
         }
         Update: {
           ai_mode?: string
+          ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null

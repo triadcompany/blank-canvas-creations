@@ -103,7 +103,7 @@ serve(async (req) => {
         if (!id) return respond({ ok: false, message: "id required" }, 400);
 
         // Only allow safe fields
-        const allowed = ["name", "description", "channel", "is_active"];
+        const allowed = ["name", "description", "channel", "is_active", "trigger_type", "trigger_event_name", "allow_ai_triggers", "allow_human_triggers", "throttle_seconds"];
         const safeUpdates: Record<string, unknown> = {};
         for (const key of allowed) {
           if (updates[key] !== undefined) safeUpdates[key] = updates[key];
@@ -184,6 +184,32 @@ serve(async (req) => {
           .single();
 
         if (error) return respond({ ok: false, message: error.message }, 500);
+
+        // ── Sync trigger config from flow's trigger node to automations table ──
+        if (triggers.length > 0) {
+          const triggerConfig = triggers[0].data?.config || {};
+          const triggerUpdates: Record<string, unknown> = {};
+
+          if (triggerConfig.triggerType === "event") {
+            triggerUpdates.trigger_type = "event";
+            triggerUpdates.trigger_event_name = triggerConfig.triggerEventName || null;
+            triggerUpdates.allow_ai_triggers = triggerConfig.allowAiTriggers ?? false;
+            triggerUpdates.allow_human_triggers = triggerConfig.allowHumanTriggers ?? true;
+            triggerUpdates.throttle_seconds = triggerConfig.throttleSeconds ?? 0;
+          } else {
+            triggerUpdates.trigger_type = triggerConfig.triggerType || "manual";
+            triggerUpdates.trigger_event_name = null;
+            triggerUpdates.allow_ai_triggers = false;
+            triggerUpdates.allow_human_triggers = true;
+            triggerUpdates.throttle_seconds = 0;
+          }
+
+          await supabase
+            .from("automations")
+            .update(triggerUpdates)
+            .eq("id", automation_id);
+        }
+
         return respond({ ok: true, flow });
       }
 
