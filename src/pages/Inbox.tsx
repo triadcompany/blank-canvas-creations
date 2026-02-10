@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils';
 
 function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
-  // Brazilian phone: 55 + DDD (2) + number (8-9)
   if (digits.length === 13 && digits.startsWith('55')) {
     const ddd = digits.substring(2, 4);
     const num = digits.substring(4);
@@ -115,6 +114,9 @@ function ThreadItem({
     >
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
+          {thread.profile_picture_url && (
+            <AvatarImage src={thread.profile_picture_url} alt={name} />
+          )}
           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {initials}
           </AvatarFallback>
@@ -290,6 +292,7 @@ export default function InboxPage() {
     isAdmin,
     orgMembers,
     profile,
+    myProfileId,
     setFilter,
     setSearch,
     selectThread,
@@ -304,9 +307,10 @@ export default function InboxPage() {
 
   const canSend = canSendMessage(selectedThread);
 
+  // Map profile.id -> name for assignment display
   const memberNameMap = useMemo(() => {
     const map: Record<string, string> = {};
-    orgMembers.forEach((m) => { map[m.user_id] = m.name; });
+    orgMembers.forEach((m) => { map[m.id] = m.name; });
     return map;
   }, [orgMembers]);
 
@@ -329,10 +333,10 @@ export default function InboxPage() {
     }
   };
 
-  const handleAssign = async (userId: string | null) => {
+  const handleAssign = async (profileId: string | null) => {
     if (!selectedThread) return;
     setAssignPopoverOpen(false);
-    await assignThread(selectedThread.id, userId);
+    await assignThread(selectedThread.id, profileId);
   };
 
   const filters: { key: string; label: string; adminOnly?: boolean }[] = [
@@ -455,6 +459,9 @@ export default function InboxPage() {
               </Button>
 
               <Avatar className="h-9 w-9">
+                {selectedThread.profile_picture_url && (
+                  <AvatarImage src={selectedThread.profile_picture_url} alt={selectedContact?.name || ''} />
+                )}
                 <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                   {getInitials(selectedContact?.name || '?')}
                 </AvatarFallback>
@@ -480,12 +487,12 @@ export default function InboxPage() {
 
               {/* Assignment actions */}
               <div className="flex items-center gap-1">
-                {selectedThread.assigned_to !== profile?.user_id && (
+                {selectedThread.assigned_to !== myProfileId && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => handleAssign(profile?.user_id || null)}
+                    onClick={() => handleAssign(myProfileId || null)}
                   >
                     <UserPlus className="h-3.5 w-3.5 mr-1" />
                     Assumir
@@ -510,9 +517,9 @@ export default function InboxPage() {
                           key={member.id}
                           className={cn(
                             'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
-                            selectedThread.assigned_to === member.user_id && 'bg-accent font-medium'
+                            selectedThread.assigned_to === member.id && 'bg-accent font-medium'
                           )}
-                          onClick={() => handleAssign(member.user_id)}
+                          onClick={() => handleAssign(member.id)}
                         >
                           <Avatar className="h-5 w-5">
                             <AvatarFallback className="text-[9px] bg-muted">
@@ -520,7 +527,7 @@ export default function InboxPage() {
                             </AvatarFallback>
                           </Avatar>
                           {member.name}
-                          {member.user_id === profile?.user_id && (
+                          {member.id === myProfileId && (
                             <span className="text-[10px] text-muted-foreground ml-auto">(você)</span>
                           )}
                         </button>

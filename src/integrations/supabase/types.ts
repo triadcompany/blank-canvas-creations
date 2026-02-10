@@ -862,6 +862,7 @@ export type Database = {
       }
       conversations: {
         Row: {
+          assigned_at: string | null
           assigned_to: string | null
           contact_name: string | null
           contact_phone: string
@@ -871,9 +872,11 @@ export type Database = {
           last_message_at: string | null
           last_message_preview: string | null
           organization_id: string
+          profile_picture_url: string | null
           unread_count: number
         }
         Insert: {
+          assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null
           contact_phone: string
@@ -883,9 +886,11 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           organization_id: string
+          profile_picture_url?: string | null
           unread_count?: number
         }
         Update: {
+          assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null
           contact_phone?: string
@@ -895,6 +900,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_preview?: string | null
           organization_id?: string
+          profile_picture_url?: string | null
           unread_count?: number
         }
         Relationships: [
