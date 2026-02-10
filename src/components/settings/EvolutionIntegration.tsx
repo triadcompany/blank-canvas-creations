@@ -17,6 +17,7 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
+  ShieldAlert,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
@@ -27,19 +28,20 @@ interface Integration {
   id: string;
   organization_id: string;
   provider: string;
-  evolution_base_url: string | null;
-  instance_name: string | null;
+  instance_name: string;
   status: string;
   is_active: boolean;
   phone_number: string | null;
+  qr_code_data: string | null;
+  connected_at: string | null;
 }
 
 export function EvolutionIntegration() {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState("");
+  const [instanceName, setInstanceName] = useState("");
+  const [instanceNameError, setInstanceNameError] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste do AutoLead. 🚀");
   const { profile, isAdmin } = useAuth();
@@ -57,7 +59,7 @@ export function EvolutionIntegration() {
       if (error && error.code !== "PGRST116") throw error;
       if (data) {
         setIntegration(data as any);
-        setBaseUrl(data.evolution_base_url || "");
+        setInstanceName(data.instance_name || "");
       }
     } catch {
       // No integration yet
@@ -79,11 +81,22 @@ export function EvolutionIntegration() {
     return () => clearInterval(interval);
   }, [integration?.status, fetchIntegration]);
 
-  const handleCreateInstance = async () => {
-    if (!baseUrl.trim()) {
-      toast({ title: "Erro", description: "Informe a URL base do Evolution API", variant: "destructive" });
-      return;
+  const validateInstanceName = (name: string): boolean => {
+    if (!name.trim()) {
+      setInstanceNameError("Nome da instância é obrigatório");
+      return false;
     }
+    if (!/^[a-z0-9_-]{3,40}$/.test(name)) {
+      setInstanceNameError("Use apenas letras minúsculas, números, - e _ (3-40 caracteres)");
+      return false;
+    }
+    setInstanceNameError("");
+    return true;
+  };
+
+  const handleConnect = async () => {
+    if (!validateInstanceName(instanceName)) return;
+
     setActionLoading(true);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-create-instance`, {
@@ -91,15 +104,18 @@ export function EvolutionIntegration() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organization_id: profile?.organization_id,
-          evolution_base_url: baseUrl.replace(/\/$/, ""),
+          instance_name: instanceName,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao criar instância");
 
-      toast({ title: "Instância criada!", description: "Escaneie o QR code para conectar" });
+      if (data.connected) {
+        toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
+      } else {
+        toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
+      }
       await fetchIntegration();
-      await handleGetQR();
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -107,7 +123,7 @@ export function EvolutionIntegration() {
     }
   };
 
-  const handleGetQR = async () => {
+  const handleRefreshQR = async () => {
     setActionLoading(true);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-qr`, {
@@ -120,13 +136,33 @@ export function EvolutionIntegration() {
 
       if (data.connected) {
         toast({ title: "WhatsApp conectado!", description: "Seu WhatsApp já está vinculado" });
-        await fetchIntegration();
-        setQrCode(null);
-      } else if (data.qr_code) {
-        setQrCode(data.qr_code);
-      } else {
-        toast({ title: "QR não disponível", description: "Tente novamente em alguns segundos", variant: "destructive" });
       }
+      await fetchIntegration();
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!integration) return;
+    setActionLoading(true);
+    try {
+      await supabase
+        .from("whatsapp_integrations")
+        .update({
+          status: "disconnected",
+          is_active: false,
+          qr_code_data: null,
+          connected_at: null,
+          phone_number: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", integration.id);
+
+      toast({ title: "Desconectado", description: "Integração WhatsApp desativada" });
+      await fetchIntegration();
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -161,25 +197,6 @@ export function EvolutionIntegration() {
     }
   };
 
-  const handleDisconnect = async () => {
-    if (!integration) return;
-    setActionLoading(true);
-    try {
-      await supabase
-        .from("whatsapp_integrations")
-        .update({ status: "disconnected", is_active: false, updated_at: new Date().toISOString() })
-        .eq("id", integration.id);
-
-      toast({ title: "Desconectado", description: "Integração WhatsApp desativada" });
-      setQrCode(null);
-      await fetchIntegration();
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   if (loading) {
     return (
       <Card className="card-gradient border-0">
@@ -190,21 +207,57 @@ export function EvolutionIntegration() {
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <Card className="card-gradient border-0">
-        <CardContent className="p-6">
-          <Alert>
-            <MessageSquare className="h-4 w-4" />
-            <AlertDescription>Apenas administradores podem configurar o WhatsApp.</AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
   const isConnected = integration?.status === "connected";
   const isPending = integration?.status === "qr_pending";
+
+  // Read-only for non-admins
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        <Card className="card-gradient border-0">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-poppins">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              WhatsApp (Evolution API)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert>
+              <ShieldAlert className="h-4 w-4" />
+              <AlertDescription>
+                Apenas administradores podem configurar o WhatsApp.
+              </AlertDescription>
+            </Alert>
+
+            {/* Show status read-only */}
+            <div className="flex items-center gap-3">
+              {isConnected ? (
+                <Badge className="bg-green-500/10 text-green-600 border-green-200 gap-1 px-3 py-1.5">
+                  <Wifi className="h-3.5 w-3.5" />
+                  Conectado
+                </Badge>
+              ) : isPending ? (
+                <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200 gap-1 px-3 py-1.5">
+                  <QrCode className="h-3.5 w-3.5" />
+                  Aguardando QR Code
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="gap-1 px-3 py-1.5">
+                  <WifiOff className="h-3.5 w-3.5" />
+                  Desconectado
+                </Badge>
+              )}
+              {integration?.instance_name && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  Instância: {integration.instance_name}
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -216,7 +269,7 @@ export function EvolutionIntegration() {
             WhatsApp (Evolution API)
           </CardTitle>
           <CardDescription className="font-poppins">
-            Conecte seu WhatsApp diretamente via QR code — sem n8n necessário
+            Conecte o WhatsApp da sua organização via QR code
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -243,6 +296,11 @@ export function EvolutionIntegration() {
                 Instância: {integration.instance_name}
               </span>
             )}
+            {integration?.phone_number && (
+              <span className="text-xs text-muted-foreground font-mono">
+                Tel: {integration.phone_number}
+              </span>
+            )}
           </div>
 
           <Separator />
@@ -251,42 +309,50 @@ export function EvolutionIntegration() {
           {!isConnected && !isPending && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label className="font-poppins font-medium">URL Base do Evolution API</Label>
+                <Label className="font-poppins font-medium">Nome da instância</Label>
                 <Input
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://evolution.seudominio.com"
+                  value={instanceName}
+                  onChange={(e) => {
+                    const val = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+                    setInstanceName(val);
+                    if (val) validateInstanceName(val);
+                  }}
+                  placeholder="ex: minha-empresa ou org-vendas"
                   className="font-mono"
+                  maxLength={40}
                 />
+                {instanceNameError && (
+                  <p className="text-xs text-destructive">{instanceNameError}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  Ex: https://evolution.seudominio.com (sem barra no final)
+                  Identificador único, apenas minúsculas, números, - e _ (3-40 caracteres)
                 </p>
               </div>
               <Button
-                onClick={handleCreateInstance}
-                disabled={actionLoading || !baseUrl.trim()}
+                onClick={handleConnect}
+                disabled={actionLoading || !instanceName.trim()}
                 className="btn-gradient text-white font-poppins gap-2"
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
-                Conectar WhatsApp
+                Gerar QR e Conectar
               </Button>
             </div>
           )}
 
           {/* QR Code Section */}
-          {(isPending || qrCode) && !isConnected && (
+          {isPending && (
             <div className="space-y-4">
               <div className="text-center">
                 <h3 className="font-poppins font-semibold mb-2">Escaneie o QR Code</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   Abra o WhatsApp no celular → Menu (⋮) → Aparelhos conectados → Conectar
                 </p>
-                {qrCode ? (
+                {integration?.qr_code_data ? (
                   <div className="inline-block p-4 bg-white rounded-xl shadow-md">
                     <img
-                      src={qrCode.startsWith("data:") ? qrCode : `data:image/png;base64,${qrCode}`}
+                      src={integration.qr_code_data.startsWith("data:") ? integration.qr_code_data : `data:image/png;base64,${integration.qr_code_data}`}
                       alt="QR Code WhatsApp"
-                      className="w-64 h-64 mx-auto"
+                      className="w-72 h-72 mx-auto"
                     />
                   </div>
                 ) : (
@@ -297,7 +363,7 @@ export function EvolutionIntegration() {
                 )}
               </div>
               <div className="flex justify-center gap-2">
-                <Button variant="outline" onClick={handleGetQR} disabled={actionLoading} className="font-poppins gap-2">
+                <Button variant="outline" onClick={handleRefreshQR} disabled={actionLoading} className="font-poppins gap-2">
                   <RefreshCw className="h-4 w-4" />
                   Atualizar QR
                 </Button>
@@ -312,6 +378,11 @@ export function EvolutionIntegration() {
                 <CheckCircle className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-700 dark:text-green-400">
                   WhatsApp conectado e pronto para enviar mensagens das automações!
+                  {integration?.connected_at && (
+                    <span className="block text-xs mt-1 opacity-70">
+                      Conectado em: {new Date(integration.connected_at).toLocaleString("pt-BR")}
+                    </span>
+                  )}
                 </AlertDescription>
               </Alert>
 
@@ -322,7 +393,7 @@ export function EvolutionIntegration() {
                 <h3 className="font-poppins font-semibold text-sm">Enviar mensagem de teste</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="font-poppins">Número (com DDD)</Label>
+                    <Label className="font-poppins">Número (E.164, com DDD)</Label>
                     <Input
                       value={testPhone}
                       onChange={(e) => setTestPhone(e.target.value)}
@@ -371,8 +442,8 @@ export function EvolutionIntegration() {
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">1</div>
             <div>
-              <p className="font-medium">Configure o Evolution API</p>
-              <p className="text-muted-foreground">Tenha uma instância Evolution rodando (self-hosted ou cloud)</p>
+              <p className="font-medium">Defina o nome da instância</p>
+              <p className="text-muted-foreground">Um identificador único para sua organização (ex: minha-empresa)</p>
             </div>
           </div>
           <div className="flex items-start gap-3">

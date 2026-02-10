@@ -107,7 +107,7 @@ export function WhatsAppIntegration() {
         evolution_instance_id: formData.evolution_instance_id,
         evolution_api_key: formData.evolution_api_key,
         n8n_webhook_evolution_notify: formData.n8n_webhook_evolution_notify,
-        created_by: profile.id,
+        instance_name: formData.evolution_instance_id || `legacy-${profile.organization_id.substring(0, 8)}`,
       };
 
       if (integration) {

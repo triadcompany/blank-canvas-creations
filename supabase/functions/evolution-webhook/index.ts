@@ -41,13 +41,40 @@ serve(async (req) => {
     if (event === "CONNECTION_UPDATE" || event === "connection.update") {
       const state = body.data?.state || body.state;
       let newStatus = "disconnected";
-      if (state === "open") newStatus = "connected";
-      else if (state === "connecting") newStatus = "qr_pending";
-      else if (state === "close") newStatus = "disconnected";
+      let connectedAt: string | null = null;
+      let phoneNumber: string | null = null;
+
+      if (state === "open") {
+        newStatus = "connected";
+        connectedAt = new Date().toISOString();
+        // Try to extract phone number
+        phoneNumber = body.data?.phoneNumber || body.data?.wid?.user || null;
+      } else if (state === "connecting") {
+        newStatus = "qr_pending";
+      } else if (state === "close") {
+        newStatus = "disconnected";
+      }
+
+      const updateData: Record<string, unknown> = {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (connectedAt) {
+        updateData.connected_at = connectedAt;
+        updateData.qr_code_data = null;
+      }
+      if (phoneNumber) {
+        updateData.phone_number = phoneNumber;
+      }
+      if (newStatus === "disconnected") {
+        updateData.qr_code_data = null;
+        updateData.connected_at = null;
+        updateData.phone_number = null;
+      }
 
       await supabase
         .from("whatsapp_integrations")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update(updateData)
         .eq("id", integration.id);
 
       console.log(`[evolution-webhook] Connection updated: ${newStatus}`);
@@ -56,25 +83,34 @@ serve(async (req) => {
       });
     }
 
+    // Handle QR code updates
+    if (event === "QRCODE_UPDATED" || event === "qrcode.updated") {
+      const qrCode = body.data?.qrcode?.base64 || body.data?.base64 || null;
+      if (qrCode) {
+        await supabase
+          .from("whatsapp_integrations")
+          .update({ qr_code_data: qrCode, status: "qr_pending", updated_at: new Date().toISOString() })
+          .eq("id", integration.id);
+        console.log("[evolution-webhook] QR code updated");
+      }
+    }
+
     // Handle inbound messages
     if (event === "MESSAGES_UPSERT" || event === "messages.upsert") {
       const messages = body.data || [];
       const msgArray = Array.isArray(messages) ? messages : [messages];
 
       for (const msg of msgArray) {
-        // Skip outbound messages
         if (msg.key?.fromMe) continue;
 
         const phone = (msg.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "");
-        const text = msg.message?.conversation || 
+        const text = msg.message?.conversation ||
                      msg.message?.extendedTextMessage?.text ||
-                     msg.message?.imageMessage?.caption ||
-                     "";
+                     msg.message?.imageMessage?.caption || "";
         const pushName = msg.pushName || "";
 
         if (!phone || !text) continue;
 
-        // Log inbound message
         await supabase.from("whatsapp_messages").insert({
           organization_id: integration.organization_id,
           direction: "inbound",
@@ -85,7 +121,7 @@ serve(async (req) => {
           metadata: { pushName, timestamp: msg.messageTimestamp },
         });
 
-        // Find lead by phone and update last_reply
+        // Find lead by phone
         const { data: lead } = await supabase
           .from("leads")
           .select("id")
@@ -93,24 +129,11 @@ serve(async (req) => {
           .eq("phone", phone)
           .maybeSingle();
 
-        if (lead) {
-          // Update whatsapp_messages with lead_id
-          if (msg.key?.id) {
-            await supabase
-              .from("whatsapp_messages")
-              .update({ lead_id: lead.id })
-              .eq("external_message_id", msg.key.id);
-          }
-
-          // Check for automation runs waiting for reply (condition node: "replied")
-          const { data: waitingRuns } = await supabase
-            .from("automation_runs")
-            .select("id")
-            .eq("organization_id", integration.organization_id)
-            .eq("lead_id", lead.id)
-            .eq("status", "waiting");
-
-          // Future: trigger condition evaluation for "replied" condition nodes
+        if (lead && msg.key?.id) {
+          await supabase
+            .from("whatsapp_messages")
+            .update({ lead_id: lead.id })
+            .eq("external_message_id", msg.key.id);
         }
 
         console.log(`[evolution-webhook] Inbound from ${phone}: ${text.substring(0, 50)}`);

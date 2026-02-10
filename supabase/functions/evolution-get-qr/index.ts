@@ -16,11 +16,12 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+    const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!evolutionApiKey) {
+    if (!evolutionApiKey || !evolutionBaseUrl) {
       return new Response(
-        JSON.stringify({ error: "EVOLUTION_API_KEY não configurada" }),
+        JSON.stringify({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -37,7 +38,7 @@ serve(async (req) => {
     // Get integration
     const { data: integration, error } = await supabase
       .from("whatsapp_integrations")
-      .select("instance_name, evolution_base_url, status")
+      .select("instance_name, status")
       .eq("organization_id", organization_id)
       .maybeSingle();
 
@@ -57,11 +58,8 @@ serve(async (req) => {
 
     // Fetch QR from Evolution
     const qrRes = await fetch(
-      `${integration.evolution_base_url}/instance/connect/${integration.instance_name}`,
-      {
-        method: "GET",
-        headers: { apikey: evolutionApiKey },
-      }
+      `${evolutionBaseUrl}/instance/connect/${integration.instance_name}`,
+      { method: "GET", headers: { apikey: evolutionApiKey } }
     );
 
     if (!qrRes.ok) {
@@ -75,29 +73,11 @@ serve(async (req) => {
 
     const qrData = await qrRes.json();
 
-    // Extract QR code - Evolution API returns different formats
-    let qrCode = null;
-    let pairingCode = null;
-    
-    if (qrData?.base64) {
-      qrCode = qrData.base64;
-    } else if (qrData?.qrcode?.base64) {
-      qrCode = qrData.qrcode.base64;
-    } else if (qrData?.instance?.qrcode) {
-      qrCode = qrData.instance.qrcode;
-    }
-    
-    if (qrData?.pairingCode) {
-      pairingCode = qrData.pairingCode;
-    } else if (qrData?.code) {
-      pairingCode = qrData.code;
-    }
-
     // Check if already connected
     if (qrData?.instance?.state === "open" || qrData?.state === "open") {
       await supabase
         .from("whatsapp_integrations")
-        .update({ status: "connected", updated_at: new Date().toISOString() })
+        .update({ status: "connected", qr_code_data: null, connected_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("organization_id", organization_id);
 
       return new Response(
@@ -106,12 +86,20 @@ serve(async (req) => {
       );
     }
 
+    // Extract QR code
+    const qrCode = qrData?.base64 || qrData?.qrcode?.base64 || qrData?.instance?.qrcode || null;
+    const pairingCode = qrData?.pairingCode || qrData?.code || null;
+
+    // Save QR to DB
+    if (qrCode) {
+      await supabase
+        .from("whatsapp_integrations")
+        .update({ qr_code_data: qrCode, status: "qr_pending", updated_at: new Date().toISOString() })
+        .eq("organization_id", organization_id);
+    }
+
     return new Response(
-      JSON.stringify({ 
-        qr_code: qrCode, 
-        pairing_code: pairingCode,
-        status: "qr_pending" 
-      }),
+      JSON.stringify({ qr_code: qrCode, pairing_code: pairingCode, status: "qr_pending" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
