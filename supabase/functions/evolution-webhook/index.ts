@@ -139,8 +139,6 @@ async function handleQrCodeUpdate(supabase: any, body: any, integration: any) {
 
 // ── MESSAGE STATUS UPDATE handler (delivered/read) ──
 async function handleMessageStatusUpdate(supabase: any, body: any, orgId: string) {
-  // Evolution sends status updates like delivered, read, etc.
-  // We could update message status in the future
   console.log("[evolution-webhook] Message status update received");
   return respond({ ok: true });
 }
@@ -193,7 +191,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
     const { data: existingConv } = await supabase
       .from("conversations")
-      .select("id, unread_count, contact_name")
+      .select("id, unread_count, contact_name, profile_picture_url")
       .eq("organization_id", orgId)
       .eq("instance_name", instanceName)
       .eq("contact_phone", normalizedPhone)
@@ -218,6 +216,11 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         .from("conversations")
         .update(convUpdate)
         .eq("id", conversationId);
+
+      // Fetch profile picture if not cached yet
+      if (!existingConv.profile_picture_url && !isFromMe) {
+        fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+      }
     } else {
       const { data: newConv } = await supabase
         .from("conversations")
@@ -236,11 +239,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       conversationId = newConv?.id || null;
       console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
+
+      // Fetch profile picture for new conversation
+      if (conversationId && !isFromMe) {
+        fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+      }
     }
 
     // ── 2) Save message to messages table (idempotent by external ID) ──
     if (conversationId && externalMessageId) {
-      // Check idempotency by external_message_id
       const { data: existingMsg } = await supabase
         .from("messages")
         .select("id")
@@ -394,6 +401,53 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
   await invokeWorker();
 
   return respond({ ok: true });
+}
+
+// ── Helper: Fetch profile picture from Evolution API ──
+async function fetchAndSaveProfilePicture(
+  supabase: any,
+  instanceName: string,
+  phone: string,
+  conversationId: string
+) {
+  try {
+    const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+    const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+
+    if (!evolutionBaseUrl || !evolutionApiKey) return;
+
+    const res = await fetch(
+      `${evolutionBaseUrl}/chat/fetchProfilePictureUrl/${instanceName}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: evolutionApiKey,
+        },
+        body: JSON.stringify({ number: phone }),
+      }
+    );
+
+    if (!res.ok) {
+      console.log(`[evolution-webhook] Profile picture fetch failed for ${phone}: ${res.status}`);
+      return;
+    }
+
+    const data = await res.json();
+    const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
+
+    if (pictureUrl) {
+      await supabase
+        .from("conversations")
+        .update({ profile_picture_url: pictureUrl })
+        .eq("id", conversationId);
+
+      console.log(`[evolution-webhook] Profile picture saved for ${phone}`);
+    }
+  } catch (err) {
+    // Non-critical — don't fail the webhook
+    console.log(`[evolution-webhook] Profile picture fetch error for ${phone}:`, err);
+  }
 }
 
 // ── Helper: Check ad marker ──

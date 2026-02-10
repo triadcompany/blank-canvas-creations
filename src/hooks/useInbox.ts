@@ -10,10 +10,12 @@ export interface InboxThread {
   contact_phone: string;
   contact_name: string | null;
   assigned_to: string | null;
+  assigned_at: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
   unread_count: number;
   created_at: string;
+  profile_picture_url: string | null;
 }
 
 export interface InboxMessage {
@@ -29,7 +31,6 @@ export interface InboxMessage {
 export interface OrgMember {
   id: string;
   name: string;
-  user_id: string;
 }
 
 type FilterMode = 'all' | 'mine' | 'unassigned';
@@ -47,6 +48,8 @@ export function useInbox() {
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   const orgId = profile?.organization_id;
+  // Use profile.id (UUID) for assignment — profile.user_id is null for Clerk users
+  const myProfileId = profile?.id;
 
   // Fetch org members for assignment dropdown
   const fetchOrgMembers = useCallback(async () => {
@@ -54,7 +57,7 @@ export function useInbox() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, user_id')
+        .select('id, name')
         .eq('organization_id', orgId)
         .order('name');
       if (error) throw error;
@@ -80,16 +83,13 @@ export function useInbox() {
         .eq('organization_id', orgId)
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
-      const userId = profile?.user_id;
-
-      if (filter === 'mine' && userId) {
-        query = query.eq('assigned_to', userId);
+      if (filter === 'mine' && myProfileId) {
+        query = query.eq('assigned_to', myProfileId);
       } else if (filter === 'unassigned') {
         query = query.is('assigned_to', null);
       }
 
       if (search.trim()) {
-        // Search by phone or name
         query = query.or(`contact_phone.ilike.%${search}%,contact_name.ilike.%${search}%`);
       }
 
@@ -102,7 +102,7 @@ export function useInbox() {
     } finally {
       setLoadingThreads(false);
     }
-  }, [orgId, filter, search, profile?.user_id]);
+  }, [orgId, filter, search, myProfileId]);
 
   useEffect(() => {
     fetchThreads();
@@ -148,15 +148,12 @@ export function useInbox() {
         },
         (payload) => {
           const newMsg = payload.new as any;
-          // If message belongs to selected thread, add it
           if (newMsg.conversation_id === selectedThreadId) {
             setMessages(prev => {
-              // Avoid duplicates
               if (prev.some(m => m.id === newMsg.id)) return prev;
               return [...prev, newMsg];
             });
           }
-          // Refresh thread list for updated preview/unread
           fetchThreads();
         }
       )
@@ -210,15 +207,14 @@ export function useInbox() {
   const canSendMessage = useCallback((thread: InboxThread | null): boolean => {
     if (!thread || !profile) return false;
     if (isAdmin) return true;
-    return thread.assigned_to === profile.user_id;
-  }, [isAdmin, profile]);
+    return thread.assigned_to === myProfileId;
+  }, [isAdmin, profile, myProfileId]);
 
   // Send message (with optimistic update)
   const sendMessage = useCallback(async (text: string) => {
     if (!orgId || !selectedThreadId || !text.trim()) return;
     setSending(true);
 
-    // Optimistic: add message immediately
     const optimisticMsg: InboxMessage = {
       id: `temp-${Date.now()}`,
       organization_id: orgId,
@@ -247,12 +243,10 @@ export function useInbox() {
       const data = res.data as any;
       if (data?.error) throw new Error(data.error);
 
-      // Refresh to get the real message from DB
       await fetchMessages(selectedThreadId);
       await fetchThreads();
     } catch (err: any) {
       console.error('Error sending message:', err);
-      // Remove optimistic message on failure
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
       toast.error(err.message || 'Erro ao enviar mensagem');
     } finally {
@@ -260,23 +254,35 @@ export function useInbox() {
     }
   }, [orgId, selectedThreadId, threads, fetchMessages, fetchThreads]);
 
-  // Assign conversation
-  const assignThread = useCallback(async (threadId: string, userId: string | null) => {
+  // Assign conversation — uses profile.id (UUID)
+  const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
     if (!orgId) return;
+
+    // Optimistic update
+    setThreads(prev =>
+      prev.map(t => t.id === threadId
+        ? { ...t, assigned_to: profileId, assigned_at: profileId ? new Date().toISOString() : null }
+        : t
+      )
+    );
 
     try {
       const { error } = await supabase
         .from('conversations')
-        .update({ assigned_to: userId })
+        .update({
+          assigned_to: profileId,
+          assigned_at: profileId ? new Date().toISOString() : null,
+        })
         .eq('id', threadId)
         .eq('organization_id', orgId);
 
       if (error) throw error;
-      await fetchThreads();
-      toast.success(userId ? 'Conversa atribuída' : 'Atribuição removida');
+      toast.success(profileId ? 'Conversa atribuída' : 'Atribuição removida');
     } catch (err: any) {
       console.error('Error assigning conversation:', err);
       toast.error('Erro ao atribuir conversa');
+      // Revert on error
+      await fetchThreads();
     }
   }, [orgId, fetchThreads]);
 
@@ -295,6 +301,7 @@ export function useInbox() {
     isAdmin,
     orgMembers,
     profile,
+    myProfileId,
     setFilter,
     setSearch,
     selectThread,
