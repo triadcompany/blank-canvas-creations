@@ -7,28 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Plus,
-  Zap,
-  Play,
-  Pause,
-  Copy,
-  Trash2,
-  ArrowLeft,
-  Loader2,
-  MessageSquare,
-  AlertTriangle,
+  Plus, Zap, Play, Pause, Copy, Trash2, ArrowLeft, Loader2,
+  MessageSquare, AlertTriangle, RotateCw,
 } from "lucide-react";
-import { useAutomations, Automation, AutomationFlow } from "@/hooks/useAutomations";
+import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
 import { AutomationFlowEditor } from "@/components/automations/AutomationFlowEditor";
+import { AutomationRunsPanel } from "@/components/automations/AutomationRunsPanel";
+import { AutomationStatsCards } from "@/components/automations/AutomationStatsCards";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Node, Edge } from "@xyflow/react";
@@ -38,7 +29,7 @@ export default function Automacoes() {
   const {
     automations, loading, createAutomation, updateAutomation,
     deleteAutomation, duplicateAutomation, toggleActive,
-    getFlow, saveFlow,
+    getFlow, saveFlow, listRuns, listLogs, getRunStats, triggerWorker,
   } = useAutomations();
   const { isAdmin } = useAuth();
 
@@ -49,18 +40,42 @@ export default function Automacoes() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
-  // Load flow when editing automation changes
+  // Runs & stats state for detail view
+  const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [stats, setStats] = useState<RunStats>({ total: 0, running: 0, completed: 0, failed: 0, waiting: 0 });
+  const [workerRunning, setWorkerRunning] = useState(false);
+
+  // Global stats for list view
+  const [globalStats, setGlobalStats] = useState<RunStats>({ total: 0, running: 0, completed: 0, failed: 0, waiting: 0 });
+
+  // Load global stats on mount
+  useEffect(() => {
+    getRunStats().then(setGlobalStats);
+  }, [automations.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load flow + runs when editing automation changes
   useEffect(() => {
     if (!editingAutomation) {
       setCurrentFlow(null);
+      setRuns([]);
       return;
     }
     let cancelled = false;
     setFlowLoading(true);
-    getFlow(editingAutomation.id).then((flow) => {
+    setRunsLoading(true);
+
+    Promise.all([
+      getFlow(editingAutomation.id),
+      listRuns(editingAutomation.id),
+      getRunStats(editingAutomation.id),
+    ]).then(([flow, runsList, runStats]) => {
       if (!cancelled) {
         setCurrentFlow(flow);
+        setRuns(runsList);
+        setStats(runStats);
         setFlowLoading(false);
+        setRunsLoading(false);
       }
     });
     return () => { cancelled = true; };
@@ -80,34 +95,59 @@ export default function Automacoes() {
   const handleSaveFlow = async (flow: { nodes: Node[]; edges: Edge[] }) => {
     if (!editingAutomation) return;
     const saved = await saveFlow(editingAutomation.id, flow.nodes, flow.edges);
-    if (saved) {
-      setCurrentFlow(saved);
-    }
+    if (saved) setCurrentFlow(saved);
   };
 
   const handleToggle = async () => {
-    if (!editingAutomation) return;
+    if (!editingAutomation || !isAdmin) return;
     const success = await toggleActive(editingAutomation.id, editingAutomation.is_active);
     if (success) {
       setEditingAutomation({ ...editingAutomation, is_active: !editingAutomation.is_active });
     }
   };
 
+  const handleWorker = async () => {
+    setWorkerRunning(true);
+    await triggerWorker();
+    // Refresh runs after worker
+    if (editingAutomation) {
+      const [newRuns, newStats] = await Promise.all([
+        listRuns(editingAutomation.id),
+        getRunStats(editingAutomation.id),
+      ]);
+      setRuns(newRuns);
+      setStats(newStats);
+    }
+    setWorkerRunning(false);
+  };
+
+  const refreshRuns = async () => {
+    if (!editingAutomation) return;
+    setRunsLoading(true);
+    const [newRuns, newStats] = await Promise.all([
+      listRuns(editingAutomation.id),
+      getRunStats(editingAutomation.id),
+    ]);
+    setRuns(newRuns);
+    setStats(newStats);
+    setRunsLoading(false);
+  };
+
   const hasTrigger = currentFlow
     ? (currentFlow.nodes as Node[]).some((n) => n.type === "trigger")
     : false;
 
-  // Flow editor view
+  // ─── Detail view ───
   if (editingAutomation) {
     return (
       <CRMLayout>
         <div className="space-y-4">
-          <div className="flex items-center gap-4">
+          {/* Header */}
+          <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="sm" onClick={() => setEditingAutomation(null)}>
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Voltar
+              <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
             </Button>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h2 className="text-lg font-poppins font-bold text-foreground">{editingAutomation.name}</h2>
               {editingAutomation.description && (
                 <p className="text-sm text-muted-foreground font-poppins">{editingAutomation.description}</p>
@@ -117,13 +157,25 @@ export default function Automacoes() {
               {editingAutomation.is_active ? "Ativo" : "Inativo"}
             </Badge>
             <Badge variant="outline" className="font-poppins">
-              <MessageSquare className="h-3 w-3 mr-1" />
-              WhatsApp
+              <MessageSquare className="h-3 w-3 mr-1" /> WhatsApp
             </Badge>
             {currentFlow && (
-              <Badge variant="outline" className="font-poppins text-xs">
-                v{currentFlow.version}
-              </Badge>
+              <Badge variant="outline" className="font-poppins text-xs">v{currentFlow.version}</Badge>
+            )}
+            {isAdmin && (
+              <Button
+                variant={editingAutomation.is_active ? "outline" : "default"}
+                size="sm"
+                onClick={handleToggle}
+                disabled={!hasTrigger && !editingAutomation.is_active}
+                className="font-poppins"
+              >
+                {editingAutomation.is_active ? (
+                  <><Pause className="h-4 w-4 mr-1" /> Desativar</>
+                ) : (
+                  <><Play className="h-4 w-4 mr-1" /> Ativar</>
+                )}
+              </Button>
             )}
           </div>
 
@@ -136,27 +188,68 @@ export default function Automacoes() {
             </Alert>
           )}
 
-          {flowLoading ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <AutomationFlowEditor
-              flowDefinition={{
-                nodes: (currentFlow?.nodes as Node[]) || [],
-                edges: (currentFlow?.edges as Edge[]) || [],
-              }}
-              onSave={handleSaveFlow}
-              isActive={editingAutomation.is_active}
-              onToggleActive={handleToggle}
-            />
-          )}
+          <Tabs defaultValue="flow" className="w-full">
+            <TabsList className="font-poppins">
+              <TabsTrigger value="flow">Fluxo</TabsTrigger>
+              <TabsTrigger value="runs">
+                Execuções
+                {stats.total > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{stats.total}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="flow" className="mt-4">
+              {flowLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <AutomationFlowEditor
+                  flowDefinition={{
+                    nodes: (currentFlow?.nodes as Node[]) || [],
+                    edges: (currentFlow?.edges as Edge[]) || [],
+                  }}
+                  onSave={handleSaveFlow}
+                  isActive={editingAutomation.is_active}
+                  onToggleActive={handleToggle}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="runs" className="mt-4 space-y-4">
+              <AutomationStatsCards stats={stats} />
+
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={refreshRuns} className="font-poppins gap-1.5">
+                  <RotateCw className="h-3.5 w-3.5" /> Atualizar
+                </Button>
+                {isAdmin && (
+                  <Button
+                    variant="outline" size="sm" onClick={handleWorker}
+                    disabled={workerRunning} className="font-poppins gap-1.5"
+                  >
+                    {workerRunning
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Processando...</>
+                      : <><Play className="h-3.5 w-3.5" /> Executar worker agora</>
+                    }
+                  </Button>
+                )}
+              </div>
+
+              <AutomationRunsPanel
+                runs={runs}
+                loading={runsLoading}
+                onLoadLogs={(runId) => listLogs(runId)}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </CRMLayout>
     );
   }
 
-  // List view
+  // ─── List view ───
   return (
     <CRMLayout>
       <div className="space-y-6">
@@ -165,13 +258,33 @@ export default function Automacoes() {
             title="Automações"
             description="Crie fluxos automáticos de mensagens e ações para seus leads"
           />
-          {isAdmin && (
-            <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-              <Plus className="h-4 w-4" />
-              Nova Automação
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline" size="sm" onClick={async () => {
+                  setWorkerRunning(true);
+                  await triggerWorker();
+                  getRunStats().then(setGlobalStats);
+                  setWorkerRunning(false);
+                }}
+                disabled={workerRunning} className="font-poppins gap-1.5"
+              >
+                {workerRunning
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Worker...</>
+                  : <><Play className="h-3.5 w-3.5" /> Executar worker</>
+                }
+              </Button>
+            )}
+            {isAdmin && (
+              <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
+                <Plus className="h-4 w-4" /> Nova Automação
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Global stats */}
+        {globalStats.total > 0 && <AutomationStatsCards stats={globalStats} />}
 
         {loading ? (
           <div className="flex justify-center py-16">
@@ -187,8 +300,7 @@ export default function Automacoes() {
               </p>
               {isAdmin && (
                 <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-                  <Plus className="h-4 w-4" />
-                  Criar primeira automação
+                  <Plus className="h-4 w-4" /> Criar primeira automação
                 </Button>
               )}
             </CardContent>
@@ -223,17 +335,17 @@ export default function Automacoes() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => toggleActive(automation.id, automation.is_active)}
+                          title={automation.is_active ? "Desativar" : "Ativar"}
+                        >
+                          {automation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </Button>
+                      )}
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleActive(automation.id, automation.is_active)}
-                        title={automation.is_active ? "Desativar" : "Ativar"}
-                      >
-                        {automation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost" size="icon"
                         onClick={() => duplicateAutomation(automation)}
                         title="Duplicar"
                       >
@@ -241,11 +353,9 @@ export default function Automacoes() {
                       </Button>
                       {isAdmin && (
                         <Button
-                          variant="ghost"
-                          size="icon"
+                          variant="ghost" size="icon"
                           onClick={() => deleteAutomation(automation.id)}
-                          className="text-destructive hover:text-destructive"
-                          title="Excluir"
+                          className="text-destructive hover:text-destructive" title="Excluir"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -267,30 +377,18 @@ export default function Automacoes() {
             <div className="space-y-4">
               <div>
                 <Label className="font-poppins">Nome</Label>
-                <Input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ex: Boas-vindas novo lead"
-                  className="font-poppins"
-                />
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Ex: Boas-vindas novo lead" className="font-poppins" />
               </div>
               <div>
                 <Label className="font-poppins">Descrição (opcional)</Label>
-                <Textarea
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Descreva o objetivo desta automação"
-                  className="font-poppins"
-                />
+                <Textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="Descreva o objetivo desta automação" className="font-poppins" />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateDialog(false)} className="font-poppins">
-                Cancelar
-              </Button>
-              <Button onClick={handleCreate} disabled={!newName.trim()} className="btn-gradient text-white font-poppins">
-                Criar
-              </Button>
+              <Button variant="outline" onClick={() => setCreateDialog(false)} className="font-poppins">Cancelar</Button>
+              <Button onClick={handleCreate} disabled={!newName.trim()} className="btn-gradient text-white font-poppins">Criar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
