@@ -181,7 +181,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
-    const pushName = msg.pushName || "";
+    // Extract contact name from multiple possible fields
+    const pushName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || "";
     const messagePreview = displayBody.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
     const direction = isFromMe ? "outbound" : "inbound";
@@ -191,7 +192,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
     const { data: existingConv } = await supabase
       .from("conversations")
-      .select("id, unread_count, contact_name, profile_picture_url")
+      .select("id, unread_count, contact_name, contact_name_source, profile_picture_url, profile_picture_updated_at")
       .eq("organization_id", orgId)
       .eq("instance_name", instanceName)
       .eq("contact_phone", normalizedPhone)
@@ -208,18 +209,32 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       if (!isFromMe) {
         convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
       }
-      // Update contact_name if we have pushName and it's not set yet
-      if (pushName && !existingConv.contact_name) {
-        convUpdate.contact_name = pushName;
+      // Update contact_name from WhatsApp if:
+      // - we have a pushName AND
+      // - name is empty, equals the phone, or was previously set by whatsapp (not manually edited)
+      if (pushName && pushName !== normalizedPhone) {
+        const currentName = existingConv.contact_name || "";
+        const nameSource = existingConv.contact_name_source || "whatsapp";
+        const nameIsPhoneOrEmpty = !currentName || currentName === normalizedPhone || currentName === phone;
+        if (nameIsPhoneOrEmpty || nameSource === "whatsapp") {
+          convUpdate.contact_name = pushName;
+          convUpdate.contact_name_source = "whatsapp";
+        }
       }
       await supabase
         .from("conversations")
         .update(convUpdate)
         .eq("id", conversationId);
 
-      // Fetch profile picture if not cached yet
-      if (!existingConv.profile_picture_url && !isFromMe) {
-        fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+      // Fetch profile picture with 24h cache
+      if (!isFromMe) {
+        const picUpdatedAt = existingConv.profile_picture_updated_at;
+        const needsRefresh = !existingConv.profile_picture_url || 
+          !picUpdatedAt || 
+          (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
+        if (needsRefresh) {
+          fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+        }
       }
     } else {
       const { data: newConv } = await supabase
@@ -229,6 +244,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           instance_name: instanceName,
           contact_phone: normalizedPhone,
           contact_name: pushName || null,
+          contact_name_source: pushName ? "whatsapp" : null,
           last_message_at: now,
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,
@@ -436,13 +452,21 @@ async function fetchAndSaveProfilePicture(
     const data = await res.json();
     const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
 
+    const updateData: Record<string, unknown> = {
+      profile_picture_updated_at: new Date().toISOString(),
+    };
     if (pictureUrl) {
-      await supabase
-        .from("conversations")
-        .update({ profile_picture_url: pictureUrl })
-        .eq("id", conversationId);
+      updateData.profile_picture_url = pictureUrl;
+    }
+    await supabase
+      .from("conversations")
+      .update(updateData)
+      .eq("id", conversationId);
 
+    if (pictureUrl) {
       console.log(`[evolution-webhook] Profile picture saved for ${phone}`);
+    } else {
+      console.log(`[evolution-webhook] No profile picture available for ${phone}, timestamp updated`);
     }
   } catch (err) {
     // Non-critical — don't fail the webhook

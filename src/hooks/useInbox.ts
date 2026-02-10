@@ -9,6 +9,7 @@ export interface InboxThread {
   instance_name: string;
   contact_phone: string;
   contact_name: string | null;
+  contact_name_source: string | null;
   assigned_to: string | null;
   assigned_at: string | null;
   last_message_at: string | null;
@@ -16,6 +17,7 @@ export interface InboxThread {
   unread_count: number;
   created_at: string;
   profile_picture_url: string | null;
+  profile_picture_updated_at: string | null;
 }
 
 export interface InboxMessage {
