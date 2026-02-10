@@ -1471,6 +1471,42 @@ export type Database = {
           },
         ]
       }
+      evolution_webhook_logs: {
+        Row: {
+          created_at: string
+          detected_organization_id: string | null
+          error_message: string | null
+          event_type: string | null
+          id: string
+          instance_name: string | null
+          payload: Json | null
+          processing_result: string | null
+          remote_jid: string | null
+        }
+        Insert: {
+          created_at?: string
+          detected_organization_id?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_name?: string | null
+          payload?: Json | null
+          processing_result?: string | null
+          remote_jid?: string | null
+        }
+        Update: {
+          created_at?: string
+          detected_organization_id?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_name?: string | null
+          payload?: Json | null
+          processing_result?: string | null
+          remote_jid?: string | null
+        }
+        Relationships: []
+      }
       external_integrations: {
         Row: {
           config: Json
@@ -5382,6 +5418,7 @@ export type Database = {
       }
       cleanup_old_automation_events: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: number }
+      cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       create_appointment_reminders: { Args: never; Returns: number }
       create_crm_stage: {
         Args: {

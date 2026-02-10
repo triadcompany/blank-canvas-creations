@@ -41,6 +41,12 @@ serve(async (req) => {
     const event = body.event || body.action;
     const instanceName = body.instance || body.instanceName;
 
+    // Extract remoteJid for logging
+    const msgData = body.data || {};
+    const msgArray = Array.isArray(msgData) ? msgData : [msgData];
+    const firstMsg = msgArray[0] || {};
+    const remoteJid = firstMsg?.key?.remoteJid || firstMsg?.remoteJid || null;
+
     // Find integration by instance name
     const { data: integration } = await supabase
       .from("whatsapp_integrations")
@@ -50,10 +56,30 @@ serve(async (req) => {
 
     if (!integration) {
       console.log("[evolution-webhook] Unknown instance:", instanceName);
+      // Log unlinked event
+      await logWebhookEvent(supabase, {
+        instance_name: instanceName,
+        event_type: event,
+        remote_jid: remoteJid,
+        detected_organization_id: null,
+        processing_result: "unknown_instance",
+        error_message: `No whatsapp_integration found for instance: ${instanceName}`,
+        payload: { event, instanceName, remoteJid },
+      });
       return respond({ ok: true, message: "unknown instance" });
     }
 
     const orgId = integration.organization_id;
+
+    // Log every event for debugging
+    await logWebhookEvent(supabase, {
+      instance_name: instanceName,
+      event_type: event,
+      remote_jid: remoteJid,
+      detected_organization_id: orgId,
+      processing_result: "processing",
+      payload: { event, instanceName, remoteJid, hasData: !!body.data },
+    });
 
     // ── CONNECTION UPDATE ──
     if (event === "CONNECTION_UPDATE" || event === "connection.update") {
@@ -494,6 +520,31 @@ function respond(body: Record<string, unknown>, status = 200) {
       "Content-Type": "application/json",
     },
   });
+}
+
+// ── Helper: Log webhook event for debugging ──
+async function logWebhookEvent(supabase: any, data: {
+  instance_name?: string;
+  event_type?: string;
+  remote_jid?: string;
+  detected_organization_id?: string | null;
+  processing_result?: string;
+  error_message?: string;
+  payload?: any;
+}) {
+  try {
+    await supabase.from("evolution_webhook_logs").insert({
+      instance_name: data.instance_name || null,
+      event_type: data.event_type || null,
+      remote_jid: data.remote_jid || null,
+      detected_organization_id: data.detected_organization_id || null,
+      processing_result: data.processing_result || null,
+      error_message: data.error_message || null,
+      payload: data.payload || null,
+    });
+  } catch (err) {
+    console.error("[evolution-webhook] Failed to log webhook event:", err);
+  }
 }
 
 // ── Helper: Wake paused automation runs ──

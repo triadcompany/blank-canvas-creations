@@ -53,6 +53,12 @@ function isConnectedState(data: Record<string, unknown>): boolean {
   );
 }
 
+function buildWebhookUrl(supabaseUrl: string): string {
+  const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+  const base = `${supabaseUrl}/functions/v1/evolution-webhook`;
+  return webhookSecret ? `${base}?token=${encodeURIComponent(webhookSecret)}` : base;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -102,10 +108,10 @@ serve(async (req) => {
         qrcode: true,
         reject_call: false,
         webhook: {
-          url: `${supabaseUrl}/functions/v1/evolution-webhook`,
+          url: buildWebhookUrl(supabaseUrl),
           enabled: true,
           webhookByEvents: true,
-          events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+          events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "MESSAGES_UPDATE"],
         },
       }),
     });

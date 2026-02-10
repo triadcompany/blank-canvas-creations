@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.ai-analyze-conversation]
 verify_jwt = false
+
+[functions.admin-debug]
+verify_jwt = false
