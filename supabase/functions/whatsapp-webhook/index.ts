@@ -426,6 +426,28 @@ serve(async (req) => {
       .update({ status: assignedUserId ? 'atribuido' : 'erro' })
       .eq('external_id', externalId);
 
+    // Fire automation trigger for new leads
+    if (isNewLead) {
+      try {
+        const triggerUrl = `${supabaseUrl}/functions/v1/automation-trigger`;
+        await fetch(triggerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            organization_id: integration.organization_id,
+            lead_id: leadId,
+            trigger_type: "lead_created",
+          }),
+        });
+        console.log("Automation trigger fired for new lead:", leadId);
+      } catch (triggerErr) {
+        console.error("Error firing automation trigger:", triggerErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
