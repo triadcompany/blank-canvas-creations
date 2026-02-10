@@ -4926,6 +4926,7 @@ export type Database = {
           organization_id: string
           routing_bucket: string
           status: string
+          unread_count: number
           updated_at: string
         }
         Insert: {
@@ -4943,6 +4944,7 @@ export type Database = {
           organization_id: string
           routing_bucket?: string
           status?: string
+          unread_count?: number
           updated_at?: string
         }
         Update: {
@@ -4960,6 +4962,7 @@ export type Database = {
           organization_id?: string
           routing_bucket?: string
           status?: string
+          unread_count?: number
           updated_at?: string
         }
         Relationships: [
