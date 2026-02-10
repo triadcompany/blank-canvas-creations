@@ -115,7 +115,7 @@ serve(async (req) => {
                   .replace(/\{\{lead\.name\}\}/g, lead.name || "")
                   .replace(/\{\{lead\.phone\}\}/g, lead.phone || "");
 
-                const sent = await sendWhatsAppMessage(supabase, run.organization_id, lead.phone, resolvedText);
+                const sent = await sendWhatsAppMessage(run.organization_id, lead.phone, resolvedText, run.lead_id, run.id);
 
                 await supabase
                   .from("automation_run_steps")
@@ -223,28 +223,29 @@ serve(async (req) => {
 });
 
 async function sendWhatsAppMessage(
-  supabase: any,
   organizationId: string,
   phone: string,
-  text: string
+  text: string,
+  leadId?: string,
+  runId?: string
 ): Promise<boolean> {
   try {
-    const { data: integration } = await supabase
-      .from("whatsapp_integrations")
-      .select("api_url, api_key, instance_name")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .maybeSingle();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    if (!integration?.api_url || !integration?.api_key || !integration?.instance_name) {
-      return false;
-    }
-
-    const url = `${integration.api_url}/message/sendText/${integration.instance_name}`;
-    const response = await fetch(url, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/evolution-send`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: integration.api_key },
-      body: JSON.stringify({ number: phone, text }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        to_e164: phone,
+        message: text,
+        lead_id: leadId || null,
+        automation_run_id: runId || null,
+      }),
     });
 
     return response.ok;

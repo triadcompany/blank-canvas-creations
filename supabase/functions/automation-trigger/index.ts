@@ -244,8 +244,8 @@ async function executeRun(
             .replace(/\{\{lead\.name\}\}/g, lead.name || "")
             .replace(/\{\{lead\.phone\}\}/g, lead.phone || "");
 
-          // Try to send via WhatsApp integration
-          const sent = await sendWhatsAppMessage(supabase, organizationId, lead.phone, resolvedText);
+          // Send via evolution-send edge function
+          const sent = await sendWhatsAppMessage(organizationId, lead.phone, resolvedText, leadId, runId);
 
           await supabase
             .from("automation_run_steps")
@@ -349,49 +349,41 @@ async function executeRun(
 }
 
 async function sendWhatsAppMessage(
-  supabase: any,
   organizationId: string,
   phone: string,
-  text: string
+  text: string,
+  leadId?: string,
+  runId?: string
 ): Promise<boolean> {
   try {
-    // Check if org has a WhatsApp integration with Evolution API
-    const { data: integration } = await supabase
-      .from("whatsapp_integrations")
-      .select("api_url, api_key, instance_name")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .maybeSingle();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    if (!integration?.api_url || !integration?.api_key || !integration?.instance_name) {
-      console.log("[automation-trigger] No WhatsApp provider configured, message logged only");
-      return false;
-    }
-
-    // Send via Evolution API
-    const url = `${integration.api_url}/message/sendText/${integration.instance_name}`;
-    const response = await fetch(url, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/evolution-send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: integration.api_key,
+        Authorization: `Bearer ${supabaseServiceKey}`,
       },
       body: JSON.stringify({
-        number: phone,
-        text: text,
+        organization_id: organizationId,
+        to_e164: phone,
+        message: text,
+        lead_id: leadId || null,
+        automation_run_id: runId || null,
       }),
     });
 
     if (!response.ok) {
       const errBody = await response.text();
-      console.error("[automation-trigger] WhatsApp send error:", errBody);
+      console.error("[automation-trigger] evolution-send error:", errBody);
       return false;
     }
 
-    console.log(`[automation-trigger] WhatsApp message sent to ${phone}`);
+    console.log(`[automation-trigger] Message sent via evolution-send to ${phone}`);
     return true;
   } catch (err) {
-    console.error("[automation-trigger] WhatsApp send exception:", err);
+    console.error("[automation-trigger] send exception:", err);
     return false;
   }
 }
