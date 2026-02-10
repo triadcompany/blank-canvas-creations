@@ -154,7 +154,7 @@ function ThreadItem({
             <User className="h-2.5 w-2.5 text-muted-foreground/60" />
             <span className={cn(
               'text-[10px]',
-              assignedName ? 'text-muted-foreground/60' : 'text-orange-500/80'
+              assignedName ? 'text-muted-foreground/60' : 'text-destructive/70'
             )}>
               {assignedName || 'Não atribuída'}
             </span>
@@ -472,7 +472,7 @@ export default function InboxPage() {
                       <span className="text-border">•</span>
                     </>
                   )}
-                  <span className={assignedMemberName ? '' : 'text-orange-500'}>
+                  <span className={assignedMemberName ? '' : 'text-destructive'}>
                     {assignedMemberName || 'Não atribuída'}
                   </span>
                 </div>
