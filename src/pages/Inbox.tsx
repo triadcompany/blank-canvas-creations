@@ -68,7 +68,7 @@ function ThreadItem({
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <span className="font-medium text-sm truncate block">
-            {thread.contact_phone}
+            {thread.contact_name || thread.contact_phone_e164}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -107,7 +107,7 @@ function MessageBubble({ message }: { message: InboxMessage }) {
             : 'bg-muted rounded-bl-md'
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
+        <p className="whitespace-pre-wrap break-words">{message.message_text}</p>
         <div
           className={cn(
             'flex items-center justify-end gap-1 mt-1',
@@ -218,8 +218,8 @@ export default function InboxPage() {
     { key: 'unassigned', label: 'Não atribuídas', adminOnly: true },
   ];
 
-  const assignedMemberName = selectedThread?.assigned_to
-    ? memberNameMap[selectedThread.assigned_to]
+  const assignedMemberName = selectedThread?.assigned_user_id
+    ? memberNameMap[selectedThread.assigned_user_id]
     : null;
 
   // Total unread across all visible threads
@@ -299,7 +299,7 @@ export default function InboxPage() {
                 thread={thread}
                 selected={thread.id === selectedThreadId}
                 onClick={() => selectThread(thread.id)}
-                assignedName={thread.assigned_to ? memberNameMap[thread.assigned_to] : undefined}
+                assignedName={thread.assigned_user_id ? memberNameMap[thread.assigned_user_id] : undefined}
               />
             ))
           )}
@@ -330,11 +330,11 @@ export default function InboxPage() {
 
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-sm truncate">
-                  {selectedThread.contact_phone}
+                  {selectedThread.contact_name || selectedThread.contact_phone_e164}
                 </h3>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Phone className="h-3 w-3" />
-                  <span>{selectedThread.contact_phone}</span>
+                  <span>{selectedThread.contact_phone_e164}</span>
                   <span className="text-border">•</span>
                   <User className="h-3 w-3" />
                   <span>{assignedMemberName || 'Não atribuída'}</span>
@@ -344,7 +344,7 @@ export default function InboxPage() {
               {/* Assignment actions */}
               <div className="flex items-center gap-1">
                 {/* Assume conversation */}
-                {selectedThread.assigned_to !== profile?.user_id && (
+                {selectedThread.assigned_user_id !== profile?.user_id && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -375,7 +375,7 @@ export default function InboxPage() {
                           key={member.id}
                           className={cn(
                             'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
-                            selectedThread.assigned_to === member.user_id && 'bg-accent font-medium'
+                            selectedThread.assigned_user_id === member.user_id && 'bg-accent font-medium'
                           )}
                           onClick={() => handleAssign(member.user_id)}
                         >
@@ -386,7 +386,7 @@ export default function InboxPage() {
                           )}
                         </button>
                       ))}
-                      {selectedThread.assigned_to && (
+                      {selectedThread.assigned_user_id && (
                         <>
                           <div className="border-t border-border my-1" />
                           <button
