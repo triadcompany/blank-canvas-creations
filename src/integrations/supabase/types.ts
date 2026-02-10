@@ -896,35 +896,7 @@ export type Database = {
             foreignKeyName: "conversations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "conversations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "conversations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "conversations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "conversations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2920,35 +2892,7 @@ export type Database = {
             foreignKeyName: "messages_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "messages_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "messages_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "messages_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "messages_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
