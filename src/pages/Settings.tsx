@@ -97,7 +97,6 @@ export function Settings() {
     { id: "instagram", icon: Instagram, label: "Instagram", active: activeTab === "instagram" },
     { id: "webhooks", icon: Webhook, label: "Webhooks", active: activeTab === "webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads", active: activeTab === "distribution" },
-    { id: "test-distribution", icon: Play, label: "Testar Distribuição", active: activeTab === "test-distribution" },
     { id: "sources", icon: MapPin, label: "Origens de Leads", active: activeTab === "sources" },
     { id: "notifications", icon: Bell, label: "Notificações", active: activeTab === "notifications" },
   ];
@@ -127,9 +126,13 @@ export function Settings() {
           </div>
         );
       case "distribution":
-        return <LeadDistribution />;
-      case "test-distribution":
-        return <TestLeadDistribution />;
+        return (
+          <div className="space-y-8">
+            <LeadDistribution />
+            <Separator />
+            <TestLeadDistribution />
+          </div>
+        );
       case "sources":
         return <LeadSourcesManagement />;
       case "notifications":
