@@ -64,16 +64,16 @@ serve(async (req) => {
       return respond({ error: "Usuário não pertence a esta organização" }, 403);
     }
 
-    // ── Get thread ──
-    const { data: thread } = await supabase
-      .from("whatsapp_threads")
-      .select("id, contact_phone_e164, instance_name, organization_id")
+    // ── Get conversation ──
+    const { data: conversation } = await supabase
+      .from("conversations")
+      .select("id, contact_phone, instance_name, organization_id")
       .eq("id", thread_id)
       .eq("organization_id", organization_id)
       .maybeSingle();
 
-    if (!thread) {
-      return respond({ error: "Thread não encontrada" }, 404);
+    if (!conversation) {
+      return respond({ error: "Conversa não encontrada" }, 404);
     }
 
     // ── Get WhatsApp integration ──
@@ -93,7 +93,7 @@ serve(async (req) => {
     }
 
     // ── Send via Evolution API ──
-    const phone = thread.contact_phone_e164.replace(/\D/g, "");
+    const phone = conversation.contact_phone.replace(/\D/g, "");
     const sendRes = await fetch(
       `${evolutionBaseUrl}/message/sendText/${integration.instance_name}`,
       {
@@ -112,47 +112,34 @@ serve(async (req) => {
     if (!sendRes.ok) {
       console.error("[whatsapp-send] Evolution error:", sendData);
 
-      await supabase.from("whatsapp_messages").insert({
+      // Save failed message
+      await supabase.from("messages").insert({
         organization_id,
-        thread_id,
-        instance_name: integration.instance_name,
+        conversation_id: thread_id,
         direction: "outbound",
-        phone,
-        message_text: text,
-        status: "failed",
-        metadata: { error: sendData },
+        body: text,
       });
 
       return respond({ error: "Erro ao enviar mensagem", details: sendData }, 400);
     }
 
     // ── Save outbound message ──
-    const externalId = sendData?.key?.id || sendData?.messageId || null;
-
-    await supabase.from("whatsapp_messages").insert({
+    await supabase.from("messages").insert({
       organization_id,
-      thread_id,
-      instance_name: integration.instance_name,
+      conversation_id: thread_id,
       direction: "outbound",
-      phone,
-      message_text: text,
-      status: "sent",
-      external_message_id: externalId,
-      metadata: sendData,
+      body: text,
     });
 
-    // ── Update thread ──
+    // ── Update conversation.last_message_at ──
     await supabase
-      .from("whatsapp_threads")
-      .update({
-        last_message_at: now,
-        last_message_preview: text.substring(0, 100),
-      })
+      .from("conversations")
+      .update({ last_message_at: now })
       .eq("id", thread_id);
 
-    console.log(`[whatsapp-send] Sent to ${phone} in thread ${thread_id}`);
+    console.log(`[whatsapp-send] Sent to ${phone} in conversation ${thread_id}`);
 
-    return respond({ ok: true, message_id: externalId });
+    return respond({ ok: true });
   } catch (err) {
     console.error("[whatsapp-send] Error:", err);
     return respond({ error: String(err) }, 500);
