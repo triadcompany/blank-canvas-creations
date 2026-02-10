@@ -182,9 +182,9 @@ export function CRMSidebar() {
 
                 {/* Follow-up collapsible group */}
                 <SidebarMenuItem>
-                  <SidebarMenuButton
+                  <button
                     onClick={() => setFollowupOpen(!followupOpen)}
-                    className={`flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
                       isFollowupActive
                         ? "bg-primary/10 text-primary font-medium"
                         : "hover:bg-accent hover:text-accent-foreground"
@@ -197,7 +197,7 @@ export function CRMSidebar() {
                     {open && (
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${followupOpen ? "rotate-180" : ""}`} />
                     )}
-                  </SidebarMenuButton>
+                  </button>
                 </SidebarMenuItem>
 
                 {followupOpen && open && followupChildren.map((child) => (
