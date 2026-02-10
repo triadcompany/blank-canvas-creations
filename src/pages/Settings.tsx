@@ -102,16 +102,6 @@ export function Settings() {
     { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
     { id: "profile", icon: User, label: "Meu Perfil" },
     { id: "vendors", icon: Users, label: "Usuários" },
-    { id: "pipeline", icon: Workflow, label: "Pipeline" },
-    { 
-      id: "followup-group", 
-      icon: MailCheck, 
-      label: "Follow-up",
-      children: [
-        { id: "templates", icon: MessageSquare, label: "Templates" },
-        { id: "cadences", icon: PlayCircle, label: "Cadências" },
-      ]
-    },
     { id: "instagram", icon: Instagram, label: "Instagram" },
     { id: "webhooks", icon: Webhook, label: "Webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads" },
@@ -127,8 +117,7 @@ export function Settings() {
         return <UserProfile />;
       case "vendors":
         return renderVendorsContent();
-      case "pipeline":
-        return renderPipelineContent();
+      case "templates":
       case "templates":
         return <FollowupTemplatesManagement />;
       case "cadences":
