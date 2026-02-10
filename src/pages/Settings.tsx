@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
+import { EvolutionIntegration } from "@/components/settings/EvolutionIntegration";
 import LeadDistribution from "@/components/settings/LeadDistribution";
 import { LeadSourcesManagement } from "@/components/settings/LeadSourcesManagement";
 import { TestLeadDistribution } from "@/components/settings/TestLeadDistribution";
@@ -103,6 +104,7 @@ export function Settings() {
     { id: "profile", icon: User, label: "Meu Perfil" },
     { id: "vendors", icon: Users, label: "Usuários" },
     { id: "instagram", icon: Instagram, label: "Instagram" },
+    { id: "whatsapp-evolution", icon: MessageSquare, label: "WhatsApp (Evolution)" },
     { id: "webhooks", icon: Webhook, label: "Webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads" },
     { id: "sources", icon: MapPin, label: "Origens de Leads" },
@@ -122,6 +124,8 @@ export function Settings() {
         return <FollowupTemplatesManagement />;
       case "cadences":
         return <FollowupCadencesManagement />;
+      case "whatsapp-evolution":
+        return <EvolutionIntegration />;
       case "instagram":
         return <InstagramSettings />;
       case "webhooks":
