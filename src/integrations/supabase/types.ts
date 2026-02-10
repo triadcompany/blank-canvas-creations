@@ -220,183 +220,143 @@ export type Database = {
           },
         ]
       }
-      automation_events: {
+      automation_flows: {
         Row: {
-          created_at: string | null
-          event_data: Json | null
-          event_type: string
+          automation_id: string
+          created_at: string
+          edges: Json
+          entry_node_id: string | null
           id: string
-          organization_id: string | null
-          processed: boolean | null
+          nodes: Json
+          organization_id: string
+          updated_at: string
+          version: number
         }
         Insert: {
-          created_at?: string | null
-          event_data?: Json | null
-          event_type: string
+          automation_id: string
+          created_at?: string
+          edges?: Json
+          entry_node_id?: string | null
           id?: string
-          organization_id?: string | null
-          processed?: boolean | null
+          nodes?: Json
+          organization_id: string
+          updated_at?: string
+          version?: number
         }
         Update: {
-          created_at?: string | null
-          event_data?: Json | null
-          event_type?: string
+          automation_id?: string
+          created_at?: string
+          edges?: Json
+          entry_node_id?: string | null
           id?: string
-          organization_id?: string | null
-          processed?: boolean | null
+          nodes?: Json
+          organization_id?: string
+          updated_at?: string
+          version?: number
         }
         Relationships: [
           {
-            foreignKeyName: "automation_events_organization_id_fkey"
-            columns: ["organization_id"]
+            foreignKeyName: "automation_flows_automation_id_fkey"
+            columns: ["automation_id"]
             isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "automations"
             referencedColumns: ["id"]
           },
         ]
       }
-      automation_executions: {
+      automation_jobs: {
         Row: {
-          created_at: string | null
-          error_message: string | null
-          execution_time_ms: number | null
+          attempts: number
+          automation_id: string
+          created_at: string
           id: string
-          organization_id: string | null
+          job_type: string
+          last_error: string | null
+          node_id: string
+          organization_id: string
+          payload: Json | null
+          run_id: string
+          scheduled_for: string
           status: string
-          trigger_data: Json | null
-          trigger_event: string
-          webhook_payload: Json | null
-          webhook_response: Json | null
-          workflow_id: string | null
         }
         Insert: {
-          created_at?: string | null
-          error_message?: string | null
-          execution_time_ms?: number | null
+          attempts?: number
+          automation_id: string
+          created_at?: string
           id?: string
-          organization_id?: string | null
+          job_type: string
+          last_error?: string | null
+          node_id: string
+          organization_id: string
+          payload?: Json | null
+          run_id: string
+          scheduled_for: string
           status?: string
-          trigger_data?: Json | null
-          trigger_event: string
-          webhook_payload?: Json | null
-          webhook_response?: Json | null
-          workflow_id?: string | null
         }
         Update: {
-          created_at?: string | null
-          error_message?: string | null
-          execution_time_ms?: number | null
+          attempts?: number
+          automation_id?: string
+          created_at?: string
           id?: string
-          organization_id?: string | null
+          job_type?: string
+          last_error?: string | null
+          node_id?: string
+          organization_id?: string
+          payload?: Json | null
+          run_id?: string
+          scheduled_for?: string
           status?: string
-          trigger_data?: Json | null
-          trigger_event?: string
-          webhook_payload?: Json | null
-          webhook_response?: Json | null
-          workflow_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "automation_executions_organization_id_fkey"
-            columns: ["organization_id"]
+            foreignKeyName: "automation_jobs_automation_id_fkey"
+            columns: ["automation_id"]
             isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "automation_executions_organization_id_fkey"
-            columns: ["organization_id"]
+            foreignKeyName: "automation_jobs_run_id_fkey"
+            columns: ["run_id"]
             isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_executions_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_executions_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "automation_executions_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "automation_runs"
             referencedColumns: ["id"]
           },
         ]
       }
       automation_logs: {
         Row: {
-          automation_id: string
-          created_at: string | null
+          automation_id: string | null
+          created_at: string
+          data: Json | null
           id: string
-          lead_id: string | null
+          level: string
           message: string | null
-          metadata: Json | null
           node_id: string | null
-          node_type: string | null
           organization_id: string
-          status: string
+          run_id: string | null
         }
         Insert: {
-          automation_id: string
-          created_at?: string | null
+          automation_id?: string | null
+          created_at?: string
+          data?: Json | null
           id?: string
-          lead_id?: string | null
+          level?: string
           message?: string | null
-          metadata?: Json | null
           node_id?: string | null
-          node_type?: string | null
           organization_id: string
-          status?: string
+          run_id?: string | null
         }
         Update: {
-          automation_id?: string
-          created_at?: string | null
+          automation_id?: string | null
+          created_at?: string
+          data?: Json | null
           id?: string
-          lead_id?: string | null
+          level?: string
           message?: string | null
-          metadata?: Json | null
           node_id?: string | null
-          node_type?: string | null
           organization_id?: string
-          status?: string
+          run_id?: string | null
         }
         Relationships: [
           {
@@ -407,64 +367,7 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "automation_logs_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "automation_logs_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      automation_run_steps: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          error_message: string | null
-          id: string
-          input_data: Json | null
-          node_id: string
-          node_type: string
-          output_data: Json | null
-          run_id: string
-          started_at: string | null
-          status: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
-          id?: string
-          input_data?: Json | null
-          node_id: string
-          node_type: string
-          output_data?: Json | null
-          run_id: string
-          started_at?: string | null
-          status?: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
-          id?: string
-          input_data?: Json | null
-          node_id?: string
-          node_type?: string
-          output_data?: Json | null
-          run_id?: string
-          started_at?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "automation_run_steps_run_id_fkey"
+            foreignKeyName: "automation_logs_run_id_fkey"
             columns: ["run_id"]
             isOneToOne: false
             referencedRelation: "automation_runs"
@@ -475,45 +378,42 @@ export type Database = {
       automation_runs: {
         Row: {
           automation_id: string
-          completed_at: string | null
-          created_at: string
+          context: Json | null
           current_node_id: string | null
-          error_message: string | null
+          entity_id: string
+          entity_type: string
+          finished_at: string | null
           id: string
-          lead_id: string
-          next_run_at: string | null
+          last_error: string | null
           organization_id: string
           started_at: string
           status: string
-          updated_at: string
         }
         Insert: {
           automation_id: string
-          completed_at?: string | null
-          created_at?: string
+          context?: Json | null
           current_node_id?: string | null
-          error_message?: string | null
+          entity_id: string
+          entity_type?: string
+          finished_at?: string | null
           id?: string
-          lead_id: string
-          next_run_at?: string | null
+          last_error?: string | null
           organization_id: string
           started_at?: string
           status?: string
-          updated_at?: string
         }
         Update: {
           automation_id?: string
-          completed_at?: string | null
-          created_at?: string
+          context?: Json | null
           current_node_id?: string | null
-          error_message?: string | null
+          entity_id?: string
+          entity_type?: string
+          finished_at?: string | null
           id?: string
-          lead_id?: string
-          next_run_at?: string | null
+          last_error?: string | null
           organization_id?: string
           started_at?: string
           status?: string
-          updated_at?: string
         }
         Relationships: [
           {
@@ -523,68 +423,43 @@ export type Database = {
             referencedRelation: "automations"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "automation_runs_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "automation_runs_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
         ]
       }
       automations: {
         Row: {
           channel: string
-          created_at: string | null
+          created_at: string
           created_by: string
           description: string | null
-          flow_definition: Json
           id: string
           is_active: boolean
           name: string
           organization_id: string
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           channel?: string
-          created_at?: string | null
+          created_at?: string
           created_by: string
           description?: string | null
-          flow_definition?: Json
           id?: string
           is_active?: boolean
           name: string
           organization_id: string
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           channel?: string
-          created_at?: string | null
+          created_at?: string
           created_by?: string
           description?: string | null
-          flow_definition?: Json
           id?: string
           is_active?: boolean
           name?: string
           organization_id?: string
-          updated_at?: string | null
+          updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "automations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       calendar_events: {
         Row: {
@@ -4892,13 +4767,6 @@ export type Database = {
           status?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "whatsapp_messages_automation_run_id_fkey"
-            columns: ["automation_run_id"]
-            isOneToOne: false
-            referencedRelation: "automation_runs"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "whatsapp_messages_lead_id_fkey"
             columns: ["lead_id"]
