@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, Zap, Play, Pause, Copy, Trash2, ArrowLeft, Loader2,
-  MessageSquare, AlertTriangle, RotateCw, FileText,
+  MessageSquare, AlertTriangle, RotateCw, FileText, Pencil, Check, X,
 } from "lucide-react";
 import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,6 +46,8 @@ export default function Automacoes() {
   const [runsLoading, setRunsLoading] = useState(false);
   const [stats, setStats] = useState<RunStats>({ total: 0, running: 0, completed: 0, failed: 0, waiting: 0 });
   const [workerRunning, setWorkerRunning] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
 
   // Global stats for list view
   const [globalStats, setGlobalStats] = useState<RunStats>({ total: 0, running: 0, completed: 0, failed: 0, waiting: 0 });
@@ -149,7 +151,49 @@ export default function Automacoes() {
               <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
             </Button>
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-poppins font-bold text-foreground">{editingAutomation.name}</h2>
+              {renaming ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    className="font-poppins font-bold h-8 text-lg"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        if (renameValue.trim() && renameValue !== editingAutomation.name) {
+                          updateAutomation(editingAutomation.id, { name: renameValue.trim() });
+                          setEditingAutomation({ ...editingAutomation, name: renameValue.trim() });
+                        }
+                        setRenaming(false);
+                      } else if (e.key === "Escape") {
+                        setRenaming(false);
+                      }
+                    }}
+                  />
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                    if (renameValue.trim() && renameValue !== editingAutomation.name) {
+                      updateAutomation(editingAutomation.id, { name: renameValue.trim() });
+                      setEditingAutomation({ ...editingAutomation, name: renameValue.trim() });
+                    }
+                    setRenaming(false);
+                  }}>
+                    <Check className="h-4 w-4 text-green-600" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRenaming(false)}>
+                    <X className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <h2 className="text-lg font-poppins font-bold text-foreground">{editingAutomation.name}</h2>
+                  <Button
+                    variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { setRenameValue(editingAutomation.name); setRenaming(true); }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
               {editingAutomation.description && (
                 <p className="text-sm text-muted-foreground font-poppins">{editingAutomation.description}</p>
               )}
