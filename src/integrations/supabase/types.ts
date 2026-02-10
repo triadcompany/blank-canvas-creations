@@ -4868,9 +4868,53 @@ export type Database = {
         Returns: Json
       }
       encrypt_n8n_api_key: { Args: { api_key: string }; Returns: string }
+      ensure_default_pipeline: {
+        Args: { p_created_by: string; p_org_id: string }
+        Returns: string
+      }
       get_automation_stats: {
         Args: { p_organization_id: string }
         Returns: Json
+      }
+      get_org_pipelines: {
+        Args: { p_org_id: string }
+        Returns: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_default: boolean | null
+          name: string
+          organization_id: string | null
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "pipelines"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_pipeline_stages: {
+        Args: { p_pipeline_id: string }
+        Returns: {
+          color: string | null
+          created_at: string | null
+          created_by: string
+          id: string
+          is_active: boolean | null
+          name: string
+          pipeline_id: string | null
+          position: number
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "pipeline_stages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_user_organization_id:
         | { Args: never; Returns: string }
