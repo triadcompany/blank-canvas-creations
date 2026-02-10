@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
-import { Resend } from "npm:resend@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,8 +14,6 @@ interface InviteUserRequest {
   organizationId: string;
 }
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
 function normalizeSiteUrl(url: string) {
   return url.replace(/\/+$/, "");
 }
@@ -30,62 +27,6 @@ function getSiteUrl(req: Request) {
   return normalizeSiteUrl(raw);
 }
 
-function escapeHtml(input: string) {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-async function sendInviteEmail(params: {
-  to: string;
-  name: string;
-  signUpUrl: string;
-  organizationName: string;
-  role: string;
-  siteUrl: string;
-}) {
-  const safeName = escapeHtml(params.name);
-  const safeOrgName = escapeHtml(params.organizationName);
-  const roleLabel = params.role === 'admin' ? 'Administrador' : 'Vendedor';
-
-  const html = `
-  <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f7f7f8; padding:24px;">
-    <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:12px; padding:24px; border:1px solid #e6e6e8;">
-      <h2 style="margin:0 0 12px 0; font-size:18px; color:#111827;">Você foi convidado para ${safeOrgName}</h2>
-      <p style="margin:0 0 18px 0; font-size:14px; line-height:1.5; color:#374151;">
-        Olá ${safeName}, você foi convidado como <strong>${roleLabel}</strong> para acessar o sistema de CRM.
-        Clique no botão abaixo para criar sua conta.
-      </p>
-      <a href="${params.signUpUrl}" style="display:inline-block; background:#111827; color:#ffffff; text-decoration:none; padding:10px 14px; border-radius:10px; font-size:14px;">
-        Criar minha conta
-      </a>
-      <p style="margin:18px 0 0 0; font-size:12px; color:#6b7280;">Se você não esperava este convite, ignore este email.</p>
-      <p style="margin:12px 0 0 0; font-size:12px; color:#6b7280;">Abrir sistema: <a href="${params.siteUrl}" style="color:#6b7280;">${params.siteUrl}</a></p>
-    </div>
-  </div>`;
-
-  const resendResponse = await resend.emails.send({
-    from: "Essencial Light <onboarding@resend.dev>",
-    to: [params.to],
-    subject: `Convite para ${safeOrgName}`,
-    html,
-  });
-
-  const resendError = (resendResponse as any)?.error;
-  if (resendError) {
-    throw new Error(
-      typeof resendError === "string"
-        ? resendError
-        : resendError?.message || "Falha ao enviar email"
-    );
-  }
-
-  return resendResponse;
-}
-
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -94,15 +35,15 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     console.log("🚀 invite-user function called (Clerk version)");
 
+    const clerkSecretKey = Deno.env.get("CLERK_SECRET_KEY");
+    if (!clerkSecretKey) {
+      throw new Error("CLERK_SECRET_KEY não configurado");
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
     const { email, name, role, organizationId }: InviteUserRequest = await req.json();
@@ -113,10 +54,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (!email || !name || !role || !organizationId) {
       return new Response(
         JSON.stringify({ success: false, error: "Campos obrigatórios: email, name, role, organizationId" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -145,7 +83,6 @@ const handler = async (req: Request): Promise<Response> => {
         .update({ name, role: role === 'admin' ? 'admin' : 'seller', updated_at: new Date().toISOString() })
         .eq('id', existingInvite.id);
     } else {
-      // Criar novo convite na tabela user_invitations
       const { error: insertError } = await supabaseAdmin
         .from('user_invitations')
         .insert({
@@ -160,51 +97,57 @@ const handler = async (req: Request): Promise<Response> => {
         console.error("❌ Error creating invitation:", insertError);
         return new Response(
           JSON.stringify({ success: false, error: insertError.message }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
     }
 
-    // Com Clerk, o convite redireciona para a página de signup com parâmetros
-    const signUpUrl = `${siteUrl}/auth?invited=true&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&role=${role}&orgId=${organizationId}&orgName=${encodeURIComponent(organizationName)}`;
+    // Enviar convite via Clerk API
+    const redirectUrl = `${siteUrl}/auth?invited=true&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&role=${role}&orgId=${organizationId}&orgName=${encodeURIComponent(organizationName)}`;
 
-    // Enviar email via Resend
-    await sendInviteEmail({
-      to: email,
-      name,
-      signUpUrl,
-      organizationName,
-      role,
-      siteUrl,
+    console.log("📧 Sending invitation via Clerk API...");
+    const clerkResponse = await fetch("https://api.clerk.com/v1/invitations", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${clerkSecretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email_address: email,
+        redirect_url: redirectUrl,
+        ignore_existing: true,
+        public_metadata: {
+          invited_name: name,
+          invited_role: role,
+          organization_id: organizationId,
+          organization_name: organizationName,
+        },
+      }),
     });
 
-    console.log("✅ Invite email sent successfully");
+    const clerkData = await clerkResponse.json();
+
+    if (!clerkResponse.ok) {
+      console.error("❌ Clerk API error:", clerkData);
+      const errorMsg = clerkData?.errors?.[0]?.message || clerkData?.message || "Erro ao enviar convite via Clerk";
+      throw new Error(errorMsg);
+    }
+
+    console.log("✅ Clerk invitation sent successfully:", clerkData.id);
 
     return new Response(
       JSON.stringify({
         success: true,
         message: `Convite enviado para ${name} (${email})`,
-        signUpUrl, // Inclui URL para compartilhamento manual se necessário
+        signUpUrl: redirectUrl,
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
     console.error("❌ Error in invite-user function:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || "Erro interno do servidor",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: false, error: error.message || "Erro interno do servidor" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 };
