@@ -130,11 +130,61 @@ serve(async (req) => {
 
         const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
         const now = new Date().toISOString();
+        const messagePreview = (text || "(mídia)").substring(0, 100);
 
-        // ── ALWAYS save inbound message ──
+        // ── 1) UPSERT whatsapp_thread (Inbox) ──
+        let threadId: string | null = null;
+
+        const { data: existingThread } = await supabase
+          .from("whatsapp_threads")
+          .select("id, contact_name")
+          .eq("organization_id", orgId)
+          .eq("contact_phone_e164", normalizedPhone)
+          .maybeSingle();
+
+        if (existingThread) {
+          threadId = existingThread.id;
+          const threadUpdate: Record<string, unknown> = {
+            last_message_at: now,
+            last_message_preview: messagePreview,
+            instance_name: instanceName,
+          };
+          // Update contact_name if we have pushName and thread doesn't have one yet
+          if (pushName && !existingThread.contact_name) {
+            threadUpdate.contact_name = pushName;
+          }
+          // Re-open thread if it was closed
+          threadUpdate.status = "open";
+
+          await supabase
+            .from("whatsapp_threads")
+            .update(threadUpdate)
+            .eq("id", threadId);
+        } else {
+          const { data: newThread } = await supabase
+            .from("whatsapp_threads")
+            .insert({
+              organization_id: orgId,
+              instance_name: instanceName,
+              contact_phone_e164: normalizedPhone,
+              contact_name: pushName || null,
+              status: "open",
+              assigned_user_id: null,
+              last_message_at: now,
+              last_message_preview: messagePreview,
+            })
+            .select("id")
+            .single();
+
+          threadId = newThread?.id || null;
+          console.log(`[evolution-webhook] Thread created for ${normalizedPhone}: ${threadId}`);
+        }
+
+        // ── 2) ALWAYS save inbound message (with thread_id) ──
         const { data: savedMsg } = await supabase.from("whatsapp_messages").insert({
           organization_id: orgId,
           instance_name: instanceName,
+          thread_id: threadId,
           direction: "inbound",
           phone: normalizedPhone,
           message_text: text || "(mídia)",
@@ -143,9 +193,9 @@ serve(async (req) => {
           metadata: { pushName, timestamp: msg.messageTimestamp },
         }).select("id").single();
 
-        console.log(`[evolution-webhook] Message saved for phone ${normalizedPhone}`);
+        console.log(`[evolution-webhook] Message saved for phone ${normalizedPhone} thread=${threadId}`);
 
-        // ── Find existing lead by phone ──
+        // ── 3) Lead matching & engagement ──
         const phoneVariants = [
           normalizedPhone,
           normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
@@ -168,7 +218,6 @@ serve(async (req) => {
         }
 
         if (leadId) {
-          // ── Lead exists: link message + update engagement ──
           if (savedMsg?.id) {
             await supabase
               .from("whatsapp_messages")
@@ -189,7 +238,7 @@ serve(async (req) => {
           await wakePausedRuns(supabase, orgId, leadId, now);
           console.log(`[evolution-webhook] Inbound from ${normalizedPhone} linked to lead ${leadId}`);
         } else {
-          // ── No lead exists: check ad marker to decide auto-creation ──
+          // ── 4) Ad marker check for auto lead creation (separate from Inbox) ──
           const hasAdMarker = containsAdMarker(text);
 
           if (hasAdMarker) {
@@ -219,7 +268,7 @@ serve(async (req) => {
 
             console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}: ${newLead?.id}`);
           } else {
-            console.log(`[evolution-webhook] No ad marker in message from ${normalizedPhone} — lead NOT created`);
+            console.log(`[evolution-webhook] No ad marker from ${normalizedPhone} — lead NOT created (thread=${threadId})`);
           }
         }
       }
