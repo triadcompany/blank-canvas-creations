@@ -13,16 +13,18 @@ import {
   Panel,
   MarkerType,
   ReactFlowInstance,
+  NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Button } from "@/components/ui/button";
-import { Save, Play, Pause, AlertTriangle } from "lucide-react";
+import { Save, Play, Pause } from "lucide-react";
 import { TriggerNode } from "./nodes/TriggerNode";
 import { MessageNode } from "./nodes/MessageNode";
 import { DelayNode } from "./nodes/DelayNode";
 import { ConditionNode } from "./nodes/ConditionNode";
 import { ActionNode } from "./nodes/ActionNode";
 import { BlocksSidebar } from "./BlocksSidebar";
+import { NodeInspector } from "./NodeInspector";
 import { useToast } from "@/hooks/use-toast";
 
 const nodeTypes = {
@@ -48,27 +50,58 @@ interface ValidationResult {
 function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
   const errors: string[] = [];
 
-  // 1. Must have at least one trigger
+  // Must have at least one trigger
   const triggers = nodes.filter((n) => n.type === "trigger");
   if (triggers.length === 0) {
     errors.push("A automação precisa de pelo menos um Gatilho.");
   }
 
-  // 2. Trigger must have an outgoing edge (initial node connected)
+  // Trigger must be connected
   for (const trigger of triggers) {
     const hasOutgoing = edges.some((e) => e.source === trigger.id);
     if (!hasOutgoing) {
-      errors.push(`O gatilho "${(trigger.data as any).label || "Gatilho"}" não está conectado a nenhum nó.`);
+      errors.push("O gatilho não está conectado a nenhum nó.");
+    }
+    const cfg = (trigger.data as any).config || {};
+    if (!cfg.triggerType) {
+      errors.push("O gatilho não tem um tipo configurado.");
     }
   }
 
-  // 3. No loose nodes (every non-trigger node must have at least one incoming edge)
+  // No loose non-trigger nodes
   const nonTriggerNodes = nodes.filter((n) => n.type !== "trigger");
   for (const node of nonTriggerNodes) {
     const hasIncoming = edges.some((e) => e.target === node.id);
     if (!hasIncoming) {
       const label = (node.data as any).label || node.type;
       errors.push(`O nó "${label}" está solto (sem conexão de entrada).`);
+    }
+  }
+
+  // Validate node configs
+  for (const node of nodes) {
+    const cfg = (node.data as any).config || {};
+    switch (node.type) {
+      case "message":
+        if (!cfg.text?.trim()) {
+          errors.push("Há um bloco Mensagem sem texto configurado.");
+        }
+        break;
+      case "delay":
+        if (!cfg.amount || cfg.amount <= 0) {
+          errors.push("Há um bloco Espera com tempo inválido.");
+        }
+        break;
+      case "condition":
+        if (!cfg.conditionType) {
+          errors.push("Há um bloco Condição sem tipo configurado.");
+        }
+        break;
+      case "action":
+        if (!cfg.actionType) {
+          errors.push("Há um bloco Ação sem tipo configurado.");
+        }
+        break;
     }
   }
 
@@ -85,7 +118,10 @@ export function AutomationFlowEditor({
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(flowDefinition.nodes || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowDefinition.edges || []);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -132,18 +168,48 @@ export function AutomationFlowEditor({
     [reactFlowInstance, setNodes]
   );
 
+  const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    setSelectedNodeId(node.id);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, []);
+
+  const handleUpdateNodeConfig = useCallback(
+    (nodeId: string, newConfig: any) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? { ...n, data: { ...n.data, config: newConfig } }
+            : n
+        )
+      );
+    },
+    [setNodes]
+  );
+
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedNodeId(null);
+    },
+    [setNodes, setEdges]
+  );
+
   const handleSave = () => {
     onSave({ nodes, edges });
+    toast({ title: "Salvo", description: "Fluxo salvo com sucesso." });
   };
 
   const handleToggleActive = () => {
     if (!isActive) {
-      // Validate before activating
       const result = validateFlow(nodes, edges);
       if (!result.valid) {
         toast({
           title: "Não é possível ativar",
-          description: result.errors.join("\n"),
+          description: result.errors.join(" • "),
           variant: "destructive",
         });
         return;
@@ -165,6 +231,8 @@ export function AutomationFlowEditor({
           onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
           deleteKeyCode={["Backspace", "Delete"]}
@@ -194,6 +262,14 @@ export function AutomationFlowEditor({
           </Panel>
         </ReactFlow>
       </div>
+      {selectedNode && (
+        <NodeInspector
+          node={selectedNode}
+          onUpdate={handleUpdateNodeConfig}
+          onDelete={handleDeleteNode}
+          onClose={() => setSelectedNodeId(null)}
+        />
+      )}
     </div>
   );
 }
