@@ -30,7 +30,14 @@ serve(async (req) => {
       const tokenParam = url.searchParams.get("token");
       const tokenHeader = req.headers.get("x-webhook-secret");
       if (tokenParam !== webhookSecret && tokenHeader !== webhookSecret) {
-        console.warn("[evolution-webhook] Invalid webhook secret");
+        console.warn("[evolution-webhook] Invalid webhook secret. Token param:", tokenParam ? "present" : "missing", "Header:", tokenHeader ? "present" : "missing");
+        console.warn("[evolution-webhook] HINT: Reconnect WhatsApp to fix the webhook URL with the correct token.");
+        // Log the rejected event for debugging
+        try {
+          const bodyText = await req.text();
+          const bodyPreview = bodyText.substring(0, 200);
+          console.warn("[evolution-webhook] Rejected payload preview:", bodyPreview);
+        } catch { /* ignore */ }
         return respond({ ok: false, error: "unauthorized" }, 401);
       }
     }
