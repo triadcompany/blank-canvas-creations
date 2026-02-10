@@ -45,10 +45,12 @@ interface AutomationFlowEditorProps {
 interface ValidationResult {
   valid: boolean;
   errors: string[];
+  problemNodeIds: string[];
 }
 
 function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
   const errors: string[] = [];
+  const problemNodeIds: string[] = [];
 
   // Must have at least one trigger
   const triggers = nodes.filter((n) => n.type === "trigger");
@@ -61,10 +63,12 @@ function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
     const hasOutgoing = edges.some((e) => e.source === trigger.id);
     if (!hasOutgoing) {
       errors.push("O gatilho não está conectado a nenhum nó.");
+      problemNodeIds.push(trigger.id);
     }
     const cfg = (trigger.data as any).config || {};
     if (!cfg.triggerType) {
       errors.push("O gatilho não tem um tipo configurado.");
+      problemNodeIds.push(trigger.id);
     }
   }
 
@@ -75,6 +79,7 @@ function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
     if (!hasIncoming) {
       const label = (node.data as any).label || node.type;
       errors.push(`O nó "${label}" está solto (sem conexão de entrada).`);
+      problemNodeIds.push(node.id);
     }
   }
 
@@ -85,27 +90,31 @@ function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
       case "message":
         if (!cfg.text?.trim()) {
           errors.push("Há um bloco Mensagem sem texto configurado.");
+          problemNodeIds.push(node.id);
         }
         break;
       case "delay":
         if (!cfg.amount || cfg.amount <= 0) {
           errors.push("Há um bloco Espera com tempo inválido.");
+          problemNodeIds.push(node.id);
         }
         break;
       case "condition":
         if (!cfg.conditionType) {
           errors.push("Há um bloco Condição sem tipo configurado.");
+          problemNodeIds.push(node.id);
         }
         break;
       case "action":
         if (!cfg.actionType) {
           errors.push("Há um bloco Ação sem tipo configurado.");
+          problemNodeIds.push(node.id);
         }
         break;
     }
   }
 
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, errors, problemNodeIds };
 }
 
 export function AutomationFlowEditor({
@@ -207,6 +216,16 @@ export function AutomationFlowEditor({
     if (!isActive) {
       const result = validateFlow(nodes, edges);
       if (!result.valid) {
+        // Highlight problem nodes
+        const problemNodeIds = result.problemNodeIds || [];
+        setNodes((nds) =>
+          nds.map((n) => ({
+            ...n,
+            className: problemNodeIds.includes(n.id)
+              ? "ring-2 ring-destructive ring-offset-2 rounded-lg"
+              : "",
+          }))
+        );
         toast({
           title: "Não é possível ativar",
           description: result.errors.join(" • "),
@@ -214,7 +233,11 @@ export function AutomationFlowEditor({
         });
         return;
       }
+      // Clear any previous highlights
+      setNodes((nds) => nds.map((n) => ({ ...n, className: "" })));
     }
+    // Save flow first, then toggle
+    onSave({ nodes, edges });
     onToggleActive();
   };
 

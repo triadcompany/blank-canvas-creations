@@ -1,1 +1,7 @@
 project_id = "tapbwlmdvluqdgvixkxf"
+
+[functions.automation-trigger]
+verify_jwt = false
+
+[functions.automation-scheduler]
+verify_jwt = false
