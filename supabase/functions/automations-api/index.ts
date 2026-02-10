@@ -242,6 +242,73 @@ serve(async (req) => {
         return respond({ ok: true, automation: newAuto });
       }
 
+      // ─── LIST RUNS ───
+      case "list_runs": {
+        const { automation_id, organization_id } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+
+        let query = supabase
+          .from("automation_runs")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("started_at", { ascending: false })
+          .limit(50);
+
+        if (automation_id) {
+          query = query.eq("automation_id", automation_id);
+        }
+
+        const { data, error } = await query;
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, runs: data || [] });
+      }
+
+      // ─── LIST LOGS ───
+      case "list_logs": {
+        const { run_id, automation_id, organization_id } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+
+        let query = supabase
+          .from("automation_logs")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: true })
+          .limit(100);
+
+        if (run_id) query = query.eq("run_id", run_id);
+        if (automation_id) query = query.eq("automation_id", automation_id);
+
+        const { data, error } = await query;
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, logs: data || [] });
+      }
+
+      // ─── RUN STATS ───
+      case "run_stats": {
+        const { organization_id, automation_id } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+
+        let query = supabase
+          .from("automation_runs")
+          .select("status")
+          .eq("organization_id", organization_id);
+
+        if (automation_id) query = query.eq("automation_id", automation_id);
+
+        const { data, error } = await query;
+        if (error) return respond({ ok: false, message: error.message }, 500);
+
+        const stats = { total: 0, running: 0, completed: 0, failed: 0, waiting: 0 };
+        for (const r of data || []) {
+          stats.total++;
+          if (r.status === "running") stats.running++;
+          else if (r.status === "completed") stats.completed++;
+          else if (r.status === "failed") stats.failed++;
+          else if (r.status === "waiting") stats.waiting++;
+        }
+        return respond({ ok: true, stats });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }
