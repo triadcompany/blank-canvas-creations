@@ -16,7 +16,6 @@ export interface InboxThread {
   last_message_preview: string | null;
   created_at: string;
   updated_at: string;
-  assigned_profile?: { name: string } | null;
 }
 
 export interface InboxMessage {
@@ -31,6 +30,11 @@ export interface InboxMessage {
   metadata: any;
 }
 
+export interface OrgMember {
+  id: string;
+  name: string;
+}
+
 type FilterMode = 'all' | 'mine' | 'unassigned';
 
 export function useInbox() {
@@ -43,8 +47,29 @@ export function useInbox() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
 
   const orgId = profile?.organization_id;
+
+  // Fetch org members for assignment dropdown
+  const fetchOrgMembers = useCallback(async () => {
+    if (!orgId) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .eq('organization_id', orgId)
+        .order('name');
+      if (error) throw error;
+      setOrgMembers((data as OrgMember[]) || []);
+    } catch (err) {
+      console.error('Error fetching org members:', err);
+    }
+  }, [orgId]);
+
+  useEffect(() => {
+    fetchOrgMembers();
+  }, [fetchOrgMembers]);
 
   // Fetch threads
   const fetchThreads = useCallback(async () => {
@@ -112,8 +137,15 @@ export function useInbox() {
   // Select thread
   const selectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId);
-    fetchMessages(threadId);
+    if (threadId) fetchMessages(threadId);
   }, [fetchMessages]);
+
+  // Check if current user can send in selected thread
+  const canSendMessage = useCallback((thread: InboxThread | null): boolean => {
+    if (!thread || !profile) return false;
+    if (isAdmin) return true;
+    return thread.assigned_user_id === profile.id;
+  }, [isAdmin, profile]);
 
   // Send message
   const sendMessage = useCallback(async (text: string) => {
@@ -134,7 +166,6 @@ export function useInbox() {
       const data = res.data as any;
       if (data?.error) throw new Error(data.error);
 
-      // Refresh messages and threads
       await Promise.all([
         fetchMessages(selectedThreadId),
         fetchThreads(),
@@ -203,12 +234,15 @@ export function useInbox() {
     loadingMessages,
     sending,
     isAdmin,
+    orgMembers,
+    profile,
     setFilter,
     setSearch,
     selectThread,
     sendMessage,
     assignThread,
     updateThreadStatus,
+    canSendMessage,
     refreshThreads: fetchThreads,
   };
 }

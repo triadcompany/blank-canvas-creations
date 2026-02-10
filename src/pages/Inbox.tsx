@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useInbox, InboxThread, InboxMessage } from '@/hooks/useInbox';
-import { useAuth } from '@/contexts/AuthContext';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -14,12 +13,11 @@ import {
   ArrowLeft,
   Loader2,
   Inbox as InboxIcon,
-  Filter,
   UserPlus,
-  X,
   CircleDot,
-  Circle,
   XCircle,
+  UserMinus,
+  ChevronDown,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 // ── Helpers ──
@@ -58,10 +57,12 @@ function ThreadItem({
   thread,
   selected,
   onClick,
+  assignedName,
 }: {
   thread: InboxThread;
   selected: boolean;
   onClick: () => void;
+  assignedName?: string;
 }) {
   const status = statusConfig[thread.status] || statusConfig.open;
   const StatusIcon = status.icon;
@@ -96,12 +97,12 @@ function ThreadItem({
       <p className="text-xs text-muted-foreground mt-1 truncate">
         {thread.last_message_preview || 'Sem mensagens'}
       </p>
-      {thread.assigned_user_id && (
-        <div className="flex items-center gap-1 mt-1.5">
-          <User className="h-3 w-3 text-muted-foreground" />
-          <span className="text-[10px] text-muted-foreground">Atribuída</span>
-        </div>
-      )}
+      <div className="flex items-center gap-1 mt-1.5">
+        <User className="h-3 w-3 text-muted-foreground" />
+        <span className="text-[10px] text-muted-foreground">
+          {assignedName || 'Não atribuída'}
+        </span>
+      </div>
     </button>
   );
 }
@@ -178,16 +179,29 @@ export default function InboxPage() {
     loadingMessages,
     sending,
     isAdmin,
+    orgMembers,
+    profile,
     setFilter,
     setSearch,
     selectThread,
     sendMessage,
+    assignThread,
     updateThreadStatus,
+    canSendMessage,
   } = useInbox();
 
   const [messageText, setMessageText] = useState('');
+  const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const canSend = canSendMessage(selectedThread);
+
+  // Build a lookup map for member names
+  const memberNameMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    orgMembers.forEach((m) => { map[m.id] = m.name; });
+    return map;
+  }, [orgMembers]);
 
   // Auto-scroll
   useEffect(() => {
@@ -195,7 +209,7 @@ export default function InboxPage() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!messageText.trim() || sending) return;
+    if (!messageText.trim() || sending || !canSend) return;
     const text = messageText;
     setMessageText('');
     await sendMessage(text);
@@ -208,11 +222,21 @@ export default function InboxPage() {
     }
   };
 
+  const handleAssign = async (userId: string | null) => {
+    if (!selectedThread) return;
+    setAssignPopoverOpen(false);
+    await assignThread(selectedThread.id, userId);
+  };
+
   const filters: { key: string; label: string; adminOnly?: boolean }[] = [
     { key: 'all', label: 'Todas', adminOnly: true },
     { key: 'mine', label: 'Minhas' },
     { key: 'unassigned', label: 'Não atribuídas', adminOnly: true },
   ];
+
+  const assignedMemberName = selectedThread?.assigned_user_id
+    ? memberNameMap[selectedThread.assigned_user_id]
+    : null;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-background">
@@ -281,6 +305,7 @@ export default function InboxPage() {
                 thread={thread}
                 selected={thread.id === selectedThreadId}
                 onClick={() => selectThread(thread.id)}
+                assignedName={thread.assigned_user_id ? memberNameMap[thread.assigned_user_id] : undefined}
               />
             ))
           )}
@@ -326,11 +351,74 @@ export default function InboxPage() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Phone className="h-3 w-3" />
                   <span>{selectedThread.contact_phone_e164}</span>
+                  <span className="text-border">•</span>
+                  <User className="h-3 w-3" />
+                  <span>{assignedMemberName || 'Não atribuída'}</span>
                 </div>
               </div>
 
-              {/* Status actions */}
-              <div className="flex gap-1">
+              {/* Assignment + Status actions */}
+              <div className="flex items-center gap-1">
+                {/* Assume conversation (any user) */}
+                {selectedThread.assigned_user_id !== profile?.id && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => handleAssign(profile?.id || null)}
+                  >
+                    <UserPlus className="h-3.5 w-3.5 mr-1" />
+                    Assumir
+                  </Button>
+                )}
+
+                {/* Admin assignment dropdown */}
+                {isAdmin && (
+                  <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        <User className="h-3.5 w-3.5" />
+                        Responsável
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-1" align="end">
+                      <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                        Atribuir para
+                      </div>
+                      {orgMembers.map((member) => (
+                        <button
+                          key={member.id}
+                          className={cn(
+                            'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
+                            selectedThread.assigned_user_id === member.id && 'bg-accent font-medium'
+                          )}
+                          onClick={() => handleAssign(member.id)}
+                        >
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          {member.name}
+                          {member.id === profile?.id && (
+                            <span className="text-[10px] text-muted-foreground ml-auto">(você)</span>
+                          )}
+                        </button>
+                      ))}
+                      {selectedThread.assigned_user_id && (
+                        <>
+                          <div className="border-t border-border my-1" />
+                          <button
+                            className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-destructive/10 text-destructive transition-colors flex items-center gap-2"
+                            onClick={() => handleAssign(null)}
+                          >
+                            <UserMinus className="h-3.5 w-3.5" />
+                            Remover atribuição
+                          </button>
+                        </>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                )}
+
+                {/* Status actions */}
                 {selectedThread.status !== 'closed' && (
                   <Button
                     variant="ghost"
@@ -379,29 +467,36 @@ export default function InboxPage() {
 
             {/* Send Bar */}
             <div className="p-3 border-t border-border">
-              <div className="flex items-end gap-2">
-                <Textarea
-                  ref={textareaRef}
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Digite sua mensagem..."
-                  className="min-h-[40px] max-h-[120px] resize-none text-sm"
-                  rows={1}
-                />
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!messageText.trim() || sending}
-                  className="h-10 w-10 flex-shrink-0"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              {canSend ? (
+                <div className="flex items-end gap-2">
+                  <Textarea
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Digite sua mensagem..."
+                    className="min-h-[40px] max-h-[120px] resize-none text-sm"
+                    rows={1}
+                  />
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!messageText.trim() || sending}
+                    className="h-10 w-10 flex-shrink-0"
+                  >
+                    {sending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-2">
+                  <p className="text-xs text-muted-foreground">
+                    Esta conversa não está atribuída a você. Clique em <strong>Assumir</strong> para responder.
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}
