@@ -96,7 +96,7 @@ serve(async (req) => {
             result = processAction(currentNode, job);
             break;
           case "message":
-            result = processMessage(currentNode, job);
+            result = await processMessage(supabase, currentNode, job);
             break;
           default:
             result = { status: "done", output: { skipped: true, reason: `Unknown type: ${job.job_type}` } };
@@ -331,15 +331,92 @@ function processAction(node: any, job: any): JobResult {
   };
 }
 
-function processMessage(node: any, job: any): JobResult {
+async function processMessage(supabase: any, node: any, job: any): Promise<JobResult> {
   const config = job.payload?.node_config || node.data?.config || {};
+  const messageText = config.text || "";
+
+  if (!messageText) {
+    return {
+      status: "done",
+      output: { error: "Texto da mensagem vazio", skipped: true },
+    };
+  }
+
+  // Load run context to get lead phone and resolve variables
+  const { data: run } = await supabase
+    .from("automation_runs")
+    .select("context, entity_id, entity_type, organization_id")
+    .eq("id", job.run_id)
+    .single();
+
+  if (!run) {
+    return { status: "done", output: { error: "Run não encontrada", skipped: true } };
+  }
+
+  const ctx = run.context || {};
+  const leadPhone = ctx.lead_phone || ctx.phone || ctx.whatsapp || "";
+
+  if (!leadPhone) {
+    return {
+      status: "done",
+      output: { error: "Lead sem telefone cadastrado", skipped: true },
+    };
+  }
+
+  // Resolve template variables like {{lead_name}}
+  const resolvedText = messageText
+    .replace(/\{\{lead\.name\}\}/g, ctx.lead_name || ctx.name || "")
+    .replace(/\{\{lead\.phone\}\}/g, leadPhone)
+    .replace(/\{\{lead\.email\}\}/g, ctx.lead_email || ctx.email || "")
+    .replace(/\{\{lead\.stage\}\}/g, ctx.stage_name || ctx.stage || "");
+
+  // Call evolution-send edge function
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  const sendRes = await fetch(`${supabaseUrl}/functions/v1/evolution-send`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${supabaseServiceKey}`,
+    },
+    body: JSON.stringify({
+      organization_id: job.organization_id,
+      to_e164: leadPhone,
+      message: resolvedText,
+      lead_id: run.entity_type === "lead" ? run.entity_id : null,
+      automation_run_id: job.run_id,
+    }),
+  });
+
+  const sendData = await sendRes.json();
+
+  if (!sendRes.ok) {
+    const errorMsg = sendData?.error || `HTTP ${sendRes.status}`;
+    console.error(`[automation-worker] Message send failed:`, errorMsg);
+
+    // Log the failure
+    await supabase.from("automation_logs").insert({
+      organization_id: job.organization_id,
+      automation_id: job.automation_id,
+      run_id: job.run_id,
+      node_id: job.node_id,
+      level: "error",
+      message: `Falha ao enviar mensagem para ${leadPhone}: ${errorMsg}`,
+      data: { phone: leadPhone, error: errorMsg, resolved_text: resolvedText },
+    });
+
+    // Throw so the retry mechanism kicks in
+    throw new Error(`WhatsApp send failed: ${errorMsg}`);
+  }
+
   return {
     status: "done",
     output: {
-      message_text: config.text || "",
-      channel: config.channel || "whatsapp",
-      stub: true,
-      message: "Message registered (sending not implemented yet)",
+      sent: true,
+      phone: leadPhone,
+      resolved_text: resolvedText,
+      message_id: sendData?.message_id || null,
     },
   };
 }
