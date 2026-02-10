@@ -68,8 +68,8 @@ export function useAutomations() {
   }, [fetchAutomations]);
 
   const createAutomation = async (name: string, description?: string) => {
-    if (!profile?.organization_id || !user?.id) {
-      console.error("createAutomation: missing org or user", { org: profile?.organization_id, user: user?.id });
+    if (!profile?.organization_id || !profile?.id) {
+      console.error("createAutomation: missing org or profile", { org: profile?.organization_id, profileId: profile?.id });
       toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
       return null;
     }
@@ -80,7 +80,7 @@ export function useAutomations() {
         name,
         description: description || null,
         organization_id: profile.organization_id,
-        created_by: user.id,
+        created_by: profile.id,
         channel: "whatsapp",
         is_active: false,
         flow_definition: INITIAL_FLOW,
@@ -131,14 +131,14 @@ export function useAutomations() {
   };
 
   const duplicateAutomation = async (automation: Automation) => {
-    if (!profile?.organization_id || !user?.id) return null;
+    if (!profile?.organization_id || !profile?.id) return null;
     const { data, error } = await supabase
       .from("automations")
       .insert({
         name: `${automation.name} (cópia)`,
         description: automation.description,
         organization_id: profile.organization_id,
-        created_by: user.id,
+        created_by: profile.id,
         channel: automation.channel,
         is_active: false,
         flow_definition: automation.flow_definition,
