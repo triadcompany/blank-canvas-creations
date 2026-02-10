@@ -28,10 +28,22 @@ export interface AutomationLog {
   lead_id: string | null;
 }
 
+const INITIAL_FLOW = {
+  nodes: [
+    {
+      id: "trigger_initial",
+      type: "trigger",
+      position: { x: 250, y: 50 },
+      data: { label: "Gatilho", config: { triggerType: "lead_created" } },
+    },
+  ],
+  edges: [],
+};
+
 export function useAutomations() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { toast } = useToast();
 
   const fetchAutomations = useCallback(async () => {
@@ -56,25 +68,32 @@ export function useAutomations() {
   }, [fetchAutomations]);
 
   const createAutomation = async (name: string, description?: string) => {
-    if (!profile?.organization_id || !profile?.user_id) return null;
+    if (!profile?.organization_id || !user?.id) {
+      console.error("createAutomation: missing org or user", { org: profile?.organization_id, user: user?.id });
+      toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
+      return null;
+    }
+
     const { data, error } = await supabase
       .from("automations")
       .insert({
         name,
         description: description || null,
         organization_id: profile.organization_id,
-        created_by: profile.user_id,
+        created_by: user.id,
         channel: "whatsapp",
         is_active: false,
-        flow_definition: { nodes: [], edges: [] },
+        flow_definition: INITIAL_FLOW,
       } as any)
       .select()
       .single();
 
     if (error) {
-      toast({ title: "Erro", description: "Falha ao criar automação", variant: "destructive" });
+      console.error("Supabase insert error:", error);
+      toast({ title: "Erro ao criar automação", description: error.message, variant: "destructive" });
       return null;
     }
+
     toast({ title: "Sucesso", description: "Automação criada" });
     fetchAutomations();
     return data as any as Automation;
@@ -87,7 +106,8 @@ export function useAutomations() {
       .eq("id", id);
 
     if (error) {
-      toast({ title: "Erro", description: "Falha ao atualizar automação", variant: "destructive" });
+      console.error("Supabase update error:", error);
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
       return false;
     }
     fetchAutomations();
@@ -101,7 +121,8 @@ export function useAutomations() {
       .eq("id", id);
 
     if (error) {
-      toast({ title: "Erro", description: "Falha ao excluir automação", variant: "destructive" });
+      console.error("Supabase delete error:", error);
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
       return false;
     }
     toast({ title: "Sucesso", description: "Automação excluída" });
@@ -110,14 +131,14 @@ export function useAutomations() {
   };
 
   const duplicateAutomation = async (automation: Automation) => {
-    if (!profile?.organization_id || !profile?.user_id) return null;
+    if (!profile?.organization_id || !user?.id) return null;
     const { data, error } = await supabase
       .from("automations")
       .insert({
         name: `${automation.name} (cópia)`,
         description: automation.description,
         organization_id: profile.organization_id,
-        created_by: profile.user_id,
+        created_by: user.id,
         channel: automation.channel,
         is_active: false,
         flow_definition: automation.flow_definition,
@@ -126,7 +147,8 @@ export function useAutomations() {
       .single();
 
     if (error) {
-      toast({ title: "Erro", description: "Falha ao duplicar", variant: "destructive" });
+      console.error("Supabase duplicate error:", error);
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
       return null;
     }
     toast({ title: "Sucesso", description: "Automação duplicada" });
