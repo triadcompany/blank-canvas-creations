@@ -862,6 +862,7 @@ export type Database = {
       }
       conversations: {
         Row: {
+          ai_mode: string
           assigned_at: string | null
           assigned_to: string | null
           contact_name: string | null
@@ -879,6 +880,7 @@ export type Database = {
           unread_count: number
         }
         Insert: {
+          ai_mode?: string
           assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null
@@ -896,6 +898,7 @@ export type Database = {
           unread_count?: number
         }
         Update: {
+          ai_mode?: string
           assigned_at?: string | null
           assigned_to?: string | null
           contact_name?: string | null
