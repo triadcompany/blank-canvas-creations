@@ -30,6 +30,7 @@ import {
   MailCheck,
   PlayCircle,
   ChevronDown,
+  Inbox,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -70,6 +71,11 @@ const menuItems = [
     title: "Relatórios",
     url: "/reports",
     icon: BarChart3,
+  },
+  {
+    title: "Inbox",
+    url: "/inbox",
+    icon: Inbox,
   },
 ];
 
