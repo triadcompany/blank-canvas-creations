@@ -23,6 +23,7 @@ import { MessageNode } from "./nodes/MessageNode";
 import { DelayNode } from "./nodes/DelayNode";
 import { ConditionNode } from "./nodes/ConditionNode";
 import { ActionNode } from "./nodes/ActionNode";
+import { WaitForReplyNode } from "./nodes/WaitForReplyNode";
 import { BlocksSidebar } from "./BlocksSidebar";
 import { NodeInspector } from "./NodeInspector";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,7 @@ const nodeTypes = {
   delay: DelayNode,
   condition: ConditionNode,
   action: ActionNode,
+  wait_for_reply: WaitForReplyNode,
 };
 
 interface AutomationFlowEditorProps {
@@ -108,6 +110,12 @@ function validateFlow(nodes: Node[], edges: Edge[]): ValidationResult {
       case "action":
         if (!cfg.actionType) {
           errors.push("Há um bloco Ação sem tipo configurado.");
+          problemNodeIds.push(node.id);
+        }
+        break;
+      case "wait_for_reply":
+        if (!cfg.timeout_amount || cfg.timeout_amount <= 0) {
+          errors.push("Há um bloco 'Esperar Resposta' sem timeout definido.");
           problemNodeIds.push(node.id);
         }
         break;
@@ -309,6 +317,8 @@ function getDefaultConfig(type: string) {
       return { conditionType: "responded", value: "" };
     case "action":
       return { actionType: "update_lead", params: {} };
+    case "wait_for_reply":
+      return { timeout_amount: 24, timeout_unit: "hours" };
     default:
       return {};
   }

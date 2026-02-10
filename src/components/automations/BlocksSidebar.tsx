@@ -5,6 +5,7 @@ import {
   Clock,
   GitBranch,
   Cog,
+  MessageSquareReply,
 } from "lucide-react";
 
 const blocks = [
@@ -19,6 +20,7 @@ const blocks = [
     items: [
       { type: "message", label: "Mensagem", icon: MessageSquare, color: "text-blue-500 bg-blue-500/10" },
       { type: "delay", label: "Espera", icon: Clock, color: "text-purple-500 bg-purple-500/10" },
+      { type: "wait_for_reply", label: "Esperar Resposta", icon: MessageSquareReply, color: "text-cyan-500 bg-cyan-500/10" },
       { type: "condition", label: "Condição", icon: GitBranch, color: "text-emerald-500 bg-emerald-500/10" },
       { type: "action", label: "Ação", icon: Cog, color: "text-orange-500 bg-orange-500/10" },
     ],
