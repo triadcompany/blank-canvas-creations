@@ -5,3 +5,15 @@ verify_jwt = false
 
 [functions.automation-scheduler]
 verify_jwt = false
+
+[functions.evolution-create-instance]
+verify_jwt = false
+
+[functions.evolution-get-qr]
+verify_jwt = false
+
+[functions.evolution-send]
+verify_jwt = false
+
+[functions.evolution-webhook]
+verify_jwt = false
