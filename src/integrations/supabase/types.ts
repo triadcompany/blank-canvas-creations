@@ -4805,6 +4805,42 @@ export type Database = {
           },
         ]
       }
+      whatsapp_routing_settings: {
+        Row: {
+          assign_on: string
+          business_hours: Json | null
+          business_hours_enabled: boolean
+          enabled: boolean
+          id: string
+          mode: string
+          only_roles: Json
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          assign_on?: string
+          business_hours?: Json | null
+          business_hours_enabled?: boolean
+          enabled?: boolean
+          id?: string
+          mode?: string
+          only_roles?: Json
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          assign_on?: string
+          business_hours?: Json | null
+          business_hours_enabled?: boolean
+          enabled?: boolean
+          id?: string
+          mode?: string
+          only_roles?: Json
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_threads: {
         Row: {
           assigned_at: string | null
