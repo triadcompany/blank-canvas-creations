@@ -98,6 +98,12 @@ serve(async (req) => {
           case "message":
             result = await processMessage(supabase, currentNode, job);
             break;
+          case "wait_for_reply":
+            result = await processWaitForReply(supabase, currentNode, job, edges);
+            break;
+          case "wait_for_reply_timeout":
+            result = await processWaitForReplyTimeout(supabase, currentNode, job, edges);
+            break;
           default:
             result = { status: "done", output: { skipped: true, reason: `Unknown type: ${job.job_type}` } };
         }
@@ -111,16 +117,24 @@ serve(async (req) => {
           })
           .eq("id", job.id);
 
-        // Log execution
-        await supabase.from("automation_logs").insert({
-          organization_id: job.organization_id,
-          automation_id: job.automation_id,
-          run_id: job.run_id,
-          node_id: job.node_id,
-          level: "info",
-          message: `Nó "${currentNode.data?.label || job.job_type}" executado com sucesso`,
-          data: { job_type: job.job_type, output: result.output },
-        });
+        // Log execution (skip for wait_for_reply types — they log themselves)
+        if (job.job_type !== "wait_for_reply" && job.job_type !== "wait_for_reply_timeout") {
+          await supabase.from("automation_logs").insert({
+            organization_id: job.organization_id,
+            automation_id: job.automation_id,
+            run_id: job.run_id,
+            node_id: job.node_id,
+            level: "info",
+            message: `Nó "${currentNode.data?.label || job.job_type}" executado com sucesso`,
+            data: { job_type: job.job_type, output: result.output },
+          });
+        }
+
+        // If paused (wait_for_reply), skip next-node scheduling entirely
+        if (result.nextNodeId === "__pause__") {
+          processed++;
+          continue;
+        }
 
         // Update run current_node_id
         await supabase
@@ -418,6 +432,155 @@ async function processMessage(supabase: any, node: any, job: any): Promise<JobRe
       resolved_text: resolvedText,
       message_id: sendData?.message_id || null,
     },
+  };
+}
+
+// ── Wait For Reply Processor ──────────────────────────
+
+async function processWaitForReply(
+  supabase: any,
+  node: any,
+  job: any,
+  edges: any[]
+): Promise<JobResult> {
+  const config = job.payload?.node_config || node.data?.config || {};
+  const timeoutAmount = Number(config.timeout_amount) || 24;
+  const timeoutUnit = config.timeout_unit || "hours";
+
+  let timeoutMs: number;
+  switch (timeoutUnit) {
+    case "minutes": timeoutMs = timeoutAmount * 60_000; break;
+    case "hours":   timeoutMs = timeoutAmount * 3_600_000; break;
+    case "days":    timeoutMs = timeoutAmount * 86_400_000; break;
+    default:        timeoutMs = timeoutAmount * 3_600_000;
+  }
+
+  const now = new Date();
+  const timeoutAt = new Date(now.getTime() + timeoutMs).toISOString();
+
+  // Load run to get entity_id (lead_id)
+  const { data: run } = await supabase
+    .from("automation_runs")
+    .select("entity_id, entity_type")
+    .eq("id", job.run_id)
+    .single();
+
+  const leadId = run?.entity_type === "lead" ? run?.entity_id : null;
+
+  // 1) Mark current job as done (the "enter wait" step)
+  // The main loop will mark it done, so we just set up the pause
+
+  // 2) Pause the run
+  await supabase
+    .from("automation_runs")
+    .update({ status: "paused", current_node_id: node.id })
+    .eq("id", job.run_id);
+
+  // 3) Create the timeout sentinel job
+  await supabase.from("automation_jobs").insert({
+    organization_id: job.organization_id,
+    automation_id: job.automation_id,
+    run_id: job.run_id,
+    node_id: node.id,
+    job_type: "wait_for_reply_timeout",
+    payload: {
+      lead_id: leadId,
+      since: now.toISOString(),
+      timeout_at: timeoutAt,
+      node_id: node.id,
+      node_config: config,
+    },
+    scheduled_for: timeoutAt,
+    status: "pending",
+    attempts: 0,
+  });
+
+  // 4) Log
+  await supabase.from("automation_logs").insert({
+    organization_id: job.organization_id,
+    automation_id: job.automation_id,
+    run_id: job.run_id,
+    node_id: node.id,
+    level: "info",
+    message: `Aguardando resposta do lead (timeout: ${timeoutAmount} ${timeoutUnit})`,
+    data: { lead_id: leadId, timeout_at: timeoutAt },
+  });
+
+  // Return done with NO nextNodeId — run is paused, next step will be
+  // resolved either by the webhook (replied) or the timeout job
+  return {
+    status: "done",
+    output: {
+      paused: true,
+      lead_id: leadId,
+      timeout_at: timeoutAt,
+      waiting_for: "reply",
+    },
+    // Explicitly no nextNodeId — prevents the main loop from scheduling anything
+    nextNodeId: "__pause__",
+  };
+}
+
+// ── Wait For Reply Timeout Handler ────────────────────
+
+async function processWaitForReplyTimeout(
+  supabase: any,
+  node: any,
+  job: any,
+  edges: any[]
+): Promise<JobResult> {
+  const payload = job.payload || {};
+  const leadId = payload.lead_id;
+
+  // Check if lead replied since `since`
+  let replied = false;
+  if (leadId) {
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("last_reply_at")
+      .eq("id", leadId)
+      .single();
+
+    if (lead?.last_reply_at) {
+      const replyTime = new Date(lead.last_reply_at).getTime();
+      const sinceTime = new Date(payload.since).getTime();
+      replied = replyTime > sinceTime;
+    }
+  }
+
+  // If already replied (race condition — webhook didn't catch it), use replied path
+  const handleId = replied ? "replied" : "timeout";
+  const logMessage = replied
+    ? "Resposta recebida (detectada no timeout check)"
+    : "Timeout sem resposta";
+
+  // Find next node via the correct handle
+  const matchEdge = edges.find(
+    (e: any) => e.source === node.id && e.sourceHandle === handleId
+  );
+  const nextNodeId = matchEdge?.target || undefined;
+
+  // Resume the run
+  await supabase
+    .from("automation_runs")
+    .update({ status: "running" })
+    .eq("id", job.run_id);
+
+  // Log
+  await supabase.from("automation_logs").insert({
+    organization_id: job.organization_id,
+    automation_id: job.automation_id,
+    run_id: job.run_id,
+    node_id: node.id,
+    level: "info",
+    message: logMessage,
+    data: { lead_id: leadId, handle: handleId, next_node: nextNodeId || null },
+  });
+
+  return {
+    status: "done",
+    output: { handle: handleId, replied, lead_id: leadId },
+    nextNodeId,
   };
 }
 
