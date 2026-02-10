@@ -92,16 +92,16 @@ export function EvolutionIntegration() {
   const fetchIntegration = useCallback(async () => {
     if (!profile?.organization_id) return null;
     try {
-      const { data, error } = await supabase
-        .from("whatsapp_integrations")
-        .select("*")
-        .eq("organization_id", profile.organization_id)
-        .maybeSingle();
-      if (error && error.code !== "PGRST116") throw error;
-      if (data) {
-        setIntegration(data as any);
-        setInstanceName(data.instance_name || "");
-        return data as any;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: profile.organization_id }),
+      });
+      const result = await res.json();
+      if (result.ok && result.integration) {
+        setIntegration(result.integration as Integration);
+        setInstanceName(result.integration.instance_name || "");
+        return result.integration as Integration;
       }
       return null;
     } catch {
