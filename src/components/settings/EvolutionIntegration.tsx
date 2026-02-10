@@ -168,9 +168,14 @@ export function EvolutionIntegration() {
       if (data.status === "connected") {
         toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
       } else if (data.ok && data.qr_code_data) {
+        // Use QR directly from API response — don't rely solely on DB re-fetch
+        setIntegration((prev) => ({
+          ...(prev || { id: "", organization_id: profile?.organization_id || "", provider: "evolution", instance_name: instanceName, is_active: true, phone_number: null, connected_at: null }),
+          status: "qr_pending",
+          qr_code_data: data.qr_code_data,
+        } as Integration));
         toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
       } else {
-        // No QR available
         toast({
           title: "QR não obtido",
           description: data.message || "Não foi possível obter o QR. Verifique logs.",
@@ -178,7 +183,8 @@ export function EvolutionIntegration() {
         });
       }
 
-      await fetchIntegration();
+      // Also refresh from DB in background
+      fetchIntegration();
     } catch (err: any) {
       console.error("[EvolutionIntegration] Connect error:", err);
       toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
@@ -220,8 +226,11 @@ export function EvolutionIntegration() {
       if (data.qr_format) setLastQrFormat(data.qr_format);
 
       if (data.status === "connected") {
+        setIntegration((prev) => prev ? { ...prev, status: "connected", qr_code_data: null } : prev);
         toast({ title: "WhatsApp conectado!", description: "Seu WhatsApp já está vinculado" });
       } else if (data.ok && data.qr_code_data) {
+        // Use QR directly from API response
+        setIntegration((prev) => prev ? { ...prev, status: "qr_pending", qr_code_data: data.qr_code_data } : prev);
         toast({ title: "QR atualizado!", description: "Escaneie o QR code" });
       } else {
         toast({
@@ -231,7 +240,8 @@ export function EvolutionIntegration() {
         });
       }
 
-      await fetchIntegration();
+      // Also refresh from DB in background
+      fetchIntegration();
     } catch (err: any) {
       console.error("[EvolutionIntegration] Refresh error:", err);
       toast({ title: "Erro ao buscar QR", description: err.message, variant: "destructive" });
