@@ -379,6 +379,30 @@ export function useSupabaseLeads(pipelineId?: string) {
       title: "Sucesso",
       description: "Lead criado e distribuído com sucesso",
     });
+
+    // Fire automation trigger (non-blocking)
+    if (profile.organization_id) {
+      const finalLead = updatedLead || data;
+      fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organization_id: profile.organization_id,
+          trigger_type: "lead_created",
+          entity_type: "lead",
+          entity_id: finalLead.id,
+          context: {
+            lead_name: finalLead.name,
+            lead_phone: finalLead.phone,
+            lead_email: finalLead.email,
+            lead_source: finalLead.source,
+            stage_name: finalLead.stage?.name || firstStage?.name,
+            stage_id: finalLead.stage_id,
+            seller_id: finalLead.seller_id,
+          },
+        }),
+      }).catch((err) => console.error("Automation trigger error:", err));
+    }
   };
 
   // Delete lead (admin only)
