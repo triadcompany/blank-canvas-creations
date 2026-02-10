@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useInbox, InboxThread, InboxMessage } from '@/hooks/useInbox';
+import { useNavigate } from 'react-router-dom';
 import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -15,6 +16,8 @@ import {
   UserPlus,
   UserMinus,
   ChevronDown,
+  ExternalLink,
+  Plus,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
 
 // ── Helpers ──
 
@@ -153,13 +157,21 @@ function ThreadItem({
           </div>
 
           <div className="flex items-center gap-1 mt-1">
-            <User className="h-2.5 w-2.5 text-muted-foreground/60" />
-            <span className={cn(
-              'text-[10px]',
-              assignedName ? 'text-muted-foreground/60' : 'text-destructive/70'
-            )}>
-              {assignedName || 'Não atribuída'}
-            </span>
+            {thread.lead_id ? (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-semibold">
+                Lead {thread.lead_stage_name ? `• ${thread.lead_stage_name}` : ''}
+              </Badge>
+            ) : (
+              <>
+                <User className="h-2.5 w-2.5 text-muted-foreground/60" />
+                <span className={cn(
+                  'text-[10px]',
+                  assignedName ? 'text-muted-foreground/60' : 'text-destructive/70'
+                )}>
+                  {assignedName || 'Não atribuída'}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -299,10 +311,13 @@ export default function InboxPage() {
     sendMessage,
     assignThread,
     canSendMessage,
+    createLeadFromConversation,
   } = useInbox();
 
+  const navigate = useNavigate();
   const [messageText, setMessageText] = useState('');
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
+  const [createLeadModalOpen, setCreateLeadModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const canSend = canSendMessage(selectedThread);
@@ -485,6 +500,29 @@ export default function InboxPage() {
                 </div>
               </div>
 
+              {/* Lead action */}
+              {selectedThread.lead_id ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => navigate(`/oportunidades?leadId=${selectedThread.lead_id}`)}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver Lead
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setCreateLeadModalOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Criar Lead
+                </Button>
+              )}
+
               {/* Assignment actions */}
               <div className="flex items-center gap-1">
                 {selectedThread.assigned_to !== myProfileId && (
@@ -603,6 +641,17 @@ export default function InboxPage() {
           </>
         )}
       </div>
+
+      {/* Create Lead from Inbox Modal */}
+      {selectedThread && (
+        <CreateLeadFromInboxModal
+          open={createLeadModalOpen}
+          onOpenChange={setCreateLeadModalOpen}
+          contactName={selectedThread.contact_name}
+          contactPhone={selectedThread.contact_phone}
+          onSave={(data) => createLeadFromConversation(selectedThread.id, data)}
+        />
+      )}
     </div>
   );
 }
