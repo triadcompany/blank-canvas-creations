@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.admin-debug]
 verify_jwt = false
+
+[functions.fix-evolution-webhooks]
+verify_jwt = false
