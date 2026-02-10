@@ -60,39 +60,25 @@ export function useSupabaseLeads(pipelineId?: string) {
       return;
     }
 
-    // Se não tem pipelineId, busca o pipeline padrão
+    // Se não tem pipelineId, busca o pipeline padrão via RPC
     let activePipelineId = pipelineId;
     
     if (!activePipelineId) {
-      const { data: defaultPipeline } = await supabase
-        .from('pipelines')
-        .select('id')
-        .eq('organization_id', profile.organization_id)
-        .eq('is_active', true)
-        .eq('is_default', true)
-        .single();
+      const { data: orgPipelines } = await supabase.rpc('get_org_pipelines', {
+        p_org_id: profile.organization_id,
+      });
+      
+      const pipelineList = (orgPipelines || []) as any[];
+      let defaultPipeline = pipelineList.find((p: any) => p.is_default) || pipelineList[0];
       
       if (!defaultPipeline) {
         // Tentar seed idempotente
         if (profile.clerk_user_id) {
-          const { data: seededId } = await supabase.rpc('seed_default_pipeline', {
+          const { data: seededId } = await supabase.rpc('ensure_default_pipeline', {
             p_org_id: profile.organization_id,
             p_created_by: profile.clerk_user_id,
           });
           activePipelineId = seededId;
-        }
-        
-        if (!activePipelineId) {
-          // Fallback: pega o primeiro ativo
-          const { data: firstPipeline } = await supabase
-            .from('pipelines')
-            .select('id')
-            .eq('organization_id', profile.organization_id)
-            .eq('is_active', true)
-            .limit(1)
-            .single();
-          
-          activePipelineId = firstPipeline?.id;
         }
       } else {
         activePipelineId = defaultPipeline.id;
@@ -104,12 +90,10 @@ export function useSupabaseLeads(pipelineId?: string) {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('pipeline_stages')
-      .select('*')
-      .eq('pipeline_id', activePipelineId)
-      .eq('is_active', true)
-      .order('position');
+    // Fetch stages via RPC
+    const { data, error } = await supabase.rpc('get_pipeline_stages', {
+      p_pipeline_id: activePipelineId,
+    });
 
     if (error) {
       toast({
@@ -118,7 +102,7 @@ export function useSupabaseLeads(pipelineId?: string) {
         variant: "destructive",
       });
     } else {
-      setStages(data || []);
+      setStages((data || []) as PipelineStage[]);
     }
   };
 

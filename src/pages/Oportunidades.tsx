@@ -39,7 +39,7 @@ export function Oportunidades() {
   const [isEditObservationsOpen, setIsEditObservationsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
-  const { pipelines, selectedPipeline, setSelectedPipeline } = usePipelines();
+  const { pipelines, selectedPipeline, setSelectedPipeline, ensuring } = usePipelines();
   const { kanbanColumns, moveLead, updateLead, addLead, deleteLead, loading, searchTerm, setSearchTerm, leads } = useSupabaseLeads(selectedPipeline?.id);
   const { isAdmin, profile } = useAuth();
   
@@ -71,12 +71,14 @@ export function Oportunidades() {
     addLead(newLead);
   };
 
-  if (loading) {
+  if (loading || ensuring) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 font-medium text-muted-foreground">Carregando oportunidades...</p>
+          <p className="mt-4 font-medium text-muted-foreground">
+            {ensuring ? 'Configurando seu funil padrão…' : 'Carregando oportunidades...'}
+          </p>
         </div>
       </div>
     );
