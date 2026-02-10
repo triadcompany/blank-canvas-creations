@@ -128,11 +128,11 @@ serve(async (req) => {
 
         if (!phone) continue;
 
-        // Normalize phone: strip leading +, spaces, dashes
         const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
+        const now = new Date().toISOString();
 
-        // Insert whatsapp_message
-        await supabase.from("whatsapp_messages").insert({
+        // ── ALWAYS save inbound message ──
+        const { data: savedMsg } = await supabase.from("whatsapp_messages").insert({
           organization_id: orgId,
           instance_name: instanceName,
           direction: "inbound",
@@ -141,9 +141,11 @@ serve(async (req) => {
           status: "delivered",
           external_message_id: msg.key?.id || null,
           metadata: { pushName, timestamp: msg.messageTimestamp },
-        });
+        }).select("id").single();
 
-        // Find lead by phone (try multiple formats)
+        console.log(`[evolution-webhook] Message saved for phone ${normalizedPhone}`);
+
+        // ── Find existing lead by phone ──
         const phoneVariants = [
           normalizedPhone,
           normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
@@ -165,18 +167,15 @@ serve(async (req) => {
           }
         }
 
-        const now = new Date().toISOString();
-
         if (leadId) {
-          // Link message to lead
-          if (msg.key?.id) {
+          // ── Lead exists: link message + update engagement ──
+          if (savedMsg?.id) {
             await supabase
               .from("whatsapp_messages")
               .update({ lead_id: leadId })
-              .eq("external_message_id", msg.key.id);
+              .eq("id", savedMsg.id);
           }
 
-          // Update lead engagement tracking
           await supabase
             .from("leads")
             .update({
@@ -187,37 +186,41 @@ serve(async (req) => {
             })
             .eq("id", leadId);
 
-          // ── Wake paused automation runs waiting for reply from this lead ──
           await wakePausedRuns(supabase, orgId, leadId, now);
-
           console.log(`[evolution-webhook] Inbound from ${normalizedPhone} linked to lead ${leadId}`);
         } else {
-          // Auto-create lead from inbound message
-          const { data: newLead } = await supabase
-            .from("leads")
-            .insert({
-              organization_id: orgId,
-              name: pushName || `WhatsApp ${normalizedPhone}`,
-              phone: normalizedPhone,
-              whatsapp: normalizedPhone,
-              source: "whatsapp",
-              canal: "WhatsApp",
-              status: "novo",
-              last_reply_at: now,
-              last_inbound_message_at: now,
-              last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
-            })
-            .select("id")
-            .single();
+          // ── No lead exists: check ad marker to decide auto-creation ──
+          const hasAdMarker = containsAdMarker(text);
 
-          if (newLead && msg.key?.id) {
-            await supabase
-              .from("whatsapp_messages")
-              .update({ lead_id: newLead.id })
-              .eq("external_message_id", msg.key.id);
+          if (hasAdMarker) {
+            const { data: newLead } = await supabase
+              .from("leads")
+              .insert({
+                organization_id: orgId,
+                name: pushName || "Lead WhatsApp",
+                phone: normalizedPhone,
+                whatsapp: normalizedPhone,
+                source: "Meta Ads",
+                canal: "WhatsApp",
+                status: "novo",
+                last_reply_at: now,
+                last_inbound_message_at: now,
+                last_inbound_message_text: text ? text.substring(0, 500) : "(mídia)",
+              })
+              .select("id")
+              .single();
+
+            if (newLead && savedMsg?.id) {
+              await supabase
+                .from("whatsapp_messages")
+                .update({ lead_id: newLead.id })
+                .eq("id", savedMsg.id);
+            }
+
+            console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}: ${newLead?.id}`);
+          } else {
+            console.log(`[evolution-webhook] No ad marker in message from ${normalizedPhone} — lead NOT created`);
           }
-
-          console.log(`[evolution-webhook] Auto-created lead for ${normalizedPhone}: ${newLead?.id}`);
         }
       }
 
@@ -230,6 +233,17 @@ serve(async (req) => {
     return respond({ ok: true });
   }
 });
+
+// ── Helper: Check ad marker ──────────────────────────────
+
+function containsAdMarker(text: string): boolean {
+  if (!text) return false;
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return normalized.includes("anuncio");
+}
 
 // ── Helper: Wake paused automation runs ──────────────────
 
