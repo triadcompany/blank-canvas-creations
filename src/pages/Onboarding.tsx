@@ -127,6 +127,73 @@ export default function Onboarding() {
         console.log("✅ Default pipeline created:", pipelineId);
       }
 
+      // 6. Create default "Boas-vindas Lead" automation
+      try {
+        const supabaseUrl = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+        const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
+
+        // Create automation
+        const createRes = await fetch(`${supabaseUrl}/functions/v1/automations-api`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+          body: JSON.stringify({
+            action: "create",
+            organization_id: newOrg.id,
+            name: "Boas-vindas Lead",
+            description: "Envia mensagem de boas-vindas automaticamente para novos leads",
+            created_by: clerkUserId,
+            channel: "whatsapp",
+          }),
+        });
+        const createData = await createRes.json();
+
+        if (createData.ok && createData.automation) {
+          // Save flow with trigger → delay → message
+          const nodes = [
+            {
+              id: "trigger_1",
+              type: "trigger",
+              position: { x: 250, y: 50 },
+              data: { label: "Novo Lead", config: { triggerType: "lead_created" } },
+            },
+            {
+              id: "delay_1",
+              type: "delay",
+              position: { x: 250, y: 200 },
+              data: { label: "Esperar 1 min", config: { amount: 1, unit: "minutes" } },
+            },
+            {
+              id: "message_1",
+              type: "message",
+              position: { x: 250, y: 350 },
+              data: {
+                label: "Boas-vindas",
+                config: { text: "Olá {{lead.name}}, vi seu interesse. Posso te ajudar?" },
+              },
+            },
+          ];
+          const edges = [
+            { id: "e_trigger_delay", source: "trigger_1", target: "delay_1" },
+            { id: "e_delay_message", source: "delay_1", target: "message_1" },
+          ];
+
+          await fetch(`${supabaseUrl}/functions/v1/automations-api`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+            body: JSON.stringify({
+              action: "save_flow",
+              automation_id: createData.automation.id,
+              organization_id: newOrg.id,
+              nodes,
+              edges,
+            }),
+          });
+          console.log("✅ Default automation created");
+        }
+      } catch (autoErr) {
+        console.warn("⚠️ Default automation error (non-critical):", autoErr);
+      }
+
       toast.success("Empresa criada com sucesso!", {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
