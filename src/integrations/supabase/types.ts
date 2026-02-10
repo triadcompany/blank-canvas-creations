@@ -4749,6 +4749,7 @@ export type Database = {
           organization_id: string
           phone: string
           status: string
+          thread_id: string | null
         }
         Insert: {
           automation_run_id?: string | null
@@ -4763,6 +4764,7 @@ export type Database = {
           organization_id: string
           phone: string
           status?: string
+          thread_id?: string | null
         }
         Update: {
           automation_run_id?: string | null
@@ -4777,6 +4779,7 @@ export type Database = {
           organization_id?: string
           phone?: string
           status?: string
+          thread_id?: string | null
         }
         Relationships: [
           {
@@ -4791,6 +4794,94 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_threads: {
+        Row: {
+          assigned_at: string | null
+          assigned_user_id: string | null
+          contact_name: string | null
+          contact_phone_e164: string
+          created_at: string
+          id: string
+          instance_name: string
+          last_message_at: string | null
+          last_message_preview: string | null
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_user_id?: string | null
+          contact_name?: string | null
+          contact_phone_e164: string
+          created_at?: string
+          id?: string
+          instance_name: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_user_id?: string | null
+          contact_name?: string | null
+          contact_phone_e164?: string
+          created_at?: string
+          id?: string
+          instance_name?: string
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
             referencedColumns: ["id"]
           },
         ]
