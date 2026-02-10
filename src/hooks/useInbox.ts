@@ -7,19 +7,24 @@ export interface InboxThread {
   id: string;
   organization_id: string;
   instance_name: string;
-  contact_phone: string;
-  assigned_to: string | null;
+  contact_phone_e164: string;
+  contact_name: string | null;
+  assigned_user_id: string | null;
   last_message_at: string | null;
+  last_message_preview: string | null;
   unread_count: number;
+  status: string;
   created_at: string;
 }
 
 export interface InboxMessage {
   id: string;
   organization_id: string;
-  conversation_id: string;
+  thread_id: string | null;
   direction: string;
-  body: string;
+  phone: string;
+  message_text: string | null;
+  status: string;
   created_at: string;
 }
 
@@ -65,36 +70,35 @@ export function useInbox() {
     fetchOrgMembers();
   }, [fetchOrgMembers]);
 
-  // Fetch conversations
+  // Fetch whatsapp_threads
   const fetchThreads = useCallback(async () => {
     if (!orgId) return;
     setLoadingThreads(true);
 
     try {
       let query = supabase
-        .from('conversations')
+        .from('whatsapp_threads')
         .select('*')
         .eq('organization_id', orgId)
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
-      // Filter by assigned_to using auth user id
       const userId = profile?.user_id;
 
       if (filter === 'mine' && userId) {
-        query = query.eq('assigned_to', userId);
+        query = query.eq('assigned_user_id', userId);
       } else if (filter === 'unassigned') {
-        query = query.is('assigned_to', null);
+        query = query.is('assigned_user_id', null);
       }
 
       if (search.trim()) {
-        query = query.ilike('contact_phone', `%${search}%`);
+        query = query.or(`contact_phone_e164.ilike.%${search}%,contact_name.ilike.%${search}%`);
       }
 
       const { data, error } = await query.limit(100);
       if (error) throw error;
-      setThreads((data as any[]) || []);
+      setThreads((data as InboxThread[]) || []);
     } catch (err: any) {
-      console.error('Error fetching conversations:', err);
+      console.error('Error fetching threads:', err);
       toast.error('Erro ao carregar conversas');
     } finally {
       setLoadingThreads(false);
@@ -105,22 +109,22 @@ export function useInbox() {
     fetchThreads();
   }, [fetchThreads]);
 
-  // Fetch messages for selected conversation
-  const fetchMessages = useCallback(async (conversationId: string) => {
+  // Fetch whatsapp_messages for selected thread
+  const fetchMessages = useCallback(async (threadId: string) => {
     if (!orgId) return;
     setLoadingMessages(true);
 
     try {
       const { data, error } = await supabase
-        .from('messages')
+        .from('whatsapp_messages')
         .select('*')
-        .eq('conversation_id', conversationId)
+        .eq('thread_id', threadId)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: true })
         .limit(200);
 
       if (error) throw error;
-      setMessages((data as any[]) || []);
+      setMessages((data as InboxMessage[]) || []);
     } catch (err: any) {
       console.error('Error fetching messages:', err);
       toast.error('Erro ao carregar mensagens');
@@ -129,26 +133,25 @@ export function useInbox() {
     }
   }, [orgId]);
 
-  // Zero unread_count when selecting a conversation
-  const clearUnread = useCallback(async (conversationId: string) => {
+  // Zero unread_count when selecting a thread
+  const clearUnread = useCallback(async (threadId: string) => {
     if (!orgId) return;
     try {
       await supabase
-        .from('conversations')
+        .from('whatsapp_threads')
         .update({ unread_count: 0 })
-        .eq('id', conversationId)
+        .eq('id', threadId)
         .eq('organization_id', orgId);
 
-      // Update locally
       setThreads(prev =>
-        prev.map(t => t.id === conversationId ? { ...t, unread_count: 0 } : t)
+        prev.map(t => t.id === threadId ? { ...t, unread_count: 0 } : t)
       );
     } catch (err) {
       console.error('Error clearing unread:', err);
     }
   }, [orgId]);
 
-  // Select conversation
+  // Select thread
   const selectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId);
     if (threadId) {
@@ -157,11 +160,11 @@ export function useInbox() {
     }
   }, [fetchMessages, clearUnread]);
 
-  // Check if current user can send in selected conversation
+  // Check if current user can send in selected thread
   const canSendMessage = useCallback((thread: InboxThread | null): boolean => {
     if (!thread || !profile) return false;
     if (isAdmin) return true;
-    return thread.assigned_to === profile.user_id;
+    return thread.assigned_user_id === profile.user_id;
   }, [isAdmin, profile]);
 
   // Send message
@@ -170,14 +173,11 @@ export function useInbox() {
     setSending(true);
 
     try {
-      const selectedConv = threads.find(t => t.id === selectedThreadId);
       const res = await supabase.functions.invoke('whatsapp-send', {
         body: {
           organization_id: orgId,
           thread_id: selectedThreadId,
           text: text.trim(),
-          instance_name: selectedConv?.instance_name,
-          phone: selectedConv?.contact_phone,
         },
       });
 
@@ -198,16 +198,19 @@ export function useInbox() {
     } finally {
       setSending(false);
     }
-  }, [orgId, selectedThreadId, threads, fetchMessages, fetchThreads]);
+  }, [orgId, selectedThreadId, fetchMessages, fetchThreads]);
 
-  // Assign conversation
+  // Assign thread
   const assignThread = useCallback(async (threadId: string, userId: string | null) => {
     if (!orgId) return;
 
     try {
       const { error } = await supabase
-        .from('conversations')
-        .update({ assigned_to: userId })
+        .from('whatsapp_threads')
+        .update({
+          assigned_user_id: userId,
+          assigned_at: userId ? new Date().toISOString() : null,
+        })
         .eq('id', threadId)
         .eq('organization_id', orgId);
 
@@ -215,15 +218,25 @@ export function useInbox() {
       await fetchThreads();
       toast.success(userId ? 'Conversa atribuída' : 'Atribuição removida');
     } catch (err: any) {
-      console.error('Error assigning conversation:', err);
+      console.error('Error assigning thread:', err);
       toast.error('Erro ao atribuir conversa');
     }
   }, [orgId, fetchThreads]);
 
-  // Update conversation status (kept for compatibility, but conversations table doesn't have status)
-  const updateThreadStatus = useCallback(async (_threadId: string, _status: string) => {
-    // No status field in conversations table — no-op
-  }, []);
+  // Update thread status
+  const updateThreadStatus = useCallback(async (threadId: string, status: string) => {
+    if (!orgId) return;
+    try {
+      await supabase
+        .from('whatsapp_threads')
+        .update({ status })
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+      await fetchThreads();
+    } catch (err) {
+      console.error('Error updating thread status:', err);
+    }
+  }, [orgId, fetchThreads]);
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
