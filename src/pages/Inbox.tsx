@@ -320,9 +320,9 @@ function MessagesList({ messages }: { messages: InboxMessage[] }) {
   );
 }
 
-// ── AI Typing Indicator ──
+// ── AI Thinking Indicator ──
 
-function AiTypingIndicator({ startedAt }: { startedAt: string | null }) {
+function AiThinkingIndicator({ startedAt }: { startedAt: string | null }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -350,7 +350,7 @@ function AiTypingIndicator({ startedAt }: { startedAt: string | null }) {
             'text-xs font-medium',
             isDelayed ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'
           )}>
-            {isDelayed ? 'IA demorando mais que o esperado…' : 'IA está digitando'}
+            {isDelayed ? 'IA está pensando mais que o esperado…' : 'IA está pensando…'}
           </span>
           <span className="flex gap-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -834,9 +834,9 @@ export default function InboxPage() {
                 <MessagesList messages={messages} />
               )}
 
-              {/* AI Typing Indicator */}
+              {/* AI Thinking Indicator */}
               {selectedThread.ai_mode === 'auto' && selectedThread.ai_pending && (
-                <AiTypingIndicator startedAt={selectedThread.ai_pending_started_at} />
+                <AiThinkingIndicator startedAt={selectedThread.ai_pending_started_at} />
               )}
 
               <div ref={messagesEndRef} />
