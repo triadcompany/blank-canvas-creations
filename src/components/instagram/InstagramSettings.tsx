@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +129,91 @@ export function InstagramSettings() {
 
     setAvailableUsers(available as Profile[]);
   };
+
+  const callbackProcessed = useRef(false);
+
+  // Handle OAuth callback
+  useEffect(() => {
+    if (callbackProcessed.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const isCallback = params.get('callback') === 'true' && params.get('tab') === 'instagram';
+    const code = params.get('code');
+    const state = params.get('state');
+
+    if (!isCallback || !code) return;
+
+    callbackProcessed.current = true;
+    console.log('[InstagramSettings] OAuth callback detected, processing code exchange...');
+
+    if (!profile?.id || !profile?.organization_id) {
+      toast({
+        title: "Erro no callback",
+        description: "Perfil ou organização não encontrados. Faça login novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const processCallback = async () => {
+      try {
+        const res = await fetch(
+          `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/instagram-exchange`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
+            },
+            body: JSON.stringify({
+              code,
+              state: state || '',
+              organizationId: profile.organization_id,
+              profileId: profile.id,
+            }),
+          }
+        );
+
+        const data = await res.json();
+        console.log('[InstagramSettings] Exchange response:', { status: res.status, ok: data?.ok });
+
+        if (res.ok && data?.ok) {
+          // Clean URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete('code');
+          url.searchParams.delete('state');
+          url.searchParams.delete('callback');
+          window.history.replaceState({}, '', url.toString());
+
+          toast({
+            title: "Instagram conectado com sucesso!",
+            description: data.connection?.instagram_username
+              ? `Conta @${data.connection.instagram_username} conectada.`
+              : "A conta foi vinculada à sua organização.",
+          });
+
+          // Refetch connections
+          fetchConnections();
+        } else {
+          console.error('[InstagramSettings] Exchange error:', data);
+          toast({
+            title: `Erro ao conectar (${res.status})`,
+            description: data?.error || "Falha ao processar o código de autorização",
+            variant: "destructive",
+          });
+        }
+      } catch (error: any) {
+        console.error('[InstagramSettings] Exchange network error:', error);
+        toast({
+          title: "Erro ao conectar",
+          description: error.message || "Falha na comunicação com o servidor",
+          variant: "destructive",
+        });
+      }
+    };
+
+    processCallback();
+  }, [profile?.id, profile?.organization_id]);
 
   useEffect(() => {
     fetchConnections();
