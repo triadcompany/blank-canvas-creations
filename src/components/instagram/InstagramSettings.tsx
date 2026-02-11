@@ -144,20 +144,42 @@ export function InstagramSettings() {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('instagram-connect', {
-        body: {
-          action: 'get_oauth_url',
-          redirectUri: `${window.location.origin}/settings?tab=instagram&callback=true`,
-        },
-      });
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
 
-      console.log('[InstagramSettings] invoke result:', { data, error });
+      const res = await fetch(
+        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/instagram-connect`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
+            ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            action: 'get_oauth_url',
+            redirectUri: `${window.location.origin}/settings?tab=instagram&callback=true`,
+          }),
+        }
+      );
 
-      if (error) {
-        console.error('[InstagramSettings] invoke error:', error.message, data);
+      let data: any;
+      const rawText = await res.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = { raw: rawText };
+      }
+
+      console.log('[InstagramSettings] response:', { status: res.status, data });
+
+      if (!res.ok) {
+        const msg = data?.message || data?.error || rawText || 'Erro desconhecido';
+        const code = data?.code || '';
+        console.error('[InstagramSettings] Error details:', { status: res.status, code, data });
         toast({
-          title: "Erro ao conectar",
-          description: `Erro: ${error.message}${data ? ` — ${JSON.stringify(data)}` : ''}`,
+          title: `Erro ao conectar (${res.status})`,
+          description: `${msg}${code ? ` [${code}]` : ''}`,
           variant: "destructive",
         });
         return;
@@ -174,7 +196,7 @@ export function InstagramSettings() {
         });
       }
     } catch (error: any) {
-      console.error('[InstagramSettings] catch error:', error);
+      console.error('[InstagramSettings] Network/catch error:', error);
       toast({
         title: "Erro ao conectar",
         description: error.message || "Não foi possível iniciar a conexão com o Instagram",
