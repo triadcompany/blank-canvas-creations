@@ -142,11 +142,17 @@ export function InstagramSettings() {
   }, [selectedConnection]);
 
   const handleConnect = async () => {
+    if (!profile?.id || !profile?.organization_id) {
+      toast({
+        title: "Erro ao conectar",
+        description: "Perfil ou organização não encontrados. Faça login novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setConnecting(true);
     try {
-      const session = await supabase.auth.getSession();
-      const accessToken = session.data.session?.access_token;
-
       const res = await fetch(
         `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/instagram-connect`,
         {
@@ -154,11 +160,12 @@ export function InstagramSettings() {
           headers: {
             'Content-Type': 'application/json',
             'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
-            ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
           },
           body: JSON.stringify({
             action: 'get_oauth_url',
             redirectUri: `${window.location.origin}/settings?tab=instagram&callback=true`,
+            profileId: profile.id,
+            organizationId: profile.organization_id,
           }),
         }
       );
