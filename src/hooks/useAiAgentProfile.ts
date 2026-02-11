@@ -42,6 +42,19 @@ export interface AiAgentProfile {
     call_human_on_objection?: boolean;
     call_human_on_confused?: boolean;
   };
+  qualification_rules: {
+    qualified_when: {
+      intents: string[];
+      urgency_level: string[];
+      sentiment: string[];
+    };
+  };
+  prioritization_rules: {
+    priority_when: {
+      intents: string[];
+      urgency_level: string[];
+    };
+  };
   examples: FewShotExample[];
   response_time: string;
   questions_per_message: number;
@@ -76,6 +89,12 @@ const defaultProfile: AiAgentProfile = {
     call_human_on_close: true,
     call_human_on_objection: false,
     call_human_on_confused: false,
+  },
+  qualification_rules: {
+    qualified_when: { intents: [], urgency_level: [], sentiment: [] },
+  },
+  prioritization_rules: {
+    priority_when: { intents: [], urgency_level: [] },
   },
   examples: [],
   response_time: '20-40',
@@ -183,6 +202,8 @@ export function useAiAgentProfile() {
           products_services: (data.products_services as any) || [],
           rules: (data.rules as any) || {},
           funnel_rules: (data.funnel_rules as any) || {},
+          qualification_rules: (data.qualification_rules as any) || { qualified_when: { intents: [], urgency_level: [], sentiment: [] } },
+          prioritization_rules: (data.prioritization_rules as any) || { priority_when: { intents: [], urgency_level: [] } },
           examples: (data.examples as any) || [],
         });
         setHasExisting(true);
@@ -201,6 +222,8 @@ export function useAiAgentProfile() {
           products_services: (v.products_services as any) || [],
           rules: (v.rules as any) || {},
           funnel_rules: (v.funnel_rules as any) || {},
+          qualification_rules: (v.qualification_rules as any) || { qualified_when: { intents: [], urgency_level: [], sentiment: [] } },
+          prioritization_rules: (v.prioritization_rules as any) || { priority_when: { intents: [], urgency_level: [] } },
           examples: (v.examples as any) || [],
         })));
       }
@@ -242,6 +265,8 @@ export function useAiAgentProfile() {
           products_services: agentProfile.products_services as any,
           rules: agentProfile.rules as any,
           funnel_rules: agentProfile.funnel_rules as any,
+          qualification_rules: agentProfile.qualification_rules as any,
+          prioritization_rules: agentProfile.prioritization_rules as any,
           examples: agentProfile.examples as any,
           response_time: agentProfile.response_time,
           questions_per_message: agentProfile.questions_per_message,

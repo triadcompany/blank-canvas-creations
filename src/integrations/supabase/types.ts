@@ -28,7 +28,9 @@ export type Database = {
           niche: string
           organization_id: string
           personality: string
+          prioritization_rules: Json | null
           products_services: Json | null
+          qualification_rules: Json | null
           questions_per_message: number
           response_length: string
           response_time: string
@@ -50,7 +52,9 @@ export type Database = {
           niche?: string
           organization_id: string
           personality?: string
+          prioritization_rules?: Json | null
           products_services?: Json | null
+          qualification_rules?: Json | null
           questions_per_message?: number
           response_length?: string
           response_time?: string
@@ -72,7 +76,9 @@ export type Database = {
           niche?: string
           organization_id?: string
           personality?: string
+          prioritization_rules?: Json | null
           products_services?: Json | null
+          qualification_rules?: Json | null
           questions_per_message?: number
           response_length?: string
           response_time?: string
@@ -1188,8 +1194,10 @@ export type Database = {
           conversation_id: string
           id: string
           intent_label: string | null
+          is_qualified: boolean
           last_detected_intent: string
           organization_id: string
+          priority_level: string
           sentiment: string
           updated_at: string
           urgency_level: string
@@ -1199,8 +1207,10 @@ export type Database = {
           conversation_id: string
           id?: string
           intent_label?: string | null
+          is_qualified?: boolean
           last_detected_intent?: string
           organization_id: string
+          priority_level?: string
           sentiment?: string
           updated_at?: string
           urgency_level?: string
@@ -1210,8 +1220,10 @@ export type Database = {
           conversation_id?: string
           id?: string
           intent_label?: string | null
+          is_qualified?: boolean
           last_detected_intent?: string
           organization_id?: string
+          priority_level?: string
           sentiment?: string
           updated_at?: string
           urgency_level?: string

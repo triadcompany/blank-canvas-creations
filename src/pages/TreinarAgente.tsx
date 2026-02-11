@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,10 +16,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Bot, Save, Car, Building2, TrendingUp, Sparkles, Plus, Trash2,
   MessageSquare, Brain, Shield, GitBranch, BookOpen, History, Loader2,
-  RotateCcw, Eye
+  RotateCcw, Eye, Target, Zap
 } from 'lucide-react';
 import { useAiAgentProfile, type ProductService, type FewShotExample } from '@/hooks/useAiAgentProfile';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -42,7 +44,39 @@ export default function TreinarAgente() {
     updateField, updateRules, updateFunnelRules, setAgentProfile,
   } = useAiAgentProfile();
 
+  const { profile: userProfile } = useAuth();
   const [activeTab, setActiveTab] = useState('identidade');
+  const [availableIntents, setAvailableIntents] = useState<{ intent_key: string; intent_label: string }[]>([]);
+
+  const organizationId = userProfile?.organization_id;
+
+  useEffect(() => {
+    if (!organizationId) return;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from('intent_definitions')
+        .select('intent_key, intent_label, scope_type, scope_id')
+        .or(
+          `and(scope_type.eq.global,scope_id.is.null),and(scope_type.eq.organization,scope_id.eq.${organizationId})`
+        );
+      if (data) {
+        // Also load niche-based intents
+        const niche = agentProfile.niche;
+        const { data: nicheIntents } = await (supabase as any)
+          .from('intent_definitions')
+          .select('intent_key, intent_label')
+          .eq('scope_type', 'niche')
+          .eq('scope_id', niche);
+        
+        const map = new Map<string, { intent_key: string; intent_label: string }>();
+        for (const i of data) map.set(i.intent_key, { intent_key: i.intent_key, intent_label: i.intent_label });
+        if (nicheIntents) {
+          for (const i of nicheIntents) map.set(i.intent_key, { intent_key: i.intent_key, intent_label: i.intent_label });
+        }
+        setAvailableIntents(Array.from(map.values()));
+      }
+    })();
+  }, [organizationId, agentProfile.niche]);
 
   if (loading) {
     return (
@@ -209,7 +243,7 @@ export default function TreinarAgente() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full">
+        <TabsList className="grid grid-cols-4 md:grid-cols-7 w-full">
           <TabsTrigger value="identidade" className="text-xs">
             <MessageSquare className="h-3 w-3 mr-1" />
             Identidade
@@ -225,6 +259,10 @@ export default function TreinarAgente() {
           <TabsTrigger value="funil" className="text-xs">
             <GitBranch className="h-3 w-3 mr-1" />
             Funil
+          </TabsTrigger>
+          <TabsTrigger value="qualificacao" className="text-xs">
+            <Target className="h-3 w-3 mr-1" />
+            Qualificação
           </TabsTrigger>
           <TabsTrigger value="exemplos" className="text-xs">
             <Brain className="h-3 w-3 mr-1" />
@@ -525,6 +563,202 @@ export default function TreinarAgente() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Qualification Tab */}
+        <TabsContent value="qualificacao">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-poppins flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" />
+                  Critérios de Lead Qualificado
+                </CardTitle>
+                <CardDescription>
+                  Defina quando um lead deve ser considerado qualificado com base na inteligência da conversa.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold">Intents que qualificam</Label>
+                  <p className="text-xs text-muted-foreground">Se a IA detectar uma dessas intenções, o lead será marcado como qualificado.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {availableIntents.map((intent) => (
+                      <div key={intent.intent_key} className="flex items-center space-x-3">
+                        <Checkbox
+                          id={`q-intent-${intent.intent_key}`}
+                          checked={agentProfile.qualification_rules?.qualified_when?.intents?.includes(intent.intent_key) || false}
+                          onCheckedChange={(checked) => {
+                            const current = agentProfile.qualification_rules?.qualified_when?.intents || [];
+                            const updated = checked
+                              ? [...current, intent.intent_key]
+                              : current.filter((k: string) => k !== intent.intent_key);
+                            setAgentProfile(prev => ({
+                              ...prev,
+                              qualification_rules: {
+                                ...prev.qualification_rules,
+                                qualified_when: { ...prev.qualification_rules.qualified_when, intents: updated },
+                              },
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`q-intent-${intent.intent_key}`} className="font-normal cursor-pointer text-sm">
+                          {intent.intent_label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                  {availableIntents.length === 0 && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+                      Nenhuma intent disponível. As intents serão carregadas automaticamente.
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold">Nível de urgência que qualifica</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['medium', 'high'].map((level) => (
+                      <div key={level} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`q-urgency-${level}`}
+                          checked={agentProfile.qualification_rules?.qualified_when?.urgency_level?.includes(level) || false}
+                          onCheckedChange={(checked) => {
+                            const current = agentProfile.qualification_rules?.qualified_when?.urgency_level || [];
+                            const updated = checked
+                              ? [...current, level]
+                              : current.filter((k: string) => k !== level);
+                            setAgentProfile(prev => ({
+                              ...prev,
+                              qualification_rules: {
+                                ...prev.qualification_rules,
+                                qualified_when: { ...prev.qualification_rules.qualified_when, urgency_level: updated },
+                              },
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`q-urgency-${level}`} className="font-normal cursor-pointer text-sm">
+                          {level === 'medium' ? 'Média' : 'Alta'}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold">Sentimento que qualifica</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { value: 'positive', label: 'Positivo' },
+                      { value: 'neutral', label: 'Neutro' },
+                    ].map(({ value, label }) => (
+                      <div key={value} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`q-sentiment-${value}`}
+                          checked={agentProfile.qualification_rules?.qualified_when?.sentiment?.includes(value) || false}
+                          onCheckedChange={(checked) => {
+                            const current = agentProfile.qualification_rules?.qualified_when?.sentiment || [];
+                            const updated = checked
+                              ? [...current, value]
+                              : current.filter((k: string) => k !== value);
+                            setAgentProfile(prev => ({
+                              ...prev,
+                              qualification_rules: {
+                                ...prev.qualification_rules,
+                                qualified_when: { ...prev.qualification_rules.qualified_when, sentiment: updated },
+                              },
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`q-sentiment-${value}`} className="font-normal cursor-pointer text-sm">
+                          {label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-poppins flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Critérios de Prioridade Alta
+                </CardTitle>
+                <CardDescription>
+                  Defina quando um lead deve receber prioridade alta no atendimento.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold">Intents de prioridade</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {availableIntents.map((intent) => (
+                      <div key={intent.intent_key} className="flex items-center space-x-3">
+                        <Checkbox
+                          id={`p-intent-${intent.intent_key}`}
+                          checked={agentProfile.prioritization_rules?.priority_when?.intents?.includes(intent.intent_key) || false}
+                          onCheckedChange={(checked) => {
+                            const current = agentProfile.prioritization_rules?.priority_when?.intents || [];
+                            const updated = checked
+                              ? [...current, intent.intent_key]
+                              : current.filter((k: string) => k !== intent.intent_key);
+                            setAgentProfile(prev => ({
+                              ...prev,
+                              prioritization_rules: {
+                                ...prev.prioritization_rules,
+                                priority_when: { ...prev.prioritization_rules.priority_when, intents: updated },
+                              },
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`p-intent-${intent.intent_key}`} className="font-normal cursor-pointer text-sm">
+                          {intent.intent_label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <Label className="text-sm font-semibold">Nível de urgência de prioridade</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['medium', 'high'].map((level) => (
+                      <div key={level} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`p-urgency-${level}`}
+                          checked={agentProfile.prioritization_rules?.priority_when?.urgency_level?.includes(level) || false}
+                          onCheckedChange={(checked) => {
+                            const current = agentProfile.prioritization_rules?.priority_when?.urgency_level || [];
+                            const updated = checked
+                              ? [...current, level]
+                              : current.filter((k: string) => k !== level);
+                            setAgentProfile(prev => ({
+                              ...prev,
+                              prioritization_rules: {
+                                ...prev.prioritization_rules,
+                                priority_when: { ...prev.prioritization_rules.priority_when, urgency_level: updated },
+                              },
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`p-urgency-${level}`} className="font-normal cursor-pointer text-sm">
+                          {level === 'medium' ? 'Média' : 'Alta'}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Examples Tab */}

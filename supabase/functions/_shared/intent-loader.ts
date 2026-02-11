@@ -76,6 +76,7 @@ export async function loadIntentDefinitions(
 
 /**
  * Save conversation intelligence (upsert by conversation_id)
+ * Also checks qualification and prioritization rules from ai_agent_profiles
  */
 export async function saveConversationIntelligence(
   supabase: SupabaseClient,
@@ -89,6 +90,48 @@ export async function saveConversationIntelligence(
     urgency_level: string;
   },
 ) {
+  // Load qualification rules from active agent profile
+  let isQualified = false;
+  let priorityLevel = "normal";
+
+  try {
+    const { data: profile } = await supabase
+      .from("ai_agent_profiles")
+      .select("qualification_rules, prioritization_rules")
+      .eq("organization_id", data.organization_id)
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (profile) {
+      const qRules = (profile.qualification_rules as any)?.qualified_when;
+      const pRules = (profile.prioritization_rules as any)?.priority_when;
+
+      // Check qualification
+      if (qRules) {
+        const intentMatch = qRules.intents?.length > 0 && qRules.intents.includes(data.last_detected_intent);
+        const urgencyMatch = qRules.urgency_level?.length > 0 && qRules.urgency_level.includes(data.urgency_level);
+        const sentimentMatch = qRules.sentiment?.length > 0 && qRules.sentiment.includes(data.sentiment);
+        // Qualify if ANY configured rule matches
+        if (intentMatch || urgencyMatch || sentimentMatch) {
+          isQualified = true;
+        }
+      }
+
+      // Check prioritization
+      if (pRules) {
+        const intentMatch = pRules.intents?.length > 0 && pRules.intents.includes(data.last_detected_intent);
+        const urgencyMatch = pRules.urgency_level?.length > 0 && pRules.urgency_level.includes(data.urgency_level);
+        if (intentMatch || urgencyMatch) {
+          priorityLevel = "high";
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[intent-loader] Error loading qualification rules:", e);
+  }
+
   const { error } = await supabase
     .from("conversation_intelligence")
     .upsert(
@@ -100,6 +143,8 @@ export async function saveConversationIntelligence(
         confidence: data.confidence || 0,
         sentiment: data.sentiment || "neutral",
         urgency_level: data.urgency_level || "low",
+        is_qualified: isQualified,
+        priority_level: priorityLevel,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "conversation_id" }
