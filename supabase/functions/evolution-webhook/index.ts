@@ -394,7 +394,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           .single();
 
         if (lastMsg) {
-          const idempotencyKey = `${orgId}:${conversationId}:${lastMsg.id}`;
+          // Use external_message_id from Evolution for idempotency (more reliable than DB UUID)
+          const idempotencyKey = `${orgId}:${conversationId}:${externalMessageId || lastMsg.id}`;
           
           // IMPORTANT: Check { error } response, not .catch() — Supabase SDK doesn't throw on DB errors
           const { error: enqueueError } = await supabase.from("ai_auto_reply_jobs").insert({
@@ -536,20 +537,35 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         }
       }
     } else {
-      // ── Outbound from WhatsApp (human sent manually) ──
-      // If human sends, set ai_state = human_active to pause AI
-      if (conversationId) {
-        const { data: convForHuman } = await supabase
-          .from("conversations")
-          .select("ai_mode")
-          .eq("id", conversationId)
-          .single();
+      // ── Outbound from WhatsApp ──
+      // Only set human_active if the message was NOT sent by the AI
+      // Check: if the outbound message was already saved by ai-auto-reply (ai_generated=true), skip takeover
+      if (conversationId && externalMessageId) {
+        const { data: existingOutMsg } = await supabase
+          .from("messages")
+          .select("id, ai_generated")
+          .eq("conversation_id", conversationId)
+          .eq("external_message_id", externalMessageId)
+          .maybeSingle();
 
-        if (convForHuman?.ai_mode === "auto") {
-          await supabase.from("conversations")
-            .update({ ai_state: "human_active" })
-            .eq("id", conversationId);
-          console.log(`[evolution-webhook] Human sent message — ai_state set to human_active for conv=${conversationId}`);
+        // If message exists and is AI-generated, do NOT trigger human takeover
+        const isAiMessage = existingOutMsg?.ai_generated === true;
+
+        if (!isAiMessage) {
+          const { data: convForHuman } = await supabase
+            .from("conversations")
+            .select("ai_mode")
+            .eq("id", conversationId)
+            .single();
+
+          if (convForHuman?.ai_mode === "auto") {
+            await supabase.from("conversations")
+              .update({ ai_state: "human_active" })
+              .eq("id", conversationId);
+            console.log(`[evolution-webhook] Human sent message — ai_state set to human_active for conv=${conversationId}`);
+          }
+        } else {
+          console.log(`[evolution-webhook] Outbound is AI-generated — skipping human takeover for conv=${conversationId}`);
         }
       }
 

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useInbox, InboxThread, InboxMessage } from '@/hooks/useInbox';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -22,6 +24,7 @@ import {
   Bot,
   Pause,
   Play,
+  AlertCircle,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -31,9 +34,21 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
+
+const BLOCK_REASON_LABELS: Record<string, string> = {
+  throttle_active: 'Throttle ativo',
+  max_ai_replies_without_lead_response: 'Máx. respostas sem retorno do lead',
+  ai_state_human_active: 'Humano assumiu',
+  idempotency_duplicate: 'Mensagem já processada',
+  debounce_waiting: 'Debounce (msg mais recente chegou)',
+  sensitive_stage: 'Etapa sensível',
+  ai_mode_not_auto: 'Modo IA não é AUTO',
+  missing_context: 'Contexto insuficiente',
+};
 
 // ── Helpers ──
 
@@ -345,6 +360,25 @@ export default function InboxPage() {
   const isAtBottomRef = useRef(true);
 
   const canSend = canSendMessage(selectedThread);
+
+  // Query latest AI block reason for the selected conversation
+  const { data: lastBlockedJob } = useQuery({
+    queryKey: ['ai-block-reason', selectedThreadId],
+    queryFn: async () => {
+      if (!selectedThreadId) return null;
+      const { data } = await (supabase as any)
+        .from('ai_auto_reply_jobs')
+        .select('id, status, error, result, processed_at')
+        .eq('conversation_id', selectedThreadId)
+        .eq('status', 'blocked')
+        .order('processed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!selectedThreadId && selectedThread?.ai_mode === 'auto',
+    refetchInterval: 15000,
+  });
 
   // Map profile.id -> name for assignment display
   const memberNameMap = useMemo(() => {
@@ -703,6 +737,29 @@ export default function InboxPage() {
                     <>
                       <Bot className="h-3.5 w-3.5" />
                       <span className="font-medium">IA Autônoma ativa</span>
+                      {lastBlockedJob && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[10px] cursor-help">
+                                <AlertCircle className="h-3 w-3" />
+                                {BLOCK_REASON_LABELS[(lastBlockedJob.result as any)?.block_reason] || lastBlockedJob.error || 'Bloqueada'}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs text-xs">
+                              <p className="font-medium mb-1">Último bloqueio da IA:</p>
+                              <p>{lastBlockedJob.error}</p>
+                              {(lastBlockedJob.result as any)?.seconds_remaining && (
+                                <p className="mt-1 text-muted-foreground">Aguardando {(lastBlockedJob.result as any).seconds_remaining}s</p>
+                              )}
+                              {(lastBlockedJob.result as any)?.ai_reply_count_since_last_lead !== undefined && (
+                                <p className="mt-1 text-muted-foreground">Respostas sem retorno: {(lastBlockedJob.result as any).ai_reply_count_since_last_lead}</p>
+                              )}
+                              <p className="mt-1 text-muted-foreground/60">{lastBlockedJob.processed_at ? format(parseISO(lastBlockedJob.processed_at), 'HH:mm:ss') : ''}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </>
                   )}
                 </div>
