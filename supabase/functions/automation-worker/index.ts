@@ -41,6 +41,8 @@ serve(async (req) => {
     if (fetchErr) throw fetchErr;
 
     if (!jobs || jobs.length === 0) {
+      // Update heartbeat even if nothing to process
+      await upsertHeartbeat(supabase, 0, 0);
       return respond({ ok: true, message: "No pending jobs", processed: 0 });
     }
 
@@ -146,12 +148,9 @@ serve(async (req) => {
         const nextNodeId = result.nextNodeId;
 
         if (nextNodeId) {
-          // Find the next node in the flow
           const nextNode = nodes.find((n: any) => n.id === nextNodeId);
-
           if (nextNode) {
             const scheduledFor = result.delayUntil || new Date().toISOString();
-
             await supabase.from("automation_jobs").insert({
               organization_id: job.organization_id,
               automation_id: job.automation_id,
@@ -166,8 +165,6 @@ serve(async (req) => {
               status: "pending",
               attempts: 0,
             });
-
-            // If there's a delay, mark run as waiting
             if (result.delayUntil) {
               await supabase
                 .from("automation_runs")
@@ -175,13 +172,10 @@ serve(async (req) => {
                 .eq("id", job.run_id);
             }
           } else {
-            // Next node not found — complete the run
             await completeRun(supabase, job);
           }
         } else {
-          // No next node — find default outgoing edge
           const outEdges = edges.filter((e: any) => e.source === job.node_id);
-
           if (outEdges.length > 0) {
             const defaultNext = nodes.find((n: any) => n.id === outEdges[0].target);
             if (defaultNext) {
@@ -203,7 +197,6 @@ serve(async (req) => {
               await completeRun(supabase, job);
             }
           } else {
-            // No outgoing edges — run is complete
             await completeRun(supabase, job);
           }
         }
@@ -215,13 +208,11 @@ serve(async (req) => {
         const newAttempts = (job.attempts || 0) + 1;
         if (newAttempts >= MAX_ATTEMPTS) {
           await failJob(supabase, job, String(jobErr));
-          // Also fail the run
           await supabase
             .from("automation_runs")
             .update({ status: "failed", last_error: `Job ${job.node_id} failed after ${MAX_ATTEMPTS} attempts: ${String(jobErr)}` })
             .eq("id", job.run_id);
         } else {
-          // Reset to pending for retry
           await supabase
             .from("automation_jobs")
             .update({ status: "pending", last_error: String(jobErr), attempts: newAttempts })
@@ -231,6 +222,9 @@ serve(async (req) => {
         failed++;
       }
     }
+
+    // Update heartbeat
+    await upsertHeartbeat(supabase, processed, failed);
 
     return respond({
       ok: true,
@@ -249,8 +243,47 @@ serve(async (req) => {
 interface JobResult {
   status: "done" | "waiting";
   output: Record<string, unknown>;
-  nextNodeId?: string;    // explicit next node (used by condition)
-  delayUntil?: string;    // ISO string for delay scheduling
+  nextNodeId?: string;
+  delayUntil?: string;
+}
+
+// ── Heartbeat ──────────────────────────────────────────
+
+async function upsertHeartbeat(supabase: any, processed: number, failed: number) {
+  try {
+    await supabase.rpc("upsert_worker_heartbeat", {
+      p_worker_name: "automation-worker",
+      p_processed: processed,
+      p_errors: failed,
+    }).catch(async () => {
+      // Fallback: direct upsert
+      const { data: existing } = await supabase
+        .from("worker_heartbeats")
+        .select("worker_name")
+        .eq("worker_name", "automation-worker")
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from("worker_heartbeats")
+          .update({
+            last_run_at: new Date().toISOString(),
+            processed_count: processed,
+            error_count: failed,
+          })
+          .eq("worker_name", "automation-worker");
+      } else {
+        await supabase
+          .from("worker_heartbeats")
+          .insert({
+            worker_name: "automation-worker",
+            last_run_at: new Date().toISOString(),
+            processed_count: processed,
+            error_count: failed,
+          });
+      }
+    });
+  } catch { /* non-critical */ }
 }
 
 // ── Processors ─────────────────────────────────────────
@@ -274,7 +307,6 @@ function processDelay(node: any, job: any): JobResult {
     status: "waiting",
     output: { delay_amount: amount, delay_unit: unit, resume_at: delayUntil },
     delayUntil,
-    // nextNodeId will be resolved from outgoing edges in the main loop
   };
 }
 
@@ -285,11 +317,27 @@ async function processCondition(
   edges: any[]
 ): Promise<JobResult> {
   const config = job.payload?.node_config || node.data?.config || {};
+  const conditionType = config.conditionType || "";
+
+  // For "first_touch" condition type, always pass (webhook already validated)
+  if (conditionType === "first_touch") {
+    const yesEdge = edges.find(
+      (e: any) => e.source === node.id && (e.sourceHandle === "yes" || e.sourceHandle === "true")
+    );
+    const fallbackEdge = edges.find((e: any) => e.source === node.id);
+    const nextNodeId = yesEdge?.target || fallbackEdge?.target;
+
+    return {
+      status: "done",
+      output: { condition_type: "first_touch", condition_met: true, reason: "Validated by webhook" },
+      nextNodeId,
+    };
+  }
+
   const field = config.field || "";
   const operator = config.operator || "equals";
   const value = config.value || "";
 
-  // Load lead data from the run context
   const { data: run } = await supabase
     .from("automation_runs")
     .select("context, entity_id, entity_type")
@@ -310,25 +358,15 @@ async function processCondition(
     default:             conditionMet = false;
   }
 
-  // Find correct outgoing edge: sourceHandle "true" or "false"
   const matchEdge = edges.find(
     (e: any) => e.source === node.id && e.sourceHandle === (conditionMet ? "true" : "false")
   );
-
-  // Fallback: if no handle-based edge, use first outgoing edge
   const fallbackEdge = edges.find((e: any) => e.source === node.id);
   const nextNodeId = matchEdge?.target || (conditionMet ? fallbackEdge?.target : undefined);
 
   return {
     status: "done",
-    output: {
-      field,
-      operator,
-      expected: value,
-      actual: fieldValue,
-      condition_met: conditionMet,
-      next_node: nextNodeId || null,
-    },
+    output: { field, operator, expected: value, actual: fieldValue, condition_met: conditionMet, next_node: nextNodeId || null },
     nextNodeId,
   };
 }
@@ -340,6 +378,9 @@ async function processAction(supabase: any, node: any, job: any): Promise<JobRes
   switch (actionType) {
     case "move_stage":
       return await processActionMoveStage(supabase, config, job);
+    case "create_lead":
+    case "create_deal":
+      return await processActionCreateLead(supabase, config, job);
     case "end_automation":
       await completeRun(supabase, job);
       return { status: "done", output: { action_type: "end_automation", ended: true } };
@@ -355,6 +396,194 @@ async function processAction(supabase: any, node: any, job: any): Promise<JobRes
   }
 }
 
+// ── CREATE LEAD / CREATE DEAL ─────────────────────────
+
+async function processActionCreateLead(supabase: any, config: any, job: any): Promise<JobResult> {
+  const params = config.params || {};
+  const source = params.source || "Automação";
+  const sourceDetail = params.source_detail || "";
+  const pipelineId = params.pipeline_id || null;
+  const stageId = params.stage_id || null;
+  const priority = params.priority ?? 0;
+  const ownerId = params.owner_id || null;
+  const deduplicate = params.deduplicate !== false; // default true
+
+  // Load run context
+  const { data: run } = await supabase
+    .from("automation_runs")
+    .select("context, entity_id, entity_type, organization_id")
+    .eq("id", job.run_id)
+    .single();
+
+  if (!run) {
+    return { status: "done", output: { error: "Run não encontrada", skipped: true } };
+  }
+
+  const orgId = run.organization_id;
+  const ctx = run.context || {};
+  const phone = ctx.phone || ctx.lead_phone || ctx.whatsapp || "";
+  const contactName = ctx.contact_name || ctx.lead_name || ctx.name || phone || "Sem nome";
+
+  if (!phone) {
+    return { status: "done", output: { error: "Sem telefone no contexto", skipped: true } };
+  }
+
+  // ── Deduplication check ──
+  if (deduplicate) {
+    const { data: existing } = await supabase
+      .from("leads")
+      .select("id, name, stage_id")
+      .eq("organization_id", orgId)
+      .eq("phone", phone)
+      .not("stage_id", "is", null)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[automation-worker] Dedup: lead already exists for ${phone} (lead_id=${existing.id})`);
+      return {
+        status: "done",
+        output: {
+          action_type: "create_lead",
+          deduplicated: true,
+          existing_lead_id: existing.id,
+          existing_lead_name: existing.name,
+          phone,
+        },
+      };
+    }
+  }
+
+  // ── Resolve pipeline + stage ──
+  let resolvedPipelineId = pipelineId;
+  let resolvedStageId = stageId;
+
+  if (!resolvedPipelineId) {
+    const { data: defPipeline } = await supabase
+      .from("pipelines")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .maybeSingle();
+    resolvedPipelineId = defPipeline?.id || null;
+
+    if (!resolvedPipelineId) {
+      const { data: anyPipeline } = await supabase
+        .from("pipelines")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("is_active", true)
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      resolvedPipelineId = anyPipeline?.id || null;
+    }
+  }
+
+  if (!resolvedStageId && resolvedPipelineId) {
+    const { data: firstStage } = await supabase
+      .from("pipeline_stages")
+      .select("id")
+      .eq("pipeline_id", resolvedPipelineId)
+      .order("position")
+      .limit(1)
+      .maybeSingle();
+    resolvedStageId = firstStage?.id || null;
+  }
+
+  if (!resolvedPipelineId) {
+    return { status: "done", output: { error: "Nenhum pipeline encontrado na organização", skipped: true } };
+  }
+
+  // ── Create lead ──
+  const { data: newLead, error: leadErr } = await supabase
+    .from("leads")
+    .insert({
+      organization_id: orgId,
+      name: contactName,
+      phone,
+      source,
+      source_detail: sourceDetail,
+      pipeline_id: resolvedPipelineId,
+      stage_id: resolvedStageId,
+      priority,
+      assigned_to: ownerId,
+      status: "open",
+    })
+    .select("id, name")
+    .single();
+
+  if (leadErr) {
+    console.error(`[automation-worker] Create lead error:`, leadErr);
+    throw new Error(`Erro ao criar lead: ${leadErr.message}`);
+  }
+
+  console.log(`[automation-worker] Lead created: ${newLead.id} (${contactName}) for ${phone}`);
+
+  // ── Link conversation to lead if possible ──
+  if (ctx.conversation_id) {
+    await supabase
+      .from("conversations")
+      .update({ lead_id: newLead.id })
+      .eq("id", ctx.conversation_id)
+      .is("lead_id", null);
+  }
+
+  // Update execution trace
+  const traceId = ctx.trace_id || job.payload?.event_payload?.trace_id;
+  if (traceId) {
+    await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
+      lead_id: newLead.id,
+      lead_name: contactName,
+      phone,
+      pipeline_id: resolvedPipelineId,
+      stage_id: resolvedStageId,
+      source,
+    });
+  }
+
+  return {
+    status: "done",
+    output: {
+      action_type: "create_lead",
+      lead_id: newLead.id,
+      lead_name: contactName,
+      phone,
+      pipeline_id: resolvedPipelineId,
+      stage_id: resolvedStageId,
+      source,
+      created: true,
+    },
+  };
+}
+
+async function updateExecutionFromWorker(
+  supabase: any,
+  orgId: string,
+  traceId: string,
+  status: string,
+  failReason: string | null,
+  extraDebug: Record<string, unknown>,
+) {
+  try {
+    const { data: existing } = await supabase
+      .from("automation_executions")
+      .select("id, debug_json")
+      .eq("organization_id", orgId)
+      .eq("trace_id", traceId)
+      .maybeSingle();
+
+    if (existing) {
+      const mergedDebug = { ...(existing.debug_json || {}), ...extraDebug, [`step_${status}`]: new Date().toISOString() };
+      await supabase
+        .from("automation_executions")
+        .update({ status, fail_reason: failReason, debug_json: mergedDebug })
+        .eq("id", existing.id);
+    }
+  } catch { /* non-critical */ }
+}
+
 async function processActionMoveStage(supabase: any, config: any, job: any): Promise<JobResult> {
   const params = config.params || {};
   const stageName = params.stage || "";
@@ -363,7 +592,6 @@ async function processActionMoveStage(supabase: any, config: any, job: any): Pro
     return { status: "done", output: { error: "Etapa de destino não configurada", skipped: true } };
   }
 
-  // Load run to get entity_id (lead)
   const { data: run } = await supabase
     .from("automation_runs")
     .select("entity_id, entity_type, organization_id")
@@ -379,7 +607,6 @@ async function processActionMoveStage(supabase: any, config: any, job: any): Pro
     return { status: "done", output: { error: "Entidade não é um lead", skipped: true } };
   }
 
-  // Find the stage by name in the org
   const { data: stages } = await supabase
     .from("crm_stages")
     .select("id, name")
@@ -394,7 +621,6 @@ async function processActionMoveStage(supabase: any, config: any, job: any): Pro
     };
   }
 
-  // Update lead stage
   const { error: updateErr } = await supabase
     .from("crm_leads")
     .update({ stage: targetStage.id, updated_at: new Date().toISOString() })
@@ -422,13 +648,9 @@ async function processMessage(supabase: any, node: any, job: any): Promise<JobRe
   const messageText = config.text || "";
 
   if (!messageText) {
-    return {
-      status: "done",
-      output: { error: "Texto da mensagem vazio", skipped: true },
-    };
+    return { status: "done", output: { error: "Texto da mensagem vazio", skipped: true } };
   }
 
-  // Load run context to get lead phone and resolve variables
   const { data: run } = await supabase
     .from("automation_runs")
     .select("context, entity_id, entity_type, organization_id")
@@ -443,20 +665,15 @@ async function processMessage(supabase: any, node: any, job: any): Promise<JobRe
   const leadPhone = ctx.lead_phone || ctx.phone || ctx.whatsapp || "";
 
   if (!leadPhone) {
-    return {
-      status: "done",
-      output: { error: "Lead sem telefone cadastrado", skipped: true },
-    };
+    return { status: "done", output: { error: "Lead sem telefone cadastrado", skipped: true } };
   }
 
-  // Resolve template variables like {{lead_name}}
   const resolvedText = messageText
     .replace(/\{\{lead\.name\}\}/g, ctx.lead_name || ctx.name || "")
     .replace(/\{\{lead\.phone\}\}/g, leadPhone)
     .replace(/\{\{lead\.email\}\}/g, ctx.lead_email || ctx.email || "")
     .replace(/\{\{lead\.stage\}\}/g, ctx.stage_name || ctx.stage || "");
 
-  // Call evolution-send edge function
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -480,8 +697,6 @@ async function processMessage(supabase: any, node: any, job: any): Promise<JobRe
   if (!sendRes.ok) {
     const errorMsg = sendData?.error || `HTTP ${sendRes.status}`;
     console.error(`[automation-worker] Message send failed:`, errorMsg);
-
-    // Log the failure
     await supabase.from("automation_logs").insert({
       organization_id: job.organization_id,
       automation_id: job.automation_id,
@@ -491,8 +706,6 @@ async function processMessage(supabase: any, node: any, job: any): Promise<JobRe
       message: `Falha ao enviar mensagem para ${leadPhone}: ${errorMsg}`,
       data: { phone: leadPhone, error: errorMsg, resolved_text: resolvedText },
     });
-
-    // Throw so the retry mechanism kicks in
     throw new Error(`WhatsApp send failed: ${errorMsg}`);
   }
 
@@ -530,7 +743,6 @@ async function processWaitForReply(
   const now = new Date();
   const timeoutAt = new Date(now.getTime() + timeoutMs).toISOString();
 
-  // Load run to get entity_id (lead_id)
   const { data: run } = await supabase
     .from("automation_runs")
     .select("entity_id, entity_type")
@@ -539,16 +751,11 @@ async function processWaitForReply(
 
   const leadId = run?.entity_type === "lead" ? run?.entity_id : null;
 
-  // 1) Mark current job as done (the "enter wait" step)
-  // The main loop will mark it done, so we just set up the pause
-
-  // 2) Pause the run
   await supabase
     .from("automation_runs")
     .update({ status: "paused", current_node_id: node.id })
     .eq("id", job.run_id);
 
-  // 3) Create the timeout sentinel job
   await supabase.from("automation_jobs").insert({
     organization_id: job.organization_id,
     automation_id: job.automation_id,
@@ -567,7 +774,6 @@ async function processWaitForReply(
     attempts: 0,
   });
 
-  // 4) Log
   await supabase.from("automation_logs").insert({
     organization_id: job.organization_id,
     automation_id: job.automation_id,
@@ -578,22 +784,12 @@ async function processWaitForReply(
     data: { lead_id: leadId, timeout_at: timeoutAt },
   });
 
-  // Return done with NO nextNodeId — run is paused, next step will be
-  // resolved either by the webhook (replied) or the timeout job
   return {
     status: "done",
-    output: {
-      paused: true,
-      lead_id: leadId,
-      timeout_at: timeoutAt,
-      waiting_for: "reply",
-    },
-    // Explicitly no nextNodeId — prevents the main loop from scheduling anything
+    output: { paused: true, lead_id: leadId, timeout_at: timeoutAt, waiting_for: "reply" },
     nextNodeId: "__pause__",
   };
 }
-
-// ── Wait For Reply Timeout Handler ────────────────────
 
 async function processWaitForReplyTimeout(
   supabase: any,
@@ -604,7 +800,6 @@ async function processWaitForReplyTimeout(
   const payload = job.payload || {};
   const leadId = payload.lead_id;
 
-  // Check if lead replied since `since`
   let replied = false;
   if (leadId) {
     const { data: lead } = await supabase
@@ -620,25 +815,21 @@ async function processWaitForReplyTimeout(
     }
   }
 
-  // If already replied (race condition — webhook didn't catch it), use replied path
   const handleId = replied ? "replied" : "timeout";
   const logMessage = replied
     ? "Resposta recebida (detectada no timeout check)"
     : "Timeout sem resposta";
 
-  // Find next node via the correct handle
   const matchEdge = edges.find(
     (e: any) => e.source === node.id && e.sourceHandle === handleId
   );
   const nextNodeId = matchEdge?.target || undefined;
 
-  // Resume the run
   await supabase
     .from("automation_runs")
     .update({ status: "running" })
     .eq("id", job.run_id);
 
-  // Log
   await supabase.from("automation_logs").insert({
     organization_id: job.organization_id,
     automation_id: job.automation_id,
