@@ -29,12 +29,21 @@ serve(async (req) => {
 
   try {
     // ── 1. Pick pending jobs ──
-    const { data: jobs } = await supabase
+    console.log("[ai-auto-reply] Worker started, looking for pending jobs...");
+    
+    const { data: jobs, error: jobsError } = await supabase
       .from("ai_auto_reply_jobs")
       .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(5);
+
+    if (jobsError) {
+      console.error("[ai-auto-reply] Error fetching jobs:", jobsError);
+      return respond({ error: "Failed to fetch jobs", detail: jobsError.message }, 500);
+    }
+
+    console.log(`[ai-auto-reply] Found ${jobs?.length || 0} pending jobs`);
 
     if (!jobs || jobs.length === 0) {
       return respond({ processed: 0, message: "No pending jobs" });
@@ -88,18 +97,26 @@ async function processAutoReply(
   evolutionBaseUrl: string,
 ): Promise<{ status: string; data?: any; error?: string }> {
   const { organization_id: orgId, conversation_id: convId, inbound_message_id } = job;
+  console.log(`[ai-auto-reply] Processing job=${job.id} conv=${convId} org=${orgId}`);
 
   // ── 2. Fetch conversation ──
-  const { data: conv } = await supabase
+  const { data: conv, error: convError } = await supabase
     .from("conversations")
     .select("*, lead:leads!lead_id(id, name, stage_id, stage:pipeline_stages!stage_id(id, name, pipeline_id, sensitive))")
     .eq("id", convId)
     .eq("organization_id", orgId)
     .single();
 
+  if (convError) {
+    console.error(`[ai-auto-reply] Conv fetch error:`, convError);
+    return { status: "failed", error: `Conv fetch error: ${convError.message}` };
+  }
+
   if (!conv) return { status: "failed", error: "Conversation not found" };
 
   // ── 3. Guardrails ──
+  console.log(`[ai-auto-reply] Guardrails: ai_mode=${conv.ai_mode} ai_state=${conv.ai_state} lead_stage=${conv.lead?.stage?.name}`);
+  
   if (conv.ai_mode !== "auto") return { status: "blocked", error: "ai_mode != auto" };
   if (conv.ai_state === "human_active") return { status: "blocked", error: "human_active lock" };
 
