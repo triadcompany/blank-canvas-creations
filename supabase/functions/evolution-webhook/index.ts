@@ -707,7 +707,7 @@ function containsAdMarker(text: string): boolean {
   return normalized.includes("anuncio");
 }
 
-// ── Helper: Handle ad keyword lead with first-touch dedup + org settings ──
+// ── Helper: Handle ad keyword lead with first-touch dedup + automation check ──
 async function handleAdKeywordLead(
   supabase: any,
   orgId: string,
@@ -717,6 +717,31 @@ async function handleAdKeywordLead(
   conversationId: string | null,
 ) {
   try {
+    // 0) Check if there's an active automation of type inbound_message_keyword for this org
+    const { data: kwAutomation } = await supabase
+      .from("automations")
+      .select("id, is_active, trigger_event_name")
+      .eq("organization_id", orgId)
+      .eq("trigger_type", "inbound_message_keyword")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    // Also check legacy organization_automation_settings
+    const { data: settings } = await supabase
+      .from("organization_automation_settings")
+      .select("meta_ads_keyword_enabled, meta_ads_pipeline_id, meta_ads_stage_id")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    const automationEnabled = kwAutomation?.is_active === true;
+    const legacyEnabled = settings?.meta_ads_keyword_enabled !== false; // default true
+
+    if (!automationEnabled && !legacyEnabled) {
+      console.log(`[evolution-webhook] Keyword automation disabled for org ${orgId} (automation=${!!kwAutomation}, legacy=${legacyEnabled})`);
+      return;
+    }
+
     // 1) First-touch dedup
     const { data: existing } = await supabase
       .from("whatsapp_first_touch")
@@ -741,24 +766,37 @@ async function handleAdKeywordLead(
       return;
     }
 
-    // 2) Check if keyword automation is enabled
-    const { data: settings } = await supabase
-      .from("organization_automation_settings")
-      .select("meta_ads_keyword_enabled, meta_ads_pipeline_id, meta_ads_stage_id")
-      .eq("organization_id", orgId)
-      .maybeSingle();
+    // 2) Resolve pipeline + stage — prefer automation flow config, then legacy settings
+    let pipelineId: string | null = null;
+    let stageId: string | null = null;
 
-    if (settings?.meta_ads_keyword_enabled === false) {
-      console.log(`[evolution-webhook] Keyword automation disabled for org ${orgId}`);
-      return;
+    // Try reading from the automation flow's create_lead action node
+    if (kwAutomation) {
+      const { data: flow } = await supabase
+        .from("automation_flows")
+        .select("nodes")
+        .eq("automation_id", kwAutomation.id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (flow?.nodes) {
+        const actionNode = (flow.nodes as any[]).find(
+          (n: any) => n.type === "action" && n.data?.config?.actionType === "create_lead"
+        );
+        if (actionNode?.data?.config?.params) {
+          pipelineId = actionNode.data.config.params.pipeline_id || null;
+          stageId = actionNode.data.config.params.stage_id || null;
+        }
+      }
     }
 
-    // 3) Resolve pipeline + stage
-    let pipelineId: string | null = settings?.meta_ads_pipeline_id || null;
-    let stageId: string | null = settings?.meta_ads_stage_id || null;
+    // Fallback to legacy settings
+    if (!pipelineId) pipelineId = settings?.meta_ads_pipeline_id || null;
+    if (!stageId && pipelineId === settings?.meta_ads_pipeline_id) stageId = settings?.meta_ads_stage_id || null;
 
+    // Resolve defaults
     if (!pipelineId) {
-      // Get default pipeline
       const { data: defPipeline } = await supabase
         .from("pipelines")
         .select("id")
@@ -769,7 +807,6 @@ async function handleAdKeywordLead(
       pipelineId = defPipeline?.id || null;
 
       if (!pipelineId) {
-        // Fallback: first active pipeline
         const { data: anyPipeline } = await supabase
           .from("pipelines")
           .select("id")
@@ -783,7 +820,6 @@ async function handleAdKeywordLead(
     }
 
     if (pipelineId && !stageId) {
-      // Find "Novo Lead" stage or first stage
       const { data: stagesData } = await supabase
         .from("pipeline_stages")
         .select("id, name, position")
@@ -799,7 +835,7 @@ async function handleAdKeywordLead(
       }
     }
 
-    // 4) Create lead
+    // 3) Create lead
     const leadData: Record<string, unknown> = {
       organization_id: orgId,
       name: pushName || "Lead WhatsApp",
@@ -818,7 +854,7 @@ async function handleAdKeywordLead(
     if (adLeadErr) {
       console.error(`[evolution-webhook] Ad lead creation failed:`, adLeadErr);
     } else {
-      console.log(`[evolution-webhook] ✅ Ad lead auto-created: phone=${phone} lead=${newLead?.id} pipeline=${pipelineId} stage=${stageId}`);
+      console.log(`[evolution-webhook] ✅ Ad lead auto-created: phone=${phone} lead=${newLead?.id} pipeline=${pipelineId} stage=${stageId} automationId=${kwAutomation?.id || 'legacy'}`);
 
       // Link conversation to lead
       if (conversationId && newLead?.id) {
@@ -826,6 +862,17 @@ async function handleAdKeywordLead(
           .from("conversations")
           .update({ lead_id: newLead.id })
           .eq("id", conversationId);
+      }
+
+      // Log to automation_logs if automation exists
+      if (kwAutomation) {
+        await supabase.from("automation_logs").insert({
+          organization_id: orgId,
+          automation_id: kwAutomation.id,
+          level: "info",
+          message: `Lead criado automaticamente: ${pushName || phone}`,
+          data: { phone, lead_id: newLead?.id, pipeline_id: pipelineId, stage_id: stageId },
+        });
       }
     }
   } catch (err) {

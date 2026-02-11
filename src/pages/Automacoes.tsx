@@ -14,6 +14,7 @@ import {
 import {
   Plus, Zap, Play, Pause, Copy, Trash2, ArrowLeft, Loader2,
   MessageSquare, AlertTriangle, RotateCw, FileText, Pencil, Check, X,
+  Megaphone,
 } from "lucide-react";
 import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -318,6 +319,18 @@ export default function Automacoes() {
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Worker...</>
                   : <><Play className="h-3.5 w-3.5" /> Executar worker</>
                 }
+              </Button>
+            )}
+            {isAdmin && (
+              <Button
+                variant="outline"
+                className="font-poppins gap-2"
+                onClick={async () => {
+                  const result = await createFromTemplate("keyword_lead");
+                  if (result) setEditingAutomation(result);
+                }}
+              >
+                <Megaphone className="h-4 w-4" /> Template Palavra-chave
               </Button>
             )}
             {isAdmin && (
