@@ -14,6 +14,83 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_agent_profiles: {
+        Row: {
+          agent_name: string
+          agent_role: string
+          business_description: string | null
+          created_at: string
+          created_by: string | null
+          examples: Json | null
+          funnel_rules: Json | null
+          id: string
+          is_active: boolean
+          niche: string
+          organization_id: string
+          personality: string
+          products_services: Json | null
+          questions_per_message: number
+          response_length: string
+          response_time: string
+          rules: Json | null
+          tone: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          agent_name?: string
+          agent_role?: string
+          business_description?: string | null
+          created_at?: string
+          created_by?: string | null
+          examples?: Json | null
+          funnel_rules?: Json | null
+          id?: string
+          is_active?: boolean
+          niche?: string
+          organization_id: string
+          personality?: string
+          products_services?: Json | null
+          questions_per_message?: number
+          response_length?: string
+          response_time?: string
+          rules?: Json | null
+          tone?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          agent_name?: string
+          agent_role?: string
+          business_description?: string | null
+          created_at?: string
+          created_by?: string | null
+          examples?: Json | null
+          funnel_rules?: Json | null
+          id?: string
+          is_active?: boolean
+          niche?: string
+          organization_id?: string
+          personality?: string
+          products_services?: Json | null
+          questions_per_message?: number
+          response_length?: string
+          response_time?: string
+          rules?: Json | null
+          tone?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agent_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_auto_reply_jobs: {
         Row: {
           conversation_id: string

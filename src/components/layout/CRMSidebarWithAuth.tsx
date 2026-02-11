@@ -31,6 +31,7 @@ import {
   PlayCircle,
   ChevronDown,
   Inbox,
+  Bot,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -84,6 +85,11 @@ const adminMenuItems = [
     title: "Pipelines",
     url: "/pipelines",
     icon: Cog,
+  },
+  {
+    title: "Treinar Agente IA",
+    url: "/treinar-agente",
+    icon: Bot,
   },
   {
     title: "Configurações",
