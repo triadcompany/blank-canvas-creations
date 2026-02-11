@@ -419,6 +419,102 @@ serve(async (req) => {
         return respond({ ok: true, automation });
       }
 
+      // ─── CREATE TEMPLATE: Keyword Lead (anuncio → criar lead) ───
+      case "create_template_keyword_lead": {
+        const { organization_id, created_by, pipeline_id, stage_id } = params;
+        if (!organization_id || !created_by)
+          return respond({ ok: false, message: "organization_id, created_by required" }, 400);
+
+        const tplName = "Primeira mensagem contém 'anuncio' → criar lead (Meta Ads)";
+
+        // Build template nodes
+        const nodes = [
+          {
+            id: "kw_trigger",
+            type: "trigger",
+            position: { x: 250, y: 30 },
+            data: {
+              label: "Mensagem recebida (WhatsApp)",
+              config: {
+                triggerType: "inbound_message_keyword",
+                keyword: "anuncio",
+                firstMessageOnly: true,
+              },
+            },
+          },
+          {
+            id: "kw_condition",
+            type: "condition",
+            position: { x: 250, y: 180 },
+            data: {
+              label: "Primeira mensagem do contato?",
+              config: {
+                conditionType: "first_touch",
+                description: "Verifica se é a primeira mensagem deste telefone na organização",
+              },
+            },
+          },
+          {
+            id: "kw_action_create_lead",
+            type: "action",
+            position: { x: 250, y: 360 },
+            data: {
+              label: "Criar Lead (Meta Ads)",
+              config: {
+                actionType: "create_lead",
+                params: {
+                  source: "Meta Ads",
+                  source_detail: "WhatsApp keyword: anuncio",
+                  pipeline_id: pipeline_id || null,
+                  stage_id: stage_id || null,
+                },
+              },
+            },
+          },
+        ];
+
+        const edges = [
+          { id: "e_kw_trig_cond", source: "kw_trigger", target: "kw_condition", sourceHandle: "default" },
+          { id: "e_kw_cond_action", source: "kw_condition", target: "kw_action_create_lead", sourceHandle: "yes" },
+        ];
+
+        // Create automation
+        const { data: kwAutomation, error: kwAutoErr } = await supabase
+          .from("automations")
+          .insert({
+            organization_id,
+            name: tplName,
+            description: "Cria lead automático com origem Meta Ads quando a primeira mensagem contém 'anuncio'.",
+            channel: "whatsapp",
+            created_by,
+            is_active: true,
+            trigger_type: "inbound_message_keyword",
+            trigger_event_name: "anuncio",
+          })
+          .select()
+          .single();
+
+        if (kwAutoErr) return respond({ ok: false, message: kwAutoErr.message }, 500);
+
+        const { error: kwFlowErr } = await supabase
+          .from("automation_flows")
+          .insert({
+            organization_id,
+            automation_id: kwAutomation.id,
+            nodes,
+            edges,
+            entry_node_id: "kw_trigger",
+            version: 1,
+          });
+
+        if (kwFlowErr) {
+          await supabase.from("automations").delete().eq("id", kwAutomation.id);
+          return respond({ ok: false, message: kwFlowErr.message }, 500);
+        }
+
+        return respond({ ok: true, automation: kwAutomation });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }
