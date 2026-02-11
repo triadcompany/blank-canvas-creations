@@ -19,6 +19,7 @@ import {
   MessageSquare,
   PlayCircle,
   ChevronDown,
+  Bug,
 } from "lucide-react";
 
 import {
@@ -92,6 +93,11 @@ const adminItems = [
     title: "Configurações",
     url: "/settings",
     icon: Settings,
+  },
+  {
+    title: "Debug Automações",
+    url: "/admin/debug/automations",
+    icon: Bug,
   },
 ];
 
