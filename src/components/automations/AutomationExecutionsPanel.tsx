@@ -75,7 +75,7 @@ interface Props {
 }
 
 export function AutomationExecutionsPanel({ organizationId }: Props) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const { toast } = useToast();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [stats, setStats] = useState<ExecStats>({ total: 0, success: 0, error: 0, no_match: 0, pending: 0 });
@@ -136,6 +136,8 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
         phone: simPhone.trim(),
         channel: "whatsapp",
         message_body: simText.trim() || "anuncio",
+        actor_user_id: profile?.id || null,
+        actor_type: "admin_ui",
       });
       if (result.ok) {
         toast({

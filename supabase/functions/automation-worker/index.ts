@@ -548,17 +548,59 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
     return { status: "done", output: { error: "Sem telefone no contexto", skipped: true } };
   }
 
-  // ── Resolve seller_id (fallback chain) ──
-  // Load automation.created_by for fallback
-  let automationCreatedBy: string | null = null;
-  const { data: automation } = await supabase
-    .from("automations")
-    .select("created_by")
-    .eq("id", job.automation_id)
-    .maybeSingle();
-  if (automation) automationCreatedBy = automation.created_by;
+  // ── Resolve created_by (fallback chain) ──
+  const actorUserId = ctx.actor_user_id || null;
+  let resolvedCreatedBy: string | null = null;
+  let createdByStrategy = "none_found";
 
-  const sellerResolution = await resolveSellerOrOwner(supabase, orgId, ownerId, automationCreatedBy);
+  if (actorUserId) {
+    resolvedCreatedBy = actorUserId;
+    createdByStrategy = "actor_user";
+  } else {
+    // Fallback: automation creator
+    let automationCreatedBy: string | null = null;
+    const { data: automation } = await supabase
+      .from("automations")
+      .select("created_by")
+      .eq("id", job.automation_id)
+      .maybeSingle();
+    if (automation) automationCreatedBy = automation.created_by;
+
+    if (automationCreatedBy) {
+      resolvedCreatedBy = automationCreatedBy;
+      createdByStrategy = "automation_creator";
+    } else {
+      // Fallback: first admin in org
+      const { data: adminFallback } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("role", "admin")
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      if (adminFallback) {
+        resolvedCreatedBy = adminFallback.id;
+        createdByStrategy = "fallback_first_admin";
+      }
+    }
+  }
+
+  console.log(`[automation-worker] created_by resolved: strategy=${createdByStrategy}, id=${resolvedCreatedBy}`);
+
+  if (!resolvedCreatedBy) {
+    const errMsg = "Organização sem admin ativo para atribuir created_by. Verifique os admins ativos da organização.";
+    if (traceId) {
+      await updateExecutionFromWorker(supabase, orgId, traceId, "failed", errMsg, {
+        created_by_resolution: { strategy: createdByStrategy },
+      });
+    }
+    return { status: "done", output: { error: errMsg, skipped: true } };
+  }
+
+  // ── Resolve seller_id (fallback chain) ──
+  // Use resolvedCreatedBy as additional fallback for seller
+  const sellerResolution = await resolveSellerOrOwner(supabase, orgId, ownerId, resolvedCreatedBy);
   const resolvedSellerId = sellerResolution.sellerId;
 
   console.log(`[automation-worker] Seller resolved: strategy=${sellerResolution.strategy}, seller_id=${resolvedSellerId}`);
@@ -630,8 +672,9 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       source,
       email: ctx.email || null,
       stage_id: resolvedStageId,
-      seller_id: resolvedSellerId,  // resolved via fallback chain (nullable now)
+      seller_id: resolvedSellerId,
       assigned_to: resolvedSellerId,
+      created_by: resolvedCreatedBy,
     };
 
     const { filtered: safeLeadPayload, dropped: droppedFields } = filterLeadPayload(rawLeadPayload);
@@ -685,6 +728,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
           deal_deduplicated: true,
           existing_opportunity_id: existingDeal.id,
           seller_resolution: sellerResolution,
+          created_by_resolution: { strategy: createdByStrategy, id: resolvedCreatedBy },
           phone,
         });
       }
@@ -763,6 +807,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       deal_id_result: newDeal.id,
       deal_payload_sent: dealPayload,
       seller_resolution: sellerResolution,
+      created_by_resolution: { strategy: createdByStrategy, id: resolvedCreatedBy },
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,
@@ -778,6 +823,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       lead_created: leadCreated,
       opportunity_id: newDeal.id,
       seller_resolution: sellerResolution,
+      created_by_resolution: { strategy: createdByStrategy, id: resolvedCreatedBy },
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,

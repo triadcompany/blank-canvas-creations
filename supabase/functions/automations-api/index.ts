@@ -585,7 +585,7 @@ serve(async (req) => {
 
       // ─── SIMULATE INBOUND FIRST MESSAGE (admin testing) ───
       case "simulate_inbound": {
-        const { organization_id, phone, channel, message_body } = params;
+        const { organization_id, phone, channel, message_body, actor_user_id, actor_type } = params;
         if (!organization_id || !phone) return respond({ ok: false, message: "organization_id and phone required" }, 400);
 
         let debugStep = "init";
@@ -594,8 +594,10 @@ serve(async (req) => {
         const ch = String(channel || "whatsapp");
         const body = String(message_body || "anuncio");
         const normalizedBody = body.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        const resolvedActorType = String(actor_type || "admin_ui");
+        const resolvedActorUserId = actor_user_id || null;
 
-        const debugPayload = { organization_id, normalizedPhone, ch, body, traceId };
+        const debugPayload = { organization_id, normalizedPhone, ch, body, traceId, actor_user_id: resolvedActorUserId, actor_type: resolvedActorType };
         console.log("SIMULATE_START", JSON.stringify(debugPayload));
 
         try {
@@ -622,6 +624,8 @@ serve(async (req) => {
                 channel: ch,
                 trace_id: traceId,
                 simulated: true,
+                actor_user_id: resolvedActorUserId,
+                actor_type: resolvedActorType,
               },
               source: "human",
               idempotency_key: idempotencyKey,
