@@ -640,6 +640,93 @@ export type Database = {
           },
         ]
       }
+      automation_keyword_rules: {
+        Row: {
+          create_lead: boolean
+          created_at: string
+          id: string
+          is_active: boolean
+          keyword: string
+          lead_source: string
+          match_type: string
+          name: string
+          organization_id: string
+          pipeline_id: string | null
+          priority: number
+          stage_id: string | null
+          tags: Json | null
+          updated_at: string
+        }
+        Insert: {
+          create_lead?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          keyword: string
+          lead_source?: string
+          match_type?: string
+          name: string
+          organization_id: string
+          pipeline_id?: string | null
+          priority?: number
+          stage_id?: string | null
+          tags?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          create_lead?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          keyword?: string
+          lead_source?: string
+          match_type?: string
+          name?: string
+          organization_id?: string
+          pipeline_id?: string | null
+          priority?: number
+          stage_id?: string | null
+          tags?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_keyword_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_keyword_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_keyword_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_keyword_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "automation_keyword_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_logs: {
         Row: {
           automation_id: string | null
