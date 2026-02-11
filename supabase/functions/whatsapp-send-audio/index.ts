@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,10 +30,10 @@ serve(async (req) => {
       return respond({ error: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }, 500);
     }
 
-    const { organization_id, conversation_id, media_url } = await req.json();
+    const { organization_id, conversation_id, audio_base64, media_url, mime_type } = await req.json();
 
-    if (!organization_id || !conversation_id || !media_url) {
-      return respond({ error: "organization_id, conversation_id e media_url são obrigatórios" }, 400);
+    if (!organization_id || !conversation_id || (!audio_base64 && !media_url)) {
+      return respond({ error: "organization_id, conversation_id e audio_base64 ou media_url são obrigatórios" }, 400);
     }
 
     // Get conversation
@@ -59,7 +60,52 @@ serve(async (req) => {
       return respond({ error: "WhatsApp não está conectado" }, 400);
     }
 
-    // Send audio via Evolution API (sendWhatsAppAudio / sendMedia)
+    // Determine the final media URL
+    let finalMediaUrl = media_url;
+
+    if (audio_base64 && !media_url) {
+      // Upload audio to Supabase Storage using service role
+      const audioBytes = decodeBase64(audio_base64);
+      const ext = (mime_type || "audio/webm").includes("ogg") ? "ogg" : "webm";
+      const fileName = `${organization_id}/${conversation_id}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("chat-media")
+        .upload(fileName, audioBytes, {
+          contentType: mime_type || "audio/webm",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("[whatsapp-send-audio] Upload error:", uploadError);
+        return respond({ error: "Erro ao fazer upload do áudio", details: String(uploadError) }, 500);
+      }
+
+      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(fileName);
+      finalMediaUrl = urlData?.publicUrl;
+
+      if (!finalMediaUrl) {
+        return respond({ error: "Não foi possível obter URL pública do áudio" }, 500);
+      }
+    }
+
+    // Insert outbound message via service role (bypasses RLS)
+    const { data: msgRow, error: insertError } = await supabase.from("messages").insert({
+      organization_id,
+      conversation_id,
+      direction: "outbound",
+      body: "🎤 Áudio",
+      message_type: "audio",
+      media_url: finalMediaUrl,
+      mime_type: mime_type || "audio/webm",
+    }).select("id").maybeSingle();
+
+    if (insertError) {
+      console.error("[whatsapp-send-audio] Insert error:", insertError);
+      return respond({ error: "Erro ao salvar mensagem", details: String(insertError) }, 500);
+    }
+
+    // Send audio via Evolution API
     const phone = conversation.contact_phone.replace(/\D/g, "");
     const sendRes = await fetch(
       `${evolutionBaseUrl}/message/sendWhatsAppAudio/${integration.instance_name}`,
@@ -71,7 +117,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           number: phone,
-          audio: media_url,
+          audio: finalMediaUrl,
         }),
       }
     );
@@ -86,17 +132,10 @@ serve(async (req) => {
 
     const externalId = sendData?.key?.id || sendData?.messageId || null;
 
-    // Save outbound message
-    await supabase.from("messages").insert({
-      organization_id,
-      conversation_id,
-      direction: "outbound",
-      body: "🎤 Áudio",
-      external_message_id: externalId,
-      message_type: "audio",
-      media_url,
-      mime_type: "audio/ogg",
-    });
+    // Update message with external ID
+    if (msgRow?.id && externalId) {
+      await supabase.from("messages").update({ external_message_id: externalId }).eq("id", msgRow.id);
+    }
 
     // Update conversation
     await supabase

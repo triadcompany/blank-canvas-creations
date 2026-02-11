@@ -85,26 +85,16 @@ export function AudioRecorder({ organizationId, conversationId, onAudioSent, dis
     setSending(true);
 
     try {
-      const fileName = `${organizationId}/${conversationId}/${Date.now()}.webm`;
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(fileName, audioBlob, {
-          contentType: 'audio/webm',
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-      const publicUrl = urlData?.publicUrl;
-
-      if (!publicUrl) throw new Error('Não foi possível obter URL do áudio');
+      // Convert blob to base64 and send everything to the edge function
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
       const res = await supabase.functions.invoke('whatsapp-send-audio', {
         body: {
           organization_id: organizationId,
           conversation_id: conversationId,
-          media_url: publicUrl,
+          audio_base64: base64,
+          mime_type: 'audio/webm',
         },
       });
 
