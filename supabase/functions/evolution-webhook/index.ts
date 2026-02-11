@@ -51,9 +51,7 @@ serve(async (req) => {
     const globalSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
 
     if (expectedToken) {
-      // Per-org token validation (preferred)
       if (tokenParam !== expectedToken && tokenHeader !== expectedToken) {
-        // Also accept global secret as fallback
         if (globalSecret && (tokenParam === globalSecret || tokenHeader === globalSecret)) {
           authStatus = "ok_global_fallback";
         } else {
@@ -61,12 +59,10 @@ serve(async (req) => {
         }
       }
     } else if (globalSecret) {
-      // Legacy: global secret validation
       if (tokenParam !== globalSecret && tokenHeader !== globalSecret) {
         authStatus = tokenParam ? "invalid_token" : "missing_token";
       }
     }
-    // If no token configured at all, allow (backward compat)
 
     // Log EVERY event with auth status
     await logWebhookEvent(supabase, {
@@ -97,7 +93,6 @@ serve(async (req) => {
     if (authStatus !== "ok" && authStatus !== "ok_global_fallback") {
       console.warn(`[evolution-webhook] Auth failed: ${authStatus} for instance=${instanceName}`);
 
-      // ──── AUTO-REPAIR: Re-register webhook with correct token ────
       if (integration && expectedToken) {
         await attemptWebhookAutoRepair(supabaseUrl, integration.instance_name, expectedToken);
       }
@@ -241,6 +236,11 @@ async function handleMessageStatusUpdate(supabase: any, body: any, orgId: string
   return respond({ ok: true });
 }
 
+// ── Generate a unique trace_id ──
+function generateTraceId(): string {
+  return `tr_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
 // ── MESSAGES handler (inbound + outbound) ──
 async function handleMessages(supabase: any, body: any, orgId: string, instanceName: string) {
   const messages = body.data || [];
@@ -263,14 +263,11 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       : isDocument ? "documento"
       : isSticker ? "sticker"
       : null;
-    // Map to message_type column values
     const messageType = isAudio ? "audio" : isImage ? "image" : isVideo ? "video" : isDocument ? "document" : "text";
-    // Extract caption from media messages
     const mediaCaption = msg.message?.imageMessage?.caption
       || msg.message?.videoMessage?.caption
       || msg.message?.documentMessage?.caption
       || null;
-    // Extract audio metadata
     const audioDurationMs = isAudio ? (msg.message?.audioMessage?.seconds || 0) * 1000 : null;
     const audioMimetype = isAudio ? (msg.message?.audioMessage?.mimetype || "audio/ogg") : null;
     const displayBody = text || (mediaType
@@ -288,6 +285,13 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
     const messagePreview = displayBody.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
     const direction = isFromMe ? "outbound" : "inbound";
+
+    // Generate trace_id for this inbound message
+    const traceId = !isFromMe ? generateTraceId() : "";
+
+    if (!isFromMe) {
+      console.log(`[INBOUND] trace_id=${traceId} org_id=${orgId} phone_raw=${phone} phone_normalized=${normalizedPhone} channel=whatsapp message_id=${externalMessageId} message_text=${(text || displayBody || "").substring(0, 80)} timestamp=${now}`);
+    }
 
     // ── 1) UPSERT into conversations table ──
     let conversationId: string | null = null;
@@ -365,7 +369,6 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         .maybeSingle();
 
       if (!existingMsg) {
-        // Download and upload media for audio messages
         let mediaUrl: string | null = null;
         if (isAudio && !isFromMe) {
           mediaUrl = await downloadAndUploadMedia(supabase, instanceName, externalMessageId, orgId, conversationId!);
@@ -426,10 +429,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
           const rules = (agentProfile?.autonomous_rules as any) || { mode: "all" };
 
-          // 1. Check mode: traffic_only, organic_only, unassigned_only
           if (rules.mode && rules.mode !== "all") {
             if (rules.mode === "unassigned_only") {
-              // Check if conversation has assigned_to
               const { data: convAssign } = await supabase
                 .from("conversations")
                 .select("assigned_to")
@@ -440,123 +441,79 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
                 skipReason = "assigned_lead (unassigned_only mode)";
               }
             } else if (rules.mode === "traffic_only" || rules.mode === "organic_only") {
-              // Check lead source via conversation's linked lead
               const { data: convLead } = await supabase
                 .from("conversations")
-                .select("lead:leads!lead_id(source)")
+                .select("lead_id")
                 .eq("id", conversationId)
                 .single();
-              const source = (convLead as any)?.lead?.source || "";
-              const isTraffic = ["meta_ads", "google_ads", "facebook", "instagram_ads", "trafego"].some(
-                s => source.toLowerCase().includes(s)
-              );
-              if (rules.mode === "traffic_only" && !isTraffic) {
-                shouldActivate = false;
-                skipReason = `organic_lead (traffic_only mode, source=${source})`;
-              } else if (rules.mode === "organic_only" && isTraffic) {
-                shouldActivate = false;
-                skipReason = `traffic_lead (organic_only mode, source=${source})`;
+
+              if (convLead?.lead_id) {
+                const { data: lead } = await supabase
+                  .from("leads")
+                  .select("source")
+                  .eq("id", convLead.lead_id)
+                  .single();
+
+                const source = (lead?.source || "").toLowerCase();
+                const isTraffic = source.includes("meta") || source.includes("google") || source.includes("ads") || source.includes("tráfego");
+
+                if (rules.mode === "traffic_only" && !isTraffic) {
+                  shouldActivate = false;
+                  skipReason = "organic_lead (traffic_only mode)";
+                } else if (rules.mode === "organic_only" && isTraffic) {
+                  shouldActivate = false;
+                  skipReason = "traffic_lead (organic_only mode)";
+                }
               }
             }
           }
-
-          // 2. Check business hours
-          if (shouldActivate && rules.only_outside_business_hours) {
-            const now = new Date();
-            // Convert to BRT (UTC-3)
-            const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-            const hour = brt.getUTCHours();
-            const day = brt.getUTCDay(); // 0=Sun, 6=Sat
-            const isBusinessHours = day >= 1 && day <= 5 && hour >= 8 && hour < 18;
-            if (isBusinessHours) {
-              shouldActivate = false;
-              skipReason = `business_hours (only_outside_business_hours)`;
-            }
-          }
-
-          // 3. Check pause_after_qualification
-          if (shouldActivate && rules.pause_after_qualification) {
-            const { data: intelligence } = await supabase
-              .from("conversation_intelligence")
-              .select("is_qualified")
-              .eq("conversation_id", conversationId)
-              .maybeSingle();
-            if (intelligence?.is_qualified) {
-              shouldActivate = false;
-              skipReason = "qualified_lead (pause_after_qualification)";
-            }
-          }
-        } catch (rulesErr) {
-          console.error("[evolution-webhook] Error checking autonomous rules:", rulesErr);
-          // On error, allow activation (fail-open)
+        } catch (ruleErr) {
+          console.error("[evolution-webhook] Autonomous rules check error:", ruleErr);
         }
 
-        if (!shouldActivate) {
-          console.log(`[evolution-webhook] AUTO BLOCKED by autonomous_rules: conv=${conversationId} reason=${skipReason}`);
-        } else {
-          // ════════════════════════════════════════════
-          //  ENQUEUE — simple, no blockers + set ai_pending
-          // ════════════════════════════════════════════
-          const idempKey = `${orgId}:${conversationId}:${externalMessageId || Date.now()}`;
-          const { error: enqueueErr } = await supabase.from("ai_auto_reply_jobs").insert({
+        if (shouldActivate) {
+          const idempotencyKey = `${orgId}:${conversationId}:${externalMessageId || now}`;
+
+          await supabase.from("ai_auto_reply_jobs").insert({
             organization_id: orgId,
             conversation_id: conversationId,
             inbound_message_id: externalMessageId || "unknown",
-            idempotency_key: idempKey,
-            status: "pending",
+            idempotency_key: idempotencyKey,
           });
 
-          if (enqueueErr) {
-            if (enqueueErr.code === "23505") {
-              console.log(`[evolution-webhook] Job already exists (idempotency): ${idempKey}`);
-            } else {
-              console.error(`[evolution-webhook] Enqueue error:`, enqueueErr);
-            }
-          } else {
-            // Set ai_pending IMMEDIATELY for UI feedback
-            await supabase.from("conversations")
-              .update({ ai_pending: true, ai_pending_started_at: new Date().toISOString() })
-              .eq("id", conversationId);
-            console.log(`[evolution-webhook] ✅ Job enqueued + ai_pending=true: conv=${conversationId}`);
-            invokeAutoReplyWorker();
-          }
+          console.log(`[evolution-webhook] AI auto-reply job enqueued for conv=${conversationId}`);
+          invokeAutoReplyWorker();
+        } else {
+          console.log(`[evolution-webhook] AI auto-reply SKIPPED for conv=${conversationId}: ${skipReason}`);
         }
-      } else if (convCheck) {
-        console.log(`[evolution-webhook] Auto-reply SKIPPED: conv=${conversationId} reason=${convCheck.ai_mode !== 'auto' ? 'ai_mode=' + convCheck.ai_mode : 'ai_state=' + convCheck.ai_state}`);
       }
     }
 
-    // ── 4) Legacy whatsapp_threads / whatsapp_messages (inbound only) ──
-    if (!isFromMe) {
-      let threadId: string | null = null;
-
+    // ── 4) Inbound-specific: threads, lead matching, first-message event ──
+    if (!isFromMe && conversationId) {
+      // Thread management
       const { data: existingThread } = await supabase
         .from("whatsapp_threads")
-        .select("id, contact_name, unread_count")
+        .select("id")
         .eq("organization_id", orgId)
-        .eq("contact_phone_e164", normalizedPhone)
+        .eq("contact_phone", normalizedPhone)
         .maybeSingle();
 
+      let threadId = existingThread?.id || null;
+
       if (existingThread) {
-        threadId = existingThread.id;
-        const threadUpdate: Record<string, unknown> = {
+        await supabase.from("whatsapp_threads").update({
           last_message_at: now,
           last_message_preview: messagePreview,
-          instance_name: instanceName,
-          status: "open",
-          unread_count: (existingThread.unread_count || 0) + 1,
-        };
-        if (pushName && !existingThread.contact_name) {
-          threadUpdate.contact_name = pushName;
-        }
-        await supabase.from("whatsapp_threads").update(threadUpdate).eq("id", threadId);
+          unread_count: supabase.rpc ? 1 : 1,
+        }).eq("id", existingThread.id);
       } else {
         const { data: newThread } = await supabase
           .from("whatsapp_threads")
           .insert({
             organization_id: orgId,
             instance_name: instanceName,
-            contact_phone_e164: normalizedPhone,
+            contact_phone: normalizedPhone,
             contact_name: pushName || null,
             status: "open",
             last_message_at: now,
@@ -613,17 +570,23 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       }
 
-      // ── Publish inbound_first_message event to Event Bus (first-touch check) ──
-      await publishFirstMessageEvent(supabase, orgId, normalizedPhone, pushName, text || displayBody, conversationId, "whatsapp");
+      // ── 6) Publish inbound_first_message event to Event Bus ──
+      // This function now also inserts the first-touch record atomically
+      // and returns whether it published, so we can skip legacy lead creation
+      const eventPublished = await publishFirstMessageEvent(
+        supabase, orgId, normalizedPhone, pushName,
+        text || displayBody, conversationId, "whatsapp", traceId
+      );
 
-      // Keyword rules: check all first-message keyword rules (includes legacy "anuncio" fallback)
-      if (!leadId) {
+      // Only run legacy keyword lead creation if Event Bus did NOT fire
+      // (i.e., no active first_message automations, or first-touch already existed)
+      if (!eventPublished && !leadId) {
         await handleAdKeywordLead(supabase, orgId, normalizedPhone, pushName, externalMessageId, conversationId);
+      } else if (eventPublished) {
+        console.log(`[evolution-webhook] Event Bus handled first-message for ${normalizedPhone} — skipping legacy handleAdKeywordLead`);
       }
-    } else {
+    } else if (isFromMe) {
       // ── Outbound from WhatsApp ──
-      // Only set human_active if the message was NOT sent by the AI
-      // Check: if the outbound message was already saved by ai-auto-reply (ai_generated=true), skip takeover
       if (conversationId && externalMessageId) {
         const { data: existingOutMsg } = await supabase
           .from("messages")
@@ -632,7 +595,6 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           .eq("external_message_id", externalMessageId)
           .maybeSingle();
 
-        // If message exists and is AI-generated, do NOT trigger human takeover
         const isAiMessage = existingOutMsg?.ai_generated === true;
 
         if (!isAiMessage) {
@@ -706,6 +668,7 @@ async function fetchAndSaveProfilePicture(supabase: any, instanceName: string, p
 }
 
 // ── Helper: Publish first message event to Event Bus ──
+// Returns true if event was published (= active first_message automations exist + first-touch didn't exist)
 async function publishFirstMessageEvent(
   supabase: any,
   orgId: string,
@@ -714,9 +677,10 @@ async function publishFirstMessageEvent(
   messageBody: string,
   conversationId: string | null,
   channel: string,
-) {
+  traceId: string,
+): Promise<boolean> {
   try {
-    // First-touch dedup check (don't insert yet — just check)
+    // First-touch dedup check
     const { data: existing } = await supabase
       .from("whatsapp_first_touch")
       .select("id")
@@ -724,9 +688,11 @@ async function publishFirstMessageEvent(
       .eq("phone", phone)
       .maybeSingle();
 
+    console.log(`[FIRST_TOUCH_CHECK] trace_id=${traceId} org_id=${orgId} phone_normalized=${phone} exists_before=${!!existing}`);
+
     if (existing) {
       // Not a first message — skip event publishing
-      return;
+      return false;
     }
 
     // Check if any active automation uses the first_message trigger
@@ -738,14 +704,33 @@ async function publishFirstMessageEvent(
       .eq("trigger_type", "first_message");
 
     if (!automations || automations.length === 0) {
-      // No active first_message automations — skip
-      return;
+      console.log(`[FIRST_TOUCH_DECISION] trace_id=${traceId} will_fire_first_message_event=false reason=no_active_first_message_automations`);
+      return false;
+    }
+
+    console.log(`[FIRST_TOUCH_DECISION] trace_id=${traceId} will_fire_first_message_event=true active_automations=${automations.length}`);
+
+    // ── Insert first-touch record NOW (before publishing event) ──
+    // This prevents the race condition where handleAdKeywordLead could insert it first
+    const { error: ftInsertErr } = await supabase.from("whatsapp_first_touch").insert({
+      organization_id: orgId,
+      phone,
+      first_message_id: traceId,
+    });
+
+    if (ftInsertErr) {
+      if (ftInsertErr.code === "23505") {
+        console.log(`[FIRST_TOUCH_DECISION] trace_id=${traceId} first_touch_race_condition=true — skipping`);
+        return false;
+      }
+      console.error(`[evolution-webhook] First-touch insert error:`, ftInsertErr);
+      // Continue anyway — event dispatcher has its own dedup
     }
 
     // Publish event to Event Bus
     const idempotencyKey = `${orgId}:inbound.first_message:${phone}:${new Date().toISOString().split('T')[0]}`;
 
-    const { error: eventErr } = await supabase
+    const { data: eventData, error: eventErr } = await supabase
       .from("automation_events")
       .insert({
         organization_id: orgId,
@@ -758,22 +743,45 @@ async function publishFirstMessageEvent(
           contact_name: pushName || null,
           message_body: messageBody || "",
           channel,
+          trace_id: traceId,
         },
         source: "system",
         idempotency_key: idempotencyKey,
         status: "pending",
-      });
+      })
+      .select("id")
+      .single();
 
     if (eventErr) {
       if (eventErr.code === "23505") {
-        console.log(`[evolution-webhook] First message event already published (idempotent) for ${phone}`);
+        console.log(`[EVENT_PUBLISH_SKIP] trace_id=${traceId} reason=idempotent_duplicate`);
       } else {
-        console.error(`[evolution-webhook] Error publishing first message event:`, eventErr);
+        console.error(`[EVENT_PUBLISH_SKIP] trace_id=${traceId} reason=db_error error=${eventErr.message}`);
       }
-      return;
+      return false;
     }
 
-    console.log(`[evolution-webhook] ✅ Published inbound.first_message event for ${phone} (channel=${channel})`);
+    const eventId = eventData?.id || "unknown";
+    console.log(`[EVENT_PUBLISH] trace_id=${traceId} event_type=inbound.first_message event_id=${eventId} payload={org_id=${orgId}, phone=${phone}, channel=${channel}, message_text=${(messageBody || "").substring(0, 50)}}`);
+
+    // Persist initial execution trace
+    await supabase.from("automation_executions").insert({
+      organization_id: orgId,
+      trace_id: traceId,
+      event_name: "inbound.first_message",
+      automation_event_id: eventId,
+      phone,
+      channel,
+      message_text: (messageBody || "").substring(0, 500),
+      status: "event_published",
+      debug_json: {
+        first_touch_exists_before: false,
+        event_published: true,
+        event_id: eventId,
+        active_automations_count: automations.length,
+        timestamp: new Date().toISOString(),
+      },
+    }).catch(() => {}); // non-critical
 
     // Fire-and-forget: invoke event-dispatcher
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -783,8 +791,11 @@ async function publishFirstMessageEvent(
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
       body: JSON.stringify({}),
     }).catch(() => {});
+
+    return true;
   } catch (err) {
-    console.error("[evolution-webhook] publishFirstMessageEvent error:", err);
+    console.error(`[EVENT_PUBLISH_SKIP] trace_id=${traceId} reason=exception error=${err}`);
+    return false;
   }
 }
 
@@ -826,7 +837,7 @@ async function handleAdKeywordLead(
       .eq("is_active", true)
       .order("priority", { ascending: false });
 
-    // 2) Also check legacy systems (automation flow + organization_automation_settings)
+    // 2) Also check legacy systems
     const { data: kwAutomation } = await supabase
       .from("automations")
       .select("id, is_active, trigger_event_name")
@@ -844,7 +855,7 @@ async function handleAdKeywordLead(
 
     const legacyEnabled = settings?.meta_ads_keyword_enabled !== false;
 
-    // 3) Get the message text from the last message in conversation
+    // 3) Get the message text
     let messageText = "";
     if (conversationId) {
       const { data: lastMsg } = await supabase
@@ -899,7 +910,7 @@ async function handleAdKeywordLead(
       return;
     }
 
-    // 7) Resolve pipeline + stage from matched rule, automation flow, or legacy settings
+    // 7) Resolve pipeline + stage
     let pipelineId: string | null = null;
     let stageId: string | null = null;
     let leadSource = "Meta Ads";
@@ -910,7 +921,6 @@ async function handleAdKeywordLead(
       leadSource = matchedRule.lead_source || "Meta Ads";
       console.log(`[evolution-webhook] Matched keyword rule: "${matchedRule.name}" (keyword="${matchedRule.keyword}", match_type=${matchedRule.match_type})`);
     } else if (kwAutomation) {
-      // Try reading from automation flow
       const { data: flow } = await supabase
         .from("automation_flows")
         .select("nodes")
@@ -1051,33 +1061,116 @@ function respond(body: Record<string, unknown>, status = 200) {
 }
 
 // ── Helper: Log webhook event ──
-async function logWebhookEvent(supabase: any, data: {
-  instance_name?: string;
-  event_type?: string;
-  remote_jid?: string;
-  detected_organization_id?: string | null;
-  processing_result?: string;
-  error_message?: string | null;
-  auth_status?: string;
-  payload?: any;
-}) {
+async function logWebhookEvent(supabase: any, data: Record<string, unknown>) {
   try {
-    await supabase.from("evolution_webhook_logs").insert({
-      instance_name: data.instance_name || null,
-      event_type: data.event_type || null,
-      remote_jid: data.remote_jid || null,
-      detected_organization_id: data.detected_organization_id || null,
-      processing_result: data.processing_result || null,
-      error_message: data.error_message || null,
-      auth_status: data.auth_status || null,
-      payload: data.payload || null,
+    await supabase.from("webhook_logs").insert(data);
+  } catch { /* non-critical */ }
+}
+
+// ── Helper: Invoke automation-worker ──
+async function invokeWorker() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({}),
     });
+  } catch { /* non-critical */ }
+}
+
+// ── Helper: Wake paused automation runs on lead reply ──
+async function wakePausedRuns(supabase: any, orgId: string, leadId: string, now: string) {
+  try {
+    // Update lead's last_reply_at
+    await supabase.from("leads").update({ last_reply_at: now }).eq("id", leadId);
+
+    // Find paused runs for this lead
+    const { data: pausedRuns } = await supabase
+      .from("automation_runs")
+      .select("id, automation_id, current_node_id")
+      .eq("organization_id", orgId)
+      .eq("entity_id", leadId)
+      .eq("entity_type", "lead")
+      .eq("status", "paused");
+
+    if (!pausedRuns || pausedRuns.length === 0) return;
+
+    for (const run of pausedRuns) {
+      // Get the wait_for_reply node
+      const { data: flow } = await supabase
+        .from("automation_flows")
+        .select("nodes, edges")
+        .eq("automation_id", run.automation_id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!flow) continue;
+
+      const edges: any[] = flow.edges || [];
+      const nodes: any[] = flow.nodes || [];
+
+      // Find "replied" edge from the current wait node
+      const repliedEdge = edges.find(
+        (e: any) => e.source === run.current_node_id && e.sourceHandle === "replied"
+      );
+
+      if (!repliedEdge) continue;
+
+      const nextNode = nodes.find((n: any) => n.id === repliedEdge.target);
+      if (!nextNode) continue;
+
+      // Cancel the timeout sentinel
+      await supabase
+        .from("automation_jobs")
+        .update({ status: "cancelled" })
+        .eq("run_id", run.id)
+        .eq("job_type", "wait_for_reply_timeout")
+        .eq("status", "pending");
+
+      // Create next job
+      await supabase.from("automation_jobs").insert({
+        organization_id: orgId,
+        automation_id: run.automation_id,
+        run_id: run.id,
+        node_id: nextNode.id,
+        job_type: nextNode.type || "action",
+        payload: {
+          node_config: nextNode.data?.config || {},
+          node_label: nextNode.data?.label || "",
+        },
+        scheduled_for: now,
+        status: "pending",
+        attempts: 0,
+      });
+
+      // Resume run
+      await supabase.from("automation_runs").update({
+        status: "running",
+        current_node_id: nextNode.id,
+      }).eq("id", run.id);
+
+      // Log
+      await supabase.from("automation_logs").insert({
+        organization_id: orgId,
+        automation_id: run.automation_id,
+        run_id: run.id,
+        node_id: run.current_node_id,
+        level: "info",
+        message: `Resposta recebida do lead — automação retomada`,
+        data: { lead_id: leadId, next_node: nextNode.id },
+      });
+
+      console.log(`[evolution-webhook] Paused run ${run.id} resumed on lead ${leadId} reply`);
+    }
   } catch (err) {
-    console.error("[evolution-webhook] Failed to log webhook event:", err);
+    console.error("[evolution-webhook] wakePausedRuns error:", err);
   }
 }
 
-// ── Helper: Download media from Evolution and upload to Supabase Storage ──
+// ── Helper: Download and upload media (audio) ──
 async function downloadAndUploadMedia(
   supabase: any,
   instanceName: string,
@@ -1085,151 +1178,58 @@ async function downloadAndUploadMedia(
   orgId: string,
   conversationId: string,
 ): Promise<string | null> {
-  const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
-  const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
-  if (!evolutionBaseUrl || !evolutionApiKey || !messageId) return null;
-
   try {
-    // Download media from Evolution using base64 endpoint
-    const mediaRes = await fetch(
-      `${evolutionBaseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-        body: JSON.stringify({ message: { key: { id: messageId } } }),
-      }
-    );
+    const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+    const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+    if (!evolutionBaseUrl || !evolutionApiKey) return null;
 
-    if (!mediaRes.ok) {
-      console.error("[evolution-webhook] Media download failed:", mediaRes.status);
+    const res = await fetch(`${evolutionBaseUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+      body: JSON.stringify({ message: { key: { id: messageId } } }),
+    });
+
+    if (!res.ok) {
+      console.log(`[evolution-webhook] Media download failed: ${res.status}`);
       return null;
     }
 
-    const mediaData = await mediaRes.json();
-    const base64 = mediaData?.base64 || null;
-    const mimetype = mediaData?.mimetype || "audio/ogg";
+    const data = await res.json();
+    const base64 = data?.base64 || null;
+    const mimetype = data?.mimetype || "audio/ogg";
 
-    if (!base64) {
-      console.error("[evolution-webhook] No base64 in media response");
-      return null;
-    }
+    if (!base64) return null;
 
     // Convert base64 to Uint8Array
-    const binaryStr = atob(base64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
     }
 
-    // Determine file extension
-    const ext = mimetype.includes("ogg") ? "ogg" : mimetype.includes("mp4") ? "mp4" : mimetype.includes("mpeg") ? "mp3" : "ogg";
+    // Upload to Supabase Storage
+    const ext = mimetype.includes("ogg") ? "ogg" : mimetype.includes("mp4") ? "mp4" : "ogg";
     const filePath = `${orgId}/${conversationId}/${messageId}.${ext}`;
 
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from("chat-media")
+    const { error: uploadErr } = await supabase.storage
+      .from("audio-messages")
       .upload(filePath, bytes, {
         contentType: mimetype,
         upsert: true,
       });
 
-    if (uploadError) {
-      console.error("[evolution-webhook] Storage upload error:", uploadError);
+    if (uploadErr) {
+      console.error("[evolution-webhook] Audio upload error:", uploadErr);
       return null;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(filePath);
-    console.log(`[evolution-webhook] Audio uploaded: ${urlData?.publicUrl}`);
+    const { data: urlData } = supabase.storage
+      .from("audio-messages")
+      .getPublicUrl(filePath);
+
     return urlData?.publicUrl || null;
   } catch (err) {
-    console.error("[evolution-webhook] Media download/upload error:", err);
+    console.error("[evolution-webhook] downloadAndUploadMedia error:", err);
     return null;
-  }
-}
-
-// ── Helper: Wake paused automation runs ──
-async function wakePausedRuns(supabase: any, orgId: string, leadId: string, replyTimestamp: string) {
-  try {
-    const { data: waitJobs } = await supabase
-      .from("automation_jobs")
-      .select("id, run_id, automation_id, node_id, organization_id, payload")
-      .eq("organization_id", orgId)
-      .eq("job_type", "wait_for_reply_timeout")
-      .eq("status", "pending")
-      .filter("payload->>lead_id", "eq", leadId);
-
-    if (!waitJobs || waitJobs.length === 0) return;
-
-    console.log(`[evolution-webhook] Waking ${waitJobs.length} paused run(s) for lead ${leadId}`);
-
-    for (const job of waitJobs) {
-      await supabase.from("automation_jobs").update({ status: "done", last_error: null }).eq("id", job.id);
-
-      const { data: flow } = await supabase
-        .from("automation_flows")
-        .select("nodes, edges")
-        .eq("automation_id", job.automation_id)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!flow) continue;
-
-      const nodes: any[] = flow.nodes || [];
-      const edges: any[] = flow.edges || [];
-
-      const repliedEdge = edges.find((e: any) => e.source === job.node_id && e.sourceHandle === "replied");
-
-      await supabase.from("automation_runs").update({ status: "running" }).eq("id", job.run_id);
-
-      if (repliedEdge) {
-        const nextNode = nodes.find((n: any) => n.id === repliedEdge.target);
-        if (nextNode) {
-          await supabase.from("automation_jobs").insert({
-            organization_id: orgId,
-            automation_id: job.automation_id,
-            run_id: job.run_id,
-            node_id: nextNode.id,
-            job_type: nextNode.type || "action",
-            payload: { node_config: nextNode.data?.config || {}, node_label: nextNode.data?.label || "" },
-            scheduled_for: new Date().toISOString(),
-            status: "pending",
-            attempts: 0,
-          });
-        }
-      }
-
-      await supabase.from("automation_logs").insert({
-        organization_id: orgId,
-        automation_id: job.automation_id,
-        run_id: job.run_id,
-        node_id: job.node_id,
-        level: "info",
-        message: "Resposta recebida — run retomada pelo caminho 'Respondeu'",
-        data: { lead_id: leadId, reply_at: replyTimestamp },
-      });
-    }
-
-    if (waitJobs.length > 0) await invokeWorker();
-  } catch (err) {
-    console.error("[evolution-webhook] Error waking paused runs:", err);
-  }
-}
-
-// ── Helper: Invoke automation-worker ──
-async function invokeWorker() {
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const res = await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-      body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    console.log(`[evolution-webhook] Worker invoked: processed=${data.processed}, failed=${data.failed}`);
-  } catch (err) {
-    console.error("[evolution-webhook] Failed to invoke worker:", err);
   }
 }
