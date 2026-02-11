@@ -1257,6 +1257,7 @@ export type Database = {
           ai_state: string | null
           assigned_at: string | null
           assigned_to: string | null
+          channel: string
           contact_name: string | null
           contact_name_source: string | null
           contact_phone: string
@@ -1280,6 +1281,7 @@ export type Database = {
           ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
+          channel?: string
           contact_name?: string | null
           contact_name_source?: string | null
           contact_phone: string
@@ -1303,6 +1305,7 @@ export type Database = {
           ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
+          channel?: string
           contact_name?: string | null
           contact_name_source?: string | null
           contact_phone?: string
@@ -3374,6 +3377,7 @@ export type Database = {
           ai_generated: boolean
           ai_interaction_id: string | null
           body: string
+          channel: string
           conversation_id: string
           created_at: string
           direction: string
@@ -3389,6 +3393,7 @@ export type Database = {
           ai_generated?: boolean
           ai_interaction_id?: string | null
           body: string
+          channel?: string
           conversation_id: string
           created_at?: string
           direction: string
@@ -3404,6 +3409,7 @@ export type Database = {
           ai_generated?: boolean
           ai_interaction_id?: string | null
           body?: string
+          channel?: string
           conversation_id?: string
           created_at?: string
           direction?: string
@@ -4571,6 +4577,126 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      social_integrations: {
+        Row: {
+          connected_at: string | null
+          connected_by: string | null
+          id: string
+          ig_business_account_id: string
+          ig_profile_picture_url: string | null
+          ig_username: string | null
+          organization_id: string
+          page_access_token: string
+          page_id: string
+          page_name: string | null
+          platform: string
+          status: string
+          token_expires_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string
+          ig_business_account_id: string
+          ig_profile_picture_url?: string | null
+          ig_username?: string | null
+          organization_id: string
+          page_access_token: string
+          page_id: string
+          page_name?: string | null
+          platform?: string
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string
+          ig_business_account_id?: string
+          ig_profile_picture_url?: string | null
+          ig_username?: string | null
+          organization_id?: string
+          page_access_token?: string
+          page_id?: string
+          page_name?: string | null
+          platform?: string
+          status?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "social_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "social_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "social_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "social_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_webhook_logs: {
+        Row: {
+          auth_status: string | null
+          created_at: string | null
+          event_type: string | null
+          id: string
+          organization_id: string | null
+          page_id: string | null
+          payload: Json | null
+          platform: string | null
+        }
+        Insert: {
+          auth_status?: string | null
+          created_at?: string | null
+          event_type?: string | null
+          id?: string
+          organization_id?: string | null
+          page_id?: string | null
+          payload?: Json | null
+          platform?: string | null
+        }
+        Update: {
+          auth_status?: string | null
+          created_at?: string | null
+          event_type?: string | null
+          id?: string
+          organization_id?: string | null
+          page_id?: string | null
+          payload?: Json | null
+          platform?: string | null
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
