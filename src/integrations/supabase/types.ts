@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_auto_reply_jobs: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          error: string | null
+          id: string
+          idempotency_key: string
+          inbound_message_id: string
+          organization_id: string
+          processed_at: string | null
+          result: Json | null
+          status: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          idempotency_key: string
+          inbound_message_id: string
+          organization_id: string
+          processed_at?: string | null
+          result?: Json | null
+          status?: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          idempotency_key?: string
+          inbound_message_id?: string
+          organization_id?: string
+          processed_at?: string | null
+          result?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_auto_reply_jobs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_interactions: {
         Row: {
           agent_name: string
@@ -1061,6 +1108,7 @@ export type Database = {
       conversations: {
         Row: {
           ai_mode: string
+          ai_reply_count_since_last_lead: number
           ai_state: string | null
           assigned_at: string | null
           assigned_to: string | null
@@ -1070,6 +1118,7 @@ export type Database = {
           created_at: string
           id: string
           instance_name: string
+          last_ai_reply_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
           lead_id: string | null
@@ -1080,6 +1129,7 @@ export type Database = {
         }
         Insert: {
           ai_mode?: string
+          ai_reply_count_since_last_lead?: number
           ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
@@ -1089,6 +1139,7 @@ export type Database = {
           created_at?: string
           id?: string
           instance_name: string
+          last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           lead_id?: string | null
@@ -1099,6 +1150,7 @@ export type Database = {
         }
         Update: {
           ai_mode?: string
+          ai_reply_count_since_last_lead?: number
           ai_state?: string | null
           assigned_at?: string | null
           assigned_to?: string | null
@@ -1108,6 +1160,7 @@ export type Database = {
           created_at?: string
           id?: string
           instance_name?: string
+          last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
           lead_id?: string | null
@@ -3142,6 +3195,8 @@ export type Database = {
       }
       messages: {
         Row: {
+          ai_generated: boolean
+          ai_interaction_id: string | null
           body: string
           conversation_id: string
           created_at: string
@@ -3151,6 +3206,8 @@ export type Database = {
           organization_id: string
         }
         Insert: {
+          ai_generated?: boolean
+          ai_interaction_id?: string | null
           body: string
           conversation_id: string
           created_at?: string
@@ -3160,6 +3217,8 @@ export type Database = {
           organization_id: string
         }
         Update: {
+          ai_generated?: boolean
+          ai_interaction_id?: string | null
           body?: string
           conversation_id?: string
           created_at?: string
@@ -3169,6 +3228,13 @@ export type Database = {
           organization_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "messages_ai_interaction_id_fkey"
+            columns: ["ai_interaction_id"]
+            isOneToOne: false
+            referencedRelation: "ai_interactions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "messages_conversation_id_fkey"
             columns: ["conversation_id"]
@@ -3549,6 +3615,10 @@ export type Database = {
       organizations: {
         Row: {
           address: string | null
+          ai_auto_debounce_seconds: number
+          ai_auto_max_without_reply: number
+          ai_auto_reply_throttle_seconds: number
+          ai_system_prompt: string | null
           city: string | null
           cnpj: string | null
           created_at: string | null
@@ -3563,6 +3633,10 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          ai_auto_debounce_seconds?: number
+          ai_auto_max_without_reply?: number
+          ai_auto_reply_throttle_seconds?: number
+          ai_system_prompt?: string | null
           city?: string | null
           cnpj?: string | null
           created_at?: string | null
@@ -3577,6 +3651,10 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          ai_auto_debounce_seconds?: number
+          ai_auto_max_without_reply?: number
+          ai_auto_reply_throttle_seconds?: number
+          ai_system_prompt?: string | null
           city?: string | null
           cnpj?: string | null
           created_at?: string | null
@@ -3791,6 +3869,7 @@ export type Database = {
           name: string
           pipeline_id: string | null
           position: number
+          sensitive: boolean
           updated_at: string | null
         }
         Insert: {
@@ -3802,6 +3881,7 @@ export type Database = {
           name: string
           pipeline_id?: string | null
           position: number
+          sensitive?: boolean
           updated_at?: string | null
         }
         Update: {
@@ -3813,6 +3893,7 @@ export type Database = {
           name?: string
           pipeline_id?: string | null
           position?: number
+          sensitive?: boolean
           updated_at?: string | null
         }
         Relationships: [
@@ -5674,6 +5755,7 @@ export type Database = {
           name: string
           pipeline_id: string | null
           position: number
+          sensitive: boolean
           updated_at: string | null
         }[]
         SetofOptions: {

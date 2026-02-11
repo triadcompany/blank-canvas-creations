@@ -21,6 +21,9 @@ export interface InboxThread {
   lead_id: string | null;
   lead_stage_name?: string | null;
   ai_mode: string;
+  ai_state: string | null;
+  last_ai_reply_at: string | null;
+  ai_reply_count_since_last_lead: number;
 }
 
 export interface InboxMessage {
@@ -31,6 +34,8 @@ export interface InboxMessage {
   body: string;
   external_message_id: string | null;
   created_at: string;
+  ai_generated?: boolean;
+  ai_interaction_id?: string | null;
 }
 
 export interface OrgMember {
@@ -388,6 +393,20 @@ export function useInbox() {
 
     try {
       const selectedConv = threadsRef.current.find(t => t.id === selectedThreadId);
+
+      // If in AUTO mode, pause AI when human sends
+      if (selectedConv?.ai_mode === 'auto') {
+        await supabase
+          .from('conversations')
+          .update({ ai_state: 'human_active' } as any)
+          .eq('id', selectedThreadId)
+          .eq('organization_id', orgId);
+
+        setThreads(prev =>
+          prev.map(t => t.id === selectedThreadId ? { ...t, ai_state: 'human_active' } : t)
+        );
+      }
+
       const res = await supabase.functions.invoke('whatsapp-send', {
         body: {
           organization_id: orgId,
@@ -527,23 +546,62 @@ export function useInbox() {
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
-  // Toggle ai_mode for a conversation
+  // Toggle ai_mode for a conversation (off / assisted / auto)
   const toggleAiMode = useCallback(async (threadId: string, newMode: string) => {
+    if (!orgId) return;
+    try {
+      const updateData: any = { ai_mode: newMode };
+      // When switching to AUTO, set ai_state = ai_active
+      if (newMode === 'auto') {
+        updateData.ai_state = 'ai_active';
+        updateData.ai_reply_count_since_last_lead = 0;
+      }
+      // When switching away from AUTO, clear ai_state
+      if (newMode === 'off' || newMode === 'assisted') {
+        updateData.ai_state = null;
+      }
+
+      const { error } = await supabase
+        .from('conversations')
+        .update(updateData)
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+      if (error) throw error;
+
+      setThreads(prev =>
+        prev.map(t => t.id === threadId ? { ...t, ...updateData } : t)
+      );
+
+      const modeLabels: Record<string, string> = {
+        off: 'IA desativada',
+        assisted: 'IA Assistente ativada',
+        auto: 'IA Autônoma ativada',
+      };
+      toast.success(modeLabels[newMode] || 'Modo alterado');
+    } catch (err: any) {
+      console.error('Error toggling ai_mode:', err);
+      toast.error('Erro ao alterar modo da IA');
+    }
+  }, [orgId]);
+
+  // Resume AI (set ai_state back to ai_active)
+  const resumeAi = useCallback(async (threadId: string) => {
     if (!orgId) return;
     try {
       const { error } = await supabase
         .from('conversations')
-        .update({ ai_mode: newMode } as any)
+        .update({ ai_state: 'ai_active', ai_reply_count_since_last_lead: 0 } as any)
         .eq('id', threadId)
         .eq('organization_id', orgId);
       if (error) throw error;
+
       setThreads(prev =>
-        prev.map(t => t.id === threadId ? { ...t, ai_mode: newMode } : t)
+        prev.map(t => t.id === threadId ? { ...t, ai_state: 'ai_active', ai_reply_count_since_last_lead: 0 } : t)
       );
-      toast.success(newMode === 'assisted' ? 'IA Assistente ativada' : 'IA desativada');
+      toast.success('IA retomada');
     } catch (err: any) {
-      console.error('Error toggling ai_mode:', err);
-      toast.error('Erro ao alterar modo da IA');
+      console.error('Error resuming AI:', err);
+      toast.error('Erro ao retomar IA');
     }
   }, [orgId]);
 
@@ -571,5 +629,6 @@ export function useInbox() {
     refreshThreads: fetchThreads,
     createLeadFromConversation,
     toggleAiMode,
+    resumeAi,
   };
 }

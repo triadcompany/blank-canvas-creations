@@ -365,7 +365,62 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       });
     }
 
-    // ── 3) Legacy whatsapp_threads / whatsapp_messages (inbound only) ──
+    // ── 3) AI Auto-Reply: Enqueue job if ai_mode=auto + inbound ──
+    if (!isFromMe && conversationId) {
+      // Reset ai_reply_count on inbound (lead replied)
+      await supabase.from("conversations")
+        .update({ ai_reply_count_since_last_lead: 0 })
+        .eq("id", conversationId);
+
+      // Check ai_mode for auto-reply
+      const { data: convCheck } = await supabase
+        .from("conversations")
+        .select("ai_mode, ai_state")
+        .eq("id", conversationId)
+        .single();
+
+      if (convCheck?.ai_mode === "auto" && convCheck?.ai_state !== "human_active") {
+        // Get the message ID we just inserted
+        const { data: lastMsg } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("conversation_id", conversationId)
+          .eq("organization_id", orgId)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (lastMsg) {
+          const idempotencyKey = `${orgId}:${conversationId}:${lastMsg.id}`;
+          await supabase.from("ai_auto_reply_jobs").insert({
+            organization_id: orgId,
+            conversation_id: conversationId,
+            inbound_message_id: lastMsg.id,
+            idempotency_key: idempotencyKey,
+            status: "pending",
+          }).catch((err: any) => {
+            // Ignore duplicate (idempotency)
+            if (!String(err?.message || err).includes("duplicate")) {
+              console.error("[evolution-webhook] Failed to enqueue auto-reply:", err);
+            }
+          });
+
+          // Fire-and-forget: invoke auto-reply worker
+          const workerUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-auto-reply`;
+          fetch(workerUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({}),
+          }).catch(err => console.error("[evolution-webhook] Failed to invoke ai-auto-reply:", err));
+        }
+      }
+    }
+
+    // ── 4) Legacy whatsapp_threads / whatsapp_messages (inbound only) ──
     if (!isFromMe) {
       let threadId: string | null = null;
 
@@ -426,7 +481,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       console.log(`[evolution-webhook] Inbound message saved: phone=${normalizedPhone} conv=${conversationId} thread=${threadId}`);
 
-      // ── 4) Lead matching & engagement ──
+      // ── 5) Lead matching & engagement ──
       const phoneVariants = [
         normalizedPhone,
         normalizedPhone.startsWith("55") ? normalizedPhone.substring(2) : `55${normalizedPhone}`,
@@ -469,6 +524,23 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
       }
     } else {
+      // ── Outbound from WhatsApp (human sent manually) ──
+      // If human sends, set ai_state = human_active to pause AI
+      if (conversationId) {
+        const { data: convForHuman } = await supabase
+          .from("conversations")
+          .select("ai_mode")
+          .eq("id", conversationId)
+          .single();
+
+        if (convForHuman?.ai_mode === "auto") {
+          await supabase.from("conversations")
+            .update({ ai_state: "human_active" })
+            .eq("id", conversationId);
+          console.log(`[evolution-webhook] Human sent message — ai_state set to human_active for conv=${conversationId}`);
+        }
+      }
+
       console.log(`[evolution-webhook] Outbound message saved: phone=${normalizedPhone} conv=${conversationId}`);
     }
   }

@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.event-dispatcher]
 verify_jwt = false
+
+[functions.ai-auto-reply]
+verify_jwt = false
