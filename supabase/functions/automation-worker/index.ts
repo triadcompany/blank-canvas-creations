@@ -418,6 +418,105 @@ function filterLeadPayload(payload: Record<string, unknown>) {
   return { filtered, dropped };
 }
 
+// ── Seller / Owner resolution ─────────────────────────
+async function resolveSellerOrOwner(
+  supabase: any,
+  orgId: string,
+  ownerId: string | null,
+  automationCreatedBy: string | null,
+): Promise<{ sellerId: string | null; strategy: string; distributionRuleId?: string; distributionCandidates?: number }> {
+
+  // A) Manual selection
+  if (ownerId) {
+    return { sellerId: ownerId, strategy: "manual" };
+  }
+
+  // B) Try lead distribution (round-robin)
+  try {
+    const { data: distSettings } = await supabase
+      .from("lead_distribution_settings")
+      .select("id, mode, manual_receiver_id, rr_cursor, is_auto_distribution_enabled")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    if (distSettings?.is_auto_distribution_enabled) {
+      if (distSettings.mode === "manual" && distSettings.manual_receiver_id) {
+        return { sellerId: distSettings.manual_receiver_id, strategy: "distribution", distributionRuleId: distSettings.id };
+      }
+
+      // Round-robin: get active users
+      const { data: distUsers } = await supabase
+        .from("lead_distribution_users")
+        .select("user_id, order_position")
+        .eq("distribution_setting_id", distSettings.id)
+        .eq("is_active", true)
+        .order("order_position");
+
+      if (distUsers && distUsers.length > 0) {
+        const cursor = distSettings.rr_cursor || 0;
+        const idx = cursor % distUsers.length;
+        const chosen = distUsers[idx];
+
+        // Advance cursor
+        await supabase
+          .from("lead_distribution_settings")
+          .update({ rr_cursor: cursor + 1 })
+          .eq("id", distSettings.id);
+
+        return {
+          sellerId: chosen.user_id,
+          strategy: "distribution",
+          distributionRuleId: distSettings.id,
+          distributionCandidates: distUsers.length,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[automation-worker] Distribution lookup failed:", e);
+  }
+
+  // C) Fallback 1: automation creator
+  if (automationCreatedBy) {
+    const { data: creatorProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", automationCreatedBy)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (creatorProfile) {
+      return { sellerId: creatorProfile.id, strategy: "fallback_created_by" };
+    }
+  }
+
+  // D) Fallback 2: first active seller in org
+  const { data: firstSeller } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("role", "seller")
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  if (firstSeller) {
+    return { sellerId: firstSeller.id, strategy: "fallback_first_seller" };
+  }
+
+  // E) Fallback 3: first active admin
+  const { data: firstAdmin } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("role", "admin")
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  if (firstAdmin) {
+    return { sellerId: firstAdmin.id, strategy: "fallback_first_admin" };
+  }
+
+  return { sellerId: null, strategy: "none_found" };
+}
+
 async function processActionCreateLead(supabase: any, config: any, job: any): Promise<JobResult> {
   const params = config.params || {};
   const source = params.source || "Automação";
@@ -448,6 +547,21 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   if (!phone) {
     return { status: "done", output: { error: "Sem telefone no contexto", skipped: true } };
   }
+
+  // ── Resolve seller_id (fallback chain) ──
+  // Load automation.created_by for fallback
+  let automationCreatedBy: string | null = null;
+  const { data: automation } = await supabase
+    .from("automations")
+    .select("created_by")
+    .eq("id", job.automation_id)
+    .maybeSingle();
+  if (automation) automationCreatedBy = automation.created_by;
+
+  const sellerResolution = await resolveSellerOrOwner(supabase, orgId, ownerId, automationCreatedBy);
+  const resolvedSellerId = sellerResolution.sellerId;
+
+  console.log(`[automation-worker] Seller resolved: strategy=${sellerResolution.strategy}, seller_id=${resolvedSellerId}`);
 
   // ── Resolve pipeline + stage ──
   let resolvedPipelineId = pipelineId;
@@ -516,7 +630,8 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       source,
       email: ctx.email || null,
       stage_id: resolvedStageId,
-      assigned_to: ownerId,
+      seller_id: resolvedSellerId,  // resolved via fallback chain (nullable now)
+      assigned_to: resolvedSellerId,
     };
 
     const { filtered: safeLeadPayload, dropped: droppedFields } = filterLeadPayload(rawLeadPayload);
@@ -538,6 +653,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
           lead_payload_sent: rawLeadPayload,
           lead_payload_filtered: safeLeadPayload,
           dropped_fields: droppedFields,
+          seller_resolution: sellerResolution,
           error_stack: leadErr.message,
         });
       }
@@ -568,6 +684,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
           lead_created: leadCreated,
           deal_deduplicated: true,
           existing_opportunity_id: existingDeal.id,
+          seller_resolution: sellerResolution,
           phone,
         });
       }
@@ -579,6 +696,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
           lead_id: leadId,
           lead_created: leadCreated,
           existing_opportunity_id: existingDeal.id,
+          seller_resolution: sellerResolution,
           phone,
         },
       };
@@ -592,7 +710,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
     pipeline_id: resolvedPipelineId,
     stage_id: resolvedStageId,
     priority: Number(priority) || 0,
-    assigned_to: ownerId || null,
+    assigned_to: resolvedSellerId || null,
     source,
     source_detail: sourceDetail,
     status: "open",
@@ -611,6 +729,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
         lead_id_result: leadId,
         lead_created: leadCreated,
         deal_payload_sent: dealPayload,
+        seller_resolution: sellerResolution,
         error_stack: dealErr.message,
       });
     }
@@ -632,7 +751,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   if (resolvedStageId) {
     await supabase
       .from("leads")
-      .update({ stage_id: resolvedStageId, assigned_to: ownerId })
+      .update({ stage_id: resolvedStageId, seller_id: resolvedSellerId, assigned_to: resolvedSellerId })
       .eq("id", leadId);
   }
 
@@ -643,6 +762,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       lead_created: leadCreated,
       deal_id_result: newDeal.id,
       deal_payload_sent: dealPayload,
+      seller_resolution: sellerResolution,
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,
@@ -657,6 +777,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       lead_id: leadId,
       lead_created: leadCreated,
       opportunity_id: newDeal.id,
+      seller_resolution: sellerResolution,
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,

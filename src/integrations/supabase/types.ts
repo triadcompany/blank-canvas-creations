@@ -3346,7 +3346,7 @@ export type Database = {
           organization_id: string | null
           phone: string
           price: string | null
-          seller_id: string
+          seller_id: string | null
           servico: string | null
           source: string | null
           stage_id: string
@@ -3370,7 +3370,7 @@ export type Database = {
           organization_id?: string | null
           phone: string
           price?: string | null
-          seller_id: string
+          seller_id?: string | null
           servico?: string | null
           source?: string | null
           stage_id: string
@@ -3394,7 +3394,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string
           price?: string | null
-          seller_id?: string
+          seller_id?: string | null
           servico?: string | null
           source?: string | null
           stage_id?: string

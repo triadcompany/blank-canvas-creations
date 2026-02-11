@@ -218,7 +218,7 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
 
           {/* Responsável */}
           <div>
-            <Label className="font-poppins text-sm">Responsável (opcional)</Label>
+            <Label className="font-poppins text-sm">Responsável (se vazio, usa distribuição/fallback)</Label>
             <Select
               value={params.owner_id || "none"}
               onValueChange={(v) => updateParams("owner_id", v === "none" ? "" : v)}
@@ -235,6 +235,9 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Se não escolher um responsável, o sistema atribui automaticamente via distribuição ou fallback (admin/primeiro vendedor).
+            </p>
           </div>
 
           {/* Deduplicação */}
