@@ -193,7 +193,12 @@ export function InstagramSettings() {
       }
 
       if (data?.url) {
-        window.location.href = data.url;
+        // Use window.open to avoid iframe restrictions (Facebook blocks X-Frame-Options)
+        const opened = window.open(data.url, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          // Fallback: try top-level navigation if popup was blocked
+          (window.top || window).location.href = data.url;
+        }
       } else {
         console.error('[InstagramSettings] No URL in response:', data);
         toast({
