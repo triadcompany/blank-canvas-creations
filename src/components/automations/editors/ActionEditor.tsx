@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -8,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ActionEditorProps {
   config: any;
@@ -25,10 +28,73 @@ const actionTypes = [
   { value: "end_automation", label: "Encerrar automação" },
 ];
 
+const priorityOptions = [
+  { value: "0", label: "Sem prioridade" },
+  { value: "1", label: "1 – Baixa" },
+  { value: "2", label: "2 – Média" },
+  { value: "3", label: "3 – Alta" },
+  { value: "4", label: "4 – Urgente" },
+];
+
+interface Pipeline {
+  id: string;
+  name: string;
+}
+
+interface Stage {
+  id: string;
+  name: string;
+  pipeline_id: string;
+}
+
+interface LeadSource {
+  id: string;
+  name: string;
+}
+
 export function ActionEditor({ config, onChange }: ActionEditorProps) {
   const params = config.params || {};
+  const { profile } = useAuth();
+  const orgId = profile?.organization_id;
 
-  const updateParams = (key: string, value: string) => {
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [sources, setSources] = useState<LeadSource[]>([]);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch pipelines, sources and members once
+  useEffect(() => {
+    if (!orgId) return;
+
+    const fetchData = async () => {
+      const [pRes, sRes, mRes] = await Promise.all([
+        supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
+        supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).order("name"),
+        supabase.from("profiles").select("id, name").eq("organization_id", orgId).order("name"),
+      ]);
+      if (pRes.data) setPipelines(pRes.data as Pipeline[]);
+      if (sRes.data) setSources(sRes.data as LeadSource[]);
+      if (mRes.data) setMembers(mRes.data as { id: string; name: string }[]);
+    };
+    fetchData();
+  }, [orgId]);
+
+  // Fetch stages when pipeline changes
+  useEffect(() => {
+    if (!params.pipeline_id) {
+      setStages([]);
+      return;
+    }
+    const fetchStages = async () => {
+      const { data } = await supabase.rpc("get_pipeline_stages", {
+        p_pipeline_id: params.pipeline_id,
+      });
+      if (data) setStages(data as Stage[]);
+    };
+    fetchStages();
+  }, [params.pipeline_id]);
+
+  const updateParams = (key: string, value: string | boolean) => {
     onChange({ ...config, params: { ...params, [key]: value } });
   };
 
@@ -52,6 +118,140 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
           </SelectContent>
         </Select>
       </div>
+
+      {/* ── Criar negócio ── */}
+      {config.actionType === "create_deal" && (
+        <div className="space-y-4 border border-border rounded-lg p-3 bg-muted/30">
+          <p className="text-[11px] text-muted-foreground font-poppins">
+            Cria um lead/negócio no CRM com os dados abaixo.
+          </p>
+
+          {/* Origem */}
+          <div>
+            <Label className="font-poppins text-sm">Origem do lead</Label>
+            <Select
+              value={params.source || ""}
+              onValueChange={(v) => updateParams("source", v)}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Selecione a origem" />
+              </SelectTrigger>
+              <SelectContent>
+                {sources.map((s) => (
+                  <SelectItem key={s.id} value={s.name}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="Meta Ads">Meta Ads</SelectItem>
+                <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                <SelectItem value="Instagram">Instagram</SelectItem>
+                <SelectItem value="Indicação">Indicação</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Pipeline */}
+          <div>
+            <Label className="font-poppins text-sm">Pipeline</Label>
+            <Select
+              value={params.pipeline_id || ""}
+              onValueChange={(v) => {
+                onChange({
+                  ...config,
+                  params: { ...params, pipeline_id: v, stage_id: "" },
+                });
+              }}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Selecione o pipeline" />
+              </SelectTrigger>
+              <SelectContent>
+                {pipelines.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Etapa */}
+          <div>
+            <Label className="font-poppins text-sm">Etapa</Label>
+            <Select
+              value={params.stage_id || ""}
+              onValueChange={(v) => updateParams("stage_id", v)}
+              disabled={!params.pipeline_id}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder={params.pipeline_id ? "Selecione a etapa" : "Selecione o pipeline primeiro"} />
+              </SelectTrigger>
+              <SelectContent>
+                {stages.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Prioridade */}
+          <div>
+            <Label className="font-poppins text-sm">Prioridade</Label>
+            <Select
+              value={String(params.priority ?? "0")}
+              onValueChange={(v) => updateParams("priority", v)}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {priorityOptions.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Responsável */}
+          <div>
+            <Label className="font-poppins text-sm">Responsável (opcional)</Label>
+            <Select
+              value={params.owner_id || "none"}
+              onValueChange={(v) => updateParams("owner_id", v === "none" ? "" : v)}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Nenhum (distribuição automática)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhum (distribuição automática)</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Deduplicação */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Deduplicação</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Criar apenas se não existir negócio aberto para esse telefone
+              </p>
+            </div>
+            <Switch
+              checked={params.deduplicate ?? true}
+              onCheckedChange={(v) => updateParams("deduplicate", v)}
+            />
+          </div>
+        </div>
+      )}
 
       {config.actionType === "add_tag" && (
         <div>
