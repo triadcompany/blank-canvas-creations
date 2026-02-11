@@ -196,12 +196,23 @@ export function InstagramSettings() {
           console.error('[InstagramSettings] Exchange FULL error JSON:', JSON.stringify(data, null, 2));
           console.error('[InstagramSettings] Exchange status:', res.status);
           const isNoPages = data?.error === 'NO_FACEBOOK_PAGES' || data?.error === 'NO_IG_BUSINESS';
-          const meName = data?.me?.name ? ` (Usuário Meta: ${data.me.name})` : '';
+          const meName = data?.me?.name ? ` (Meta: ${data.me.name})` : '';
           const pagesCount = data?.accounts?.data?.length ?? data?.pages_checked?.length ?? '?';
+          const scopes = data?.debug?.scopes?.join(', ') || data?.debug?.granular_scopes?.map((s: any) => s.scope).join(', ') || 'N/A';
+          
+          console.log('[InstagramSettings] Debug info:', {
+            user: data?.me?.name,
+            scopes: data?.debug?.scopes,
+            granular_scopes: data?.debug?.granular_scopes,
+            is_valid: data?.debug?.is_valid,
+            pages: pagesCount,
+            hint: data?.hint,
+          });
+
           toast({
             title: isNoPages ? "Página/Conta não encontrada" : `Erro ao conectar (${res.status})`,
             description: isNoPages
-              ? `${data?.message || 'Converta o IG para profissional, vincule a uma Página do Facebook e seja admin da Página.'}${meName} — Páginas encontradas: ${pagesCount}`
+              ? `${meName} Páginas: ${pagesCount}. Scopes: ${scopes}. ${data?.hint || 'Verifique pages_show_list no App Review.'}`
               : (data?.message || data?.error || "Falha ao processar o código de autorização"),
             variant: "destructive",
           });

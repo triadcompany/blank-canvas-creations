@@ -121,6 +121,24 @@ serve(async (req) => {
     }
 
     // ============================================================
+    // STEP B2: Debug token — check granted scopes
+    // ============================================================
+    let debugData: any = {};
+    try {
+      const debugRes = await fetch(
+        `https://graph.facebook.com/v18.0/debug_token?input_token=${userToken}&access_token=${appId}|${appSecret}`
+      );
+      debugData = await debugRes.json();
+      console.log("[instagram-exchange] [B2] debug_token — HTTP status:", debugRes.status);
+      console.log("[instagram-exchange] [B2] debug_token — type:", debugData.data?.type);
+      console.log("[instagram-exchange] [B2] debug_token — is_valid:", debugData.data?.is_valid);
+      console.log("[instagram-exchange] [B2] debug_token — scopes:", JSON.stringify(debugData.data?.scopes));
+      console.log("[instagram-exchange] [B2] debug_token — granular_scopes:", JSON.stringify(debugData.data?.granular_scopes));
+    } catch (e) {
+      console.error("[instagram-exchange] [B2] debug_token fetch error:", e);
+    }
+
+    // ============================================================
     // STEP C: Fetch pages (/me/accounts)
     // ============================================================
     const pagesRes = await fetch(
@@ -135,10 +153,11 @@ serve(async (req) => {
       console.error("[instagram-exchange] [C] NO PAGES FOUND for user:", meData.name, "(", meData.id, ")");
       return new Response(JSON.stringify({
         error: 'NO_FACEBOOK_PAGES',
-        message: 'Nenhuma Página do Facebook encontrada para este usuário/token. Verifique se você é admin de alguma Página.',
+        message: 'Nenhuma Página do Facebook encontrada para este usuário/token.',
         me: meData,
+        debug: debugData.data || null,
         accounts: pagesData,
-        scopes_hint: 'Verifique se o token é USER token e se o usuário é admin da Página.',
+        hint: 'Seu token não recebeu pages_show_list ou o app não tem Advanced Access/Ready for testing para permissões de Páginas em App Review > Permissions and Features.',
       }), { status: 400, headers });
     }
 
