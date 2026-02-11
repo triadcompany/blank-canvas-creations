@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { matchKeyword } from "../_shared/normalize-text.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -215,35 +216,47 @@ async function processEvent(supabase: any, event: any) {
       if (triggerConfig.useKeyword) {
         const keyword = (triggerConfig.keyword || "").trim();
         const matchType = triggerConfig.matchType || "contains";
-        const normalizedBody = messageBody.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
-        const normalizedKeyword = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        // Default true for ignore_accents_case (backwards-compatible)
+        const ignoreAccentsCase = triggerConfig.ignore_accents_case !== false;
 
-        let matched = false;
-        switch (matchType) {
-          case "contains": matched = normalizedBody.includes(normalizedKeyword); break;
-          case "equals": matched = normalizedBody === normalizedKeyword; break;
-          case "starts_with": matched = normalizedBody.startsWith(normalizedKeyword); break;
-          case "regex":
-            try { matched = new RegExp(keyword, "i").test(messageBody); } catch { matched = false; }
-            break;
-          default: matched = normalizedBody.includes(normalizedKeyword);
-        }
+        const result = matchKeyword(messageBody, keyword, matchType, ignoreAccentsCase);
 
-        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=true keyword="${keyword}" match_type=${matchType} normalized_message_text="${normalizedBody.substring(0,80)}" keyword_matched=${matched} final_match=${matched}`);
+        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=true keyword="${keyword}" match_type=${matchType} ignore_accents_case=${ignoreAccentsCase} normalization_applied=${result.normalizationApplied} normalized_message_text="${result.messageCompared.substring(0,80)}" keyword_matched=${result.matched} final_match=${result.matched}`);
 
-        if (!matched) {
-          const reason = `KEYWORD_NOT_MATCHED: "${keyword}" (${matchType}) in "${normalizedBody.substring(0,60)}"`;
+        if (!result.matched) {
+          const reason = `KEYWORD_NOT_MATCHED: "${keyword}" (${matchType}) in "${result.messageCompared.substring(0,60)}"`;
           await logEventRun(supabase, event.id, automation.id, orgId, "skipped", reason);
           await upsertExecution(supabase, orgId, traceId, eventName, "keyword_not_matched", reason, {
             automation_id: automation.id,
             automation_name: automation.name,
-            keyword,
+            keyword_raw: keyword,
+            keyword_normalized: result.keywordCompared,
             match_type: matchType,
-            normalized_message: normalizedBody.substring(0, 200),
+            ignore_accents_case: ignoreAccentsCase,
+            normalization_applied: result.normalizationApplied,
+            message_compared: result.normalizationApplied ? "normalized" : "raw",
+            keyword_compared: result.normalizationApplied ? "normalized" : "raw",
+            message_normalized: result.messageCompared.substring(0, 200),
+            match_result: false,
           });
           skippedCount++;
           continue;
         }
+
+        // Log successful match debug info
+        await upsertExecution(supabase, orgId, traceId, eventName, "keyword_matched", null, {
+          automation_id: automation.id,
+          automation_name: automation.name,
+          keyword_raw: keyword,
+          keyword_normalized: result.keywordCompared,
+          match_type: matchType,
+          ignore_accents_case: ignoreAccentsCase,
+          normalization_applied: result.normalizationApplied,
+          message_compared: result.normalizationApplied ? "normalized" : "raw",
+          keyword_compared: result.normalizationApplied ? "normalized" : "raw",
+          message_normalized: result.messageCompared.substring(0, 200),
+          match_result: true,
+        });
       } else {
         console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=false final_match=true`);
       }
