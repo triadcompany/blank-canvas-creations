@@ -243,7 +243,7 @@ export default function TreinarAgente() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 md:grid-cols-7 w-full">
+        <TabsList className="grid grid-cols-4 md:grid-cols-8 w-full">
           <TabsTrigger value="identidade" className="text-xs">
             <MessageSquare className="h-3 w-3 mr-1" />
             Identidade
@@ -263,6 +263,10 @@ export default function TreinarAgente() {
           <TabsTrigger value="qualificacao" className="text-xs">
             <Target className="h-3 w-3 mr-1" />
             Qualificação
+          </TabsTrigger>
+          <TabsTrigger value="autonomo" className="text-xs">
+            <Zap className="h-3 w-3 mr-1" />
+            Autônomo
           </TabsTrigger>
           <TabsTrigger value="exemplos" className="text-xs">
             <Brain className="h-3 w-3 mr-1" />
@@ -759,6 +763,96 @@ export default function TreinarAgente() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Autonomous Rules Tab */}
+        <TabsContent value="autonomo">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-poppins flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                Regras de Ativação do Agente Autônomo
+              </CardTitle>
+              <CardDescription>
+                Defina quando o agente autônomo deve atuar nas conversas. Essas regras são verificadas antes de cada resposta automática.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <Label className="text-sm font-semibold">Modo de ativação</Label>
+                <RadioGroup
+                  value={agentProfile.autonomous_rules?.mode || 'all'}
+                  onValueChange={(v) =>
+                    setAgentProfile(prev => ({
+                      ...prev,
+                      autonomous_rules: { ...prev.autonomous_rules, mode: v as any },
+                    }))
+                  }
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="ar-all" />
+                    <Label htmlFor="ar-all" className="font-normal">Todos os leads</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="traffic_only" id="ar-traffic" />
+                    <Label htmlFor="ar-traffic" className="font-normal">Apenas leads de tráfego (anúncios)</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="organic_only" id="ar-organic" />
+                    <Label htmlFor="ar-organic" className="font-normal">Apenas leads orgânicos</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="unassigned_only" id="ar-unassigned" />
+                    <Label htmlFor="ar-unassigned" className="font-normal">Apenas leads não atribuídos</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <Label className="text-sm font-semibold">Regras adicionais</Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      id="ar-business-hours"
+                      checked={agentProfile.autonomous_rules?.only_outside_business_hours || false}
+                      onCheckedChange={(checked) =>
+                        setAgentProfile(prev => ({
+                          ...prev,
+                          autonomous_rules: { ...prev.autonomous_rules, only_outside_business_hours: !!checked },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="ar-business-hours" className="font-normal cursor-pointer">
+                      Apenas fora do horário comercial (Seg-Sex 8h-18h)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      id="ar-pause-qualified"
+                      checked={agentProfile.autonomous_rules?.pause_after_qualification || false}
+                      onCheckedChange={(checked) =>
+                        setAgentProfile(prev => ({
+                          ...prev,
+                          autonomous_rules: { ...prev.autonomous_rules, pause_after_qualification: !!checked },
+                        }))
+                      }
+                    />
+                    <Label htmlFor="ar-pause-qualified" className="font-normal cursor-pointer">
+                      Pausar após lead qualificado (aguardar humano)
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-muted/50 rounded-xl p-4">
+                <p className="text-xs text-muted-foreground">
+                  💡 Essas regras são verificadas no webhook inbound antes de ativar o modo AUTO. Não interferem no modo ASSISTED.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Examples Tab */}

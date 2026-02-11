@@ -382,30 +382,117 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (convCheck?.ai_mode === "auto" && convCheck?.ai_state !== "human_active") {
         // ════════════════════════════════════════════
-        //  ENQUEUE — simple, no blockers + set ai_pending
+        //  CHECK AUTONOMOUS RULES before enqueue
         // ════════════════════════════════════════════
-        const idempKey = `${orgId}:${conversationId}:${externalMessageId || Date.now()}`;
-        const { error: enqueueErr } = await supabase.from("ai_auto_reply_jobs").insert({
-          organization_id: orgId,
-          conversation_id: conversationId,
-          inbound_message_id: externalMessageId || "unknown",
-          idempotency_key: idempKey,
-          status: "pending",
-        });
+        let shouldActivate = true;
+        let skipReason = "";
 
-        if (enqueueErr) {
-          if (enqueueErr.code === "23505") {
-            console.log(`[evolution-webhook] Job already exists (idempotency): ${idempKey}`);
-          } else {
-            console.error(`[evolution-webhook] Enqueue error:`, enqueueErr);
+        try {
+          const { data: agentProfile } = await supabase
+            .from("ai_agent_profiles")
+            .select("autonomous_rules")
+            .eq("organization_id", orgId)
+            .eq("is_active", true)
+            .order("version", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const rules = (agentProfile?.autonomous_rules as any) || { mode: "all" };
+
+          // 1. Check mode: traffic_only, organic_only, unassigned_only
+          if (rules.mode && rules.mode !== "all") {
+            if (rules.mode === "unassigned_only") {
+              // Check if conversation has assigned_to
+              const { data: convAssign } = await supabase
+                .from("conversations")
+                .select("assigned_to")
+                .eq("id", conversationId)
+                .single();
+              if (convAssign?.assigned_to) {
+                shouldActivate = false;
+                skipReason = "assigned_lead (unassigned_only mode)";
+              }
+            } else if (rules.mode === "traffic_only" || rules.mode === "organic_only") {
+              // Check lead source via conversation's linked lead
+              const { data: convLead } = await supabase
+                .from("conversations")
+                .select("lead:leads!lead_id(source)")
+                .eq("id", conversationId)
+                .single();
+              const source = (convLead as any)?.lead?.source || "";
+              const isTraffic = ["meta_ads", "google_ads", "facebook", "instagram_ads", "trafego"].some(
+                s => source.toLowerCase().includes(s)
+              );
+              if (rules.mode === "traffic_only" && !isTraffic) {
+                shouldActivate = false;
+                skipReason = `organic_lead (traffic_only mode, source=${source})`;
+              } else if (rules.mode === "organic_only" && isTraffic) {
+                shouldActivate = false;
+                skipReason = `traffic_lead (organic_only mode, source=${source})`;
+              }
+            }
           }
+
+          // 2. Check business hours
+          if (shouldActivate && rules.only_outside_business_hours) {
+            const now = new Date();
+            // Convert to BRT (UTC-3)
+            const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+            const hour = brt.getUTCHours();
+            const day = brt.getUTCDay(); // 0=Sun, 6=Sat
+            const isBusinessHours = day >= 1 && day <= 5 && hour >= 8 && hour < 18;
+            if (isBusinessHours) {
+              shouldActivate = false;
+              skipReason = `business_hours (only_outside_business_hours)`;
+            }
+          }
+
+          // 3. Check pause_after_qualification
+          if (shouldActivate && rules.pause_after_qualification) {
+            const { data: intelligence } = await supabase
+              .from("conversation_intelligence")
+              .select("is_qualified")
+              .eq("conversation_id", conversationId)
+              .maybeSingle();
+            if (intelligence?.is_qualified) {
+              shouldActivate = false;
+              skipReason = "qualified_lead (pause_after_qualification)";
+            }
+          }
+        } catch (rulesErr) {
+          console.error("[evolution-webhook] Error checking autonomous rules:", rulesErr);
+          // On error, allow activation (fail-open)
+        }
+
+        if (!shouldActivate) {
+          console.log(`[evolution-webhook] AUTO BLOCKED by autonomous_rules: conv=${conversationId} reason=${skipReason}`);
         } else {
-          // Set ai_pending IMMEDIATELY for UI feedback
-          await supabase.from("conversations")
-            .update({ ai_pending: true, ai_pending_started_at: new Date().toISOString() })
-            .eq("id", conversationId);
-          console.log(`[evolution-webhook] ✅ Job enqueued + ai_pending=true: conv=${conversationId}`);
-          invokeAutoReplyWorker();
+          // ════════════════════════════════════════════
+          //  ENQUEUE — simple, no blockers + set ai_pending
+          // ════════════════════════════════════════════
+          const idempKey = `${orgId}:${conversationId}:${externalMessageId || Date.now()}`;
+          const { error: enqueueErr } = await supabase.from("ai_auto_reply_jobs").insert({
+            organization_id: orgId,
+            conversation_id: conversationId,
+            inbound_message_id: externalMessageId || "unknown",
+            idempotency_key: idempKey,
+            status: "pending",
+          });
+
+          if (enqueueErr) {
+            if (enqueueErr.code === "23505") {
+              console.log(`[evolution-webhook] Job already exists (idempotency): ${idempKey}`);
+            } else {
+              console.error(`[evolution-webhook] Enqueue error:`, enqueueErr);
+            }
+          } else {
+            // Set ai_pending IMMEDIATELY for UI feedback
+            await supabase.from("conversations")
+              .update({ ai_pending: true, ai_pending_started_at: new Date().toISOString() })
+              .eq("id", conversationId);
+            console.log(`[evolution-webhook] ✅ Job enqueued + ai_pending=true: conv=${conversationId}`);
+            invokeAutoReplyWorker();
+          }
         }
       } else if (convCheck) {
         console.log(`[evolution-webhook] Auto-reply SKIPPED: conv=${conversationId} reason=${convCheck.ai_mode !== 'auto' ? 'ai_mode=' + convCheck.ai_mode : 'ai_state=' + convCheck.ai_state}`);
