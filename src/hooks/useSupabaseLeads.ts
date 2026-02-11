@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { triggerN8nWebhook } from '@/services/n8nWebhook';
+import { publishAutomationEvent, AI_EVENTS } from '@/services/automationEventBus';
 
 export interface Lead {
   id: string;
@@ -249,6 +250,33 @@ export function useSupabaseLeads(pipelineId?: string) {
             toId: newStageId
           }
         );
+
+        // Publish deal.stage_changed event to Event Bus
+        const traceId = crypto.randomUUID();
+        publishAutomationEvent({
+          organizationId: profile.organization_id,
+          eventName: AI_EVENTS.DEAL_STAGE_CHANGED as any,
+          entityType: 'lead',
+          entityId: currentLead.id,
+          leadId: currentLead.id,
+          payload: {
+            trace_id: traceId,
+            lead_id: currentLead.id,
+            phone: currentLead.phone,
+            email: currentLead.email,
+            lead_name: currentLead.name,
+            lead_source: currentLead.source,
+            from_stage_id: currentLead.stage_id,
+            from_stage_name: oldStage?.name || '',
+            to_stage_id: newStageId,
+            to_stage_name: newStage?.name || '',
+            pipeline_id: '',
+            changed_by_user_id: profile.id,
+            changed_at: new Date().toISOString(),
+          },
+          source: 'human',
+          idempotencyParts: [currentLead.id, newStageId],
+        }).catch(err => console.warn('[deal.stage_changed] Event publish failed:', err));
       }
     }
   };

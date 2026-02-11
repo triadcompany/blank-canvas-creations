@@ -27,11 +27,13 @@ import {
   CreditCard,
   Inbox,
   Zap,
+  BarChart3,
 } from "lucide-react";
 import { WhatsAppLeadNotifications } from "@/components/settings/WhatsAppLeadNotifications";
 import { KeywordAutomationSettings } from "@/components/settings/KeywordAutomationSettings";
 
 import { EvolutionIntegration } from "@/components/settings/EvolutionIntegration";
+import { MetaIntegration } from "@/components/settings/MetaIntegration";
 import { InboxRoutingSettings } from "@/components/settings/InboxRoutingSettings";
 import BillingSettings from "@/components/settings/BillingSettings";
 import {
@@ -97,7 +99,7 @@ export function Settings() {
     { id: "usuarios", label: "Usuários", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: GitBranch },
     { id: "keyword-automation", label: "Automação Palavra-chave", icon: Bell },
-    
+    { id: "meta-ads", label: "Meta Ads (CAPI)", icon: BarChart3 },
     { id: "whatsapp-evolution", label: "WhatsApp (Evolution)", icon: MessageSquare },
     { id: "inbox-routing", label: "Inbox (Distribuição)", icon: Inbox },
     { id: "whatsapp-notifications", label: "Notificações WhatsApp", icon: Bell },
@@ -416,6 +418,8 @@ export function Settings() {
         return renderPipelineSection();
       case "keyword-automation":
         return <KeywordAutomationSettings />;
+      case "meta-ads":
+        return <MetaIntegration />;
 
 
       case "whatsapp-evolution":

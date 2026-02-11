@@ -22,6 +22,9 @@ export const AI_EVENTS = {
   // Inbound messaging events
   INBOUND_FIRST_MESSAGE: 'inbound.first_message',
 
+  // Deal/Lead stage changed (for Meta CAPI etc.)
+  DEAL_STAGE_CHANGED: 'deal.stage_changed',
+
   // Reserved for future steps
   CONVERSATION_AI_SUGGESTED_REPLY: 'conversation.ai_suggested_reply',
   CONVERSATION_AI_MESSAGE_SENT: 'conversation.ai_message_sent',
@@ -39,6 +42,7 @@ export const AI_EVENT_OPTIONS = [
   { value: AI_EVENTS.HANDOFF_TO_HUMAN_BY_AI, label: 'Handoff para humano (por IA)' },
   { value: AI_EVENTS.HANDOFF_TO_AI_BY_HUMAN, label: 'Handoff para IA (por humano)' },
   { value: AI_EVENTS.INBOUND_FIRST_MESSAGE, label: 'Primeira mensagem recebida' },
+  { value: AI_EVENTS.DEAL_STAGE_CHANGED, label: '📊 Lead mudou de etapa (Kanban)' },
   { value: AI_EVENTS.CONVERSATION_AI_SUGGESTED_REPLY, label: 'IA sugeriu resposta' },
   { value: AI_EVENTS.LEAD_CREATED_BY_AI, label: 'Lead criado (por IA)' },
 ];
