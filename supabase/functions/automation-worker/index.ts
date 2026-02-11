@@ -397,6 +397,26 @@ async function processAction(supabase: any, node: any, job: any): Promise<JobRes
 }
 
 // ── CREATE LEAD / CREATE DEAL ─────────────────────────
+// Allowed columns for the `leads` table (schema-safe insert)
+const LEAD_ALLOWED_FIELDS = [
+  "organization_id", "name", "phone", "email", "source",
+  "observations", "stage_id", "seller_id", "created_by",
+  "created_at", "updated_at", "interest", "price",
+  "valor_negocio", "servico", "cidade", "estado", "assigned_to",
+];
+
+function filterLeadPayload(payload: Record<string, unknown>) {
+  const filtered: Record<string, unknown> = {};
+  const dropped: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (LEAD_ALLOWED_FIELDS.includes(key)) {
+      filtered[key] = value;
+    } else {
+      dropped[key] = value;
+    }
+  }
+  return { filtered, dropped };
+}
 
 async function processActionCreateLead(supabase: any, config: any, job: any): Promise<JobResult> {
   const params = config.params || {};
@@ -423,35 +443,10 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   const ctx = run.context || {};
   const phone = ctx.phone || ctx.lead_phone || ctx.whatsapp || "";
   const contactName = ctx.contact_name || ctx.lead_name || ctx.name || phone || "Sem nome";
+  const traceId = ctx.trace_id || job.payload?.event_payload?.trace_id;
 
   if (!phone) {
     return { status: "done", output: { error: "Sem telefone no contexto", skipped: true } };
-  }
-
-  // ── Deduplication check ──
-  if (deduplicate) {
-    const { data: existing } = await supabase
-      .from("leads")
-      .select("id, name, stage_id")
-      .eq("organization_id", orgId)
-      .eq("phone", phone)
-      .not("stage_id", "is", null)
-      .limit(1)
-      .maybeSingle();
-
-    if (existing) {
-      console.log(`[automation-worker] Dedup: lead already exists for ${phone} (lead_id=${existing.id})`);
-      return {
-        status: "done",
-        output: {
-          action_type: "create_lead",
-          deduplicated: true,
-          existing_lead_id: existing.id,
-          existing_lead_name: existing.name,
-          phone,
-        },
-      };
-    }
   }
 
   // ── Resolve pipeline + stage ──
@@ -496,46 +491,158 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
     return { status: "done", output: { error: "Nenhum pipeline encontrado na organização", skipped: true } };
   }
 
-  // ── Create lead ──
-  const { data: newLead, error: leadErr } = await supabase
+  // ── STEP A: Upsert/find Lead (contact only) ──
+  let leadId: string | null = null;
+  let leadCreated = false;
+
+  // Try to find existing lead by phone + org
+  const { data: existingLead } = await supabase
     .from("leads")
-    .insert({
+    .select("id, name")
+    .eq("organization_id", orgId)
+    .eq("phone", phone)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingLead) {
+    leadId = existingLead.id;
+    console.log(`[automation-worker] Lead found: ${leadId} (${existingLead.name}) for ${phone}`);
+  } else {
+    // Create lead with ONLY contact-safe fields
+    const rawLeadPayload: Record<string, unknown> = {
       organization_id: orgId,
       name: contactName,
       phone,
       source,
-      source_detail: sourceDetail,
-      pipeline_id: resolvedPipelineId,
+      email: ctx.email || null,
       stage_id: resolvedStageId,
-      priority,
       assigned_to: ownerId,
-      status: "open",
-    })
-    .select("id, name")
-    .single();
+    };
 
-  if (leadErr) {
-    console.error(`[automation-worker] Create lead error:`, leadErr);
-    throw new Error(`Erro ao criar lead: ${leadErr.message}`);
+    const { filtered: safeLeadPayload, dropped: droppedFields } = filterLeadPayload(rawLeadPayload);
+
+    if (Object.keys(droppedFields).length > 0) {
+      console.log(`[automation-worker] Dropped fields from lead insert:`, droppedFields);
+    }
+
+    const { data: newLead, error: leadErr } = await supabase
+      .from("leads")
+      .insert(safeLeadPayload)
+      .select("id, name")
+      .single();
+
+    if (leadErr) {
+      console.error(`[automation-worker] Create lead error:`, leadErr);
+      if (traceId) {
+        await updateExecutionFromWorker(supabase, orgId, traceId, "failed", `Erro ao criar lead: ${leadErr.message}`, {
+          lead_payload_sent: rawLeadPayload,
+          lead_payload_filtered: safeLeadPayload,
+          dropped_fields: droppedFields,
+          error_stack: leadErr.message,
+        });
+      }
+      throw new Error(`Erro ao criar lead: ${leadErr.message}`);
+    }
+
+    leadId = newLead.id;
+    leadCreated = true;
+    console.log(`[automation-worker] Lead created: ${leadId} (${contactName}) for ${phone}`);
   }
 
-  console.log(`[automation-worker] Lead created: ${newLead.id} (${contactName}) for ${phone}`);
+  // ── Deduplication check (on opportunities, not leads) ──
+  if (deduplicate) {
+    const { data: existingDeal } = await supabase
+      .from("opportunities")
+      .select("id, status")
+      .eq("organization_id", orgId)
+      .eq("lead_id", leadId)
+      .eq("status", "open")
+      .limit(1)
+      .maybeSingle();
+
+    if (existingDeal) {
+      console.log(`[automation-worker] Dedup: open opportunity already exists for lead ${leadId} (opp_id=${existingDeal.id})`);
+      if (traceId) {
+        await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
+          lead_id_result: leadId,
+          lead_created: leadCreated,
+          deal_deduplicated: true,
+          existing_opportunity_id: existingDeal.id,
+          phone,
+        });
+      }
+      return {
+        status: "done",
+        output: {
+          action_type: "create_deal",
+          deduplicated: true,
+          lead_id: leadId,
+          lead_created: leadCreated,
+          existing_opportunity_id: existingDeal.id,
+          phone,
+        },
+      };
+    }
+  }
+
+  // ── STEP B: Create Opportunity (deal/negócio) ──
+  const dealPayload = {
+    organization_id: orgId,
+    lead_id: leadId,
+    pipeline_id: resolvedPipelineId,
+    stage_id: resolvedStageId,
+    priority: Number(priority) || 0,
+    assigned_to: ownerId || null,
+    source,
+    source_detail: sourceDetail,
+    status: "open",
+  };
+
+  const { data: newDeal, error: dealErr } = await supabase
+    .from("opportunities")
+    .insert(dealPayload)
+    .select("id")
+    .single();
+
+  if (dealErr) {
+    console.error(`[automation-worker] Create opportunity error:`, dealErr);
+    if (traceId) {
+      await updateExecutionFromWorker(supabase, orgId, traceId, "failed", `Erro ao criar negócio: ${dealErr.message}`, {
+        lead_id_result: leadId,
+        lead_created: leadCreated,
+        deal_payload_sent: dealPayload,
+        error_stack: dealErr.message,
+      });
+    }
+    throw new Error(`Erro ao criar negócio: ${dealErr.message}`);
+  }
+
+  console.log(`[automation-worker] Opportunity created: ${newDeal.id} for lead ${leadId}`);
 
   // ── Link conversation to lead if possible ──
   if (ctx.conversation_id) {
     await supabase
       .from("conversations")
-      .update({ lead_id: newLead.id })
+      .update({ lead_id: leadId })
       .eq("id", ctx.conversation_id)
       .is("lead_id", null);
   }
 
+  // ── Also update lead.stage_id for kanban compatibility ──
+  if (resolvedStageId) {
+    await supabase
+      .from("leads")
+      .update({ stage_id: resolvedStageId, assigned_to: ownerId })
+      .eq("id", leadId);
+  }
+
   // Update execution trace
-  const traceId = ctx.trace_id || job.payload?.event_payload?.trace_id;
   if (traceId) {
     await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
-      lead_id: newLead.id,
-      lead_name: contactName,
+      lead_id_result: leadId,
+      lead_created: leadCreated,
+      deal_id_result: newDeal.id,
+      deal_payload_sent: dealPayload,
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,
@@ -546,9 +653,10 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   return {
     status: "done",
     output: {
-      action_type: "create_lead",
-      lead_id: newLead.id,
-      lead_name: contactName,
+      action_type: "create_deal",
+      lead_id: leadId,
+      lead_created: leadCreated,
+      opportunity_id: newDeal.id,
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,
