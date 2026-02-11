@@ -39,6 +39,8 @@ import { cn } from '@/lib/utils';
 import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
+import { AudioPlayer } from '@/components/inbox/AudioPlayer';
+import { AudioRecorder } from '@/components/inbox/AudioRecorder';
 
 const BLOCK_REASON_LABELS: Record<string, string> = {
   throttle_active: 'Throttle ativo',
@@ -218,6 +220,7 @@ function MessageBubble({ message }: { message: InboxMessage }) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
   const isAiGenerated = message.ai_generated === true;
+  const isAudio = message.message_type === 'audio' && message.media_url;
 
   return (
     <div className={cn('flex mb-1.5', isOutbound ? 'justify-end' : 'justify-start')}>
@@ -241,7 +244,15 @@ function MessageBubble({ message }: { message: InboxMessage }) {
             <span>IA</span>
           </div>
         )}
-        <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
+        {isAudio ? (
+          <AudioPlayer
+            src={message.media_url!}
+            durationMs={message.duration_ms}
+            isOutbound={isOutbound}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
+        )}
         <div
           className={cn(
             'flex items-center justify-end gap-1 mt-0.5',
@@ -888,18 +899,29 @@ export default function InboxPage() {
                     className="min-h-[40px] max-h-[120px] resize-none text-sm bg-background"
                     rows={1}
                   />
-                  <Button
-                    size="icon"
-                    onClick={handleSend}
-                    disabled={!messageText.trim() || sending}
-                    className="h-10 w-10 flex-shrink-0 rounded-full"
-                  >
-                    {sending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
+                  {messageText.trim() ? (
+                    <Button
+                      size="icon"
+                      onClick={handleSend}
+                      disabled={!messageText.trim() || sending}
+                      className="h-10 w-10 flex-shrink-0 rounded-full"
+                    >
+                      {sending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  ) : (
+                    profile?.organization_id && (
+                      <AudioRecorder
+                        organizationId={profile.organization_id}
+                        conversationId={selectedThread.id}
+                        onAudioSent={() => {}}
+                        disabled={sending}
+                      />
+                    )
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-2">
