@@ -258,7 +258,14 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       : msg.message?.documentMessage ? "documento"
       : msg.message?.stickerMessage ? "sticker"
       : null;
-    const displayBody = text || (mediaType ? `📎 (${mediaType})` : null);
+    // Extract caption from media messages
+    const mediaCaption = msg.message?.imageMessage?.caption
+      || msg.message?.videoMessage?.caption
+      || msg.message?.documentMessage?.caption
+      || null;
+    const displayBody = text || (mediaType
+      ? (mediaCaption ? `📎 (${mediaType}) ${mediaCaption}` : `📎 (${mediaType})`)
+      : null);
 
     if (!displayBody) {
       console.log(`[evolution-webhook] Empty message from ${phone} — ignored`);
