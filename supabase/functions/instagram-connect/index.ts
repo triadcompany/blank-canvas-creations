@@ -129,14 +129,14 @@ async function handleAction(
     case 'get_oauth_url': {
       const appId = Deno.env.get('META_APP_ID')!;
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const redirectUri = params.redirectUri || `${supabaseUrl}/functions/v1/instagram-connect`;
+      const redirectUri = params.redirectUri || 'https://autolead.lovable.app/settings?tab=instagram&callback=true';
 
       const scope = [
         'instagram_basic',
         'instagram_manage_messages',
         'pages_manage_metadata',
-        'pages_messaging',
         'pages_read_engagement',
+        'pages_show_list',
       ].join(',');
 
       const state = btoa(JSON.stringify({ userId, organizationId }));
