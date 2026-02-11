@@ -1108,6 +1108,8 @@ export type Database = {
       conversations: {
         Row: {
           ai_mode: string
+          ai_pending: boolean
+          ai_pending_started_at: string | null
           ai_reply_count_since_last_lead: number
           ai_state: string | null
           assigned_at: string | null
@@ -1129,6 +1131,8 @@ export type Database = {
         }
         Insert: {
           ai_mode?: string
+          ai_pending?: boolean
+          ai_pending_started_at?: string | null
           ai_reply_count_since_last_lead?: number
           ai_state?: string | null
           assigned_at?: string | null
@@ -1150,6 +1154,8 @@ export type Database = {
         }
         Update: {
           ai_mode?: string
+          ai_pending?: boolean
+          ai_pending_started_at?: string | null
           ai_reply_count_since_last_lead?: number
           ai_state?: string | null
           assigned_at?: string | null

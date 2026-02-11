@@ -320,6 +320,49 @@ function MessagesList({ messages }: { messages: InboxMessage[] }) {
   );
 }
 
+// ── AI Typing Indicator ──
+
+function AiTypingIndicator({ startedAt }: { startedAt: string | null }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const start = new Date(startedAt).getTime();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  const isDelayed = elapsed > 40;
+
+  return (
+    <div className="flex justify-start mb-1.5">
+      <div className={cn(
+        'max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm rounded-bl-md border',
+        isDelayed
+          ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+          : 'bg-muted/60 border-border/50'
+      )}>
+        <div className="flex items-center gap-2">
+          <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className={cn(
+            'text-xs font-medium',
+            isDelayed ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'
+          )}>
+            {isDelayed ? 'IA demorando mais que o esperado…' : 'IA está digitando'}
+          </span>
+          <span className="flex gap-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Inbox Page ──
 
 export default function InboxPage() {
@@ -790,6 +833,12 @@ export default function InboxPage() {
               ) : (
                 <MessagesList messages={messages} />
               )}
+
+              {/* AI Typing Indicator */}
+              {selectedThread.ai_mode === 'auto' && selectedThread.ai_pending && (
+                <AiTypingIndicator startedAt={selectedThread.ai_pending_started_at} />
+              )}
+
               <div ref={messagesEndRef} />
             </ScrollArea>
 
