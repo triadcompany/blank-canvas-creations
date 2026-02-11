@@ -3615,16 +3615,21 @@ export type Database = {
           attempts: number
           created_at: string
           deal_id: string | null
+          dedupe_skipped: boolean | null
           event_id: string
           event_name: string
           event_time: string
           fail_reason: string | null
           id: string
           lead_id: string | null
+          mapping_id: string | null
           organization_id: string
           payload_json: Json | null
           phone: string | null
+          pipeline_id: string | null
           response_json: Json | null
+          source: string | null
+          stage_id: string | null
           status: string
           trace_id: string | null
           updated_at: string
@@ -3633,16 +3638,21 @@ export type Database = {
           attempts?: number
           created_at?: string
           deal_id?: string | null
+          dedupe_skipped?: boolean | null
           event_id: string
           event_name: string
           event_time?: string
           fail_reason?: string | null
           id?: string
           lead_id?: string | null
+          mapping_id?: string | null
           organization_id: string
           payload_json?: Json | null
           phone?: string | null
+          pipeline_id?: string | null
           response_json?: Json | null
+          source?: string | null
+          stage_id?: string | null
           status?: string
           trace_id?: string | null
           updated_at?: string
@@ -3651,16 +3661,21 @@ export type Database = {
           attempts?: number
           created_at?: string
           deal_id?: string | null
+          dedupe_skipped?: boolean | null
           event_id?: string
           event_name?: string
           event_time?: string
           fail_reason?: string | null
           id?: string
           lead_id?: string | null
+          mapping_id?: string | null
           organization_id?: string
           payload_json?: Json | null
           phone?: string | null
+          pipeline_id?: string | null
           response_json?: Json | null
+          source?: string | null
+          stage_id?: string | null
           status?: string
           trace_id?: string | null
           updated_at?: string
@@ -3678,6 +3693,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_mapping_id_fkey"
+            columns: ["mapping_id"]
+            isOneToOne: false
+            referencedRelation: "meta_event_mappings"
             referencedColumns: ["id"]
           },
           {
@@ -3710,6 +3732,84 @@ export type Database = {
           },
           {
             foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_event_mappings: {
+        Row: {
+          created_at: string
+          dedupe_enabled: boolean
+          dedupe_window_hours: number
+          id: string
+          is_active: boolean
+          meta_event_name: string
+          organization_id: string
+          pipeline_id: string
+          priority: number
+          stage_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dedupe_enabled?: boolean
+          dedupe_window_hours?: number
+          id?: string
+          is_active?: boolean
+          meta_event_name?: string
+          organization_id: string
+          pipeline_id: string
+          priority?: number
+          stage_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dedupe_enabled?: boolean
+          dedupe_window_hours?: number
+          id?: string
+          is_active?: boolean
+          meta_event_name?: string
+          organization_id?: string
+          pipeline_id?: string
+          priority?: number
+          stage_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_event_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_event_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_event_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_event_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_event_mappings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "saas_organizations"
