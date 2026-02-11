@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useInbox, InboxThread, InboxMessage } from '@/hooks/useInbox';
 import { useNavigate } from 'react-router-dom';
 import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
@@ -316,13 +316,17 @@ export default function InboxPage() {
     createLeadFromConversation,
     toggleAiMode,
     refreshThreads,
+    newMessageFlag,
   } = useInbox();
 
   const navigate = useNavigate();
   const [messageText, setMessageText] = useState('');
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const [createLeadModalOpen, setCreateLeadModalOpen] = useState(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   const canSend = canSendMessage(selectedThread);
 
@@ -333,10 +337,41 @@ export default function InboxPage() {
     return map;
   }, [orgMembers]);
 
-  // Auto-scroll on new messages
+  // Track scroll position to decide auto-scroll
+  const handleScroll = useCallback(() => {
+    const el = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!el) return;
+    const threshold = 80;
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    if (isAtBottomRef.current) {
+      setNewMsgCount(0);
+    }
+  }, []);
+
+  // Auto-scroll only when at bottom, otherwise show indicator
   useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setNewMsgCount(0);
+    } else if (newMessageFlag > 0) {
+      setNewMsgCount(c => c + 1);
+    }
+  }, [messages, newMessageFlag]);
+
+  // Reset scroll state when switching conversations
+  useEffect(() => {
+    isAtBottomRef.current = true;
+    setNewMsgCount(0);
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as any });
+    }, 100);
+  }, [selectedThreadId]);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    isAtBottomRef.current = true;
+    setNewMsgCount(0);
+  }, []);
 
   const handleSend = async () => {
     if (!messageText.trim() || sending || !canSend) return;
@@ -604,7 +639,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <ScrollArea className="flex-1 px-4 py-2">
+            <ScrollArea className="flex-1 px-4 py-2 relative" ref={scrollAreaRef} onScrollCapture={handleScroll}>
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-32">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -619,6 +654,20 @@ export default function InboxPage() {
               )}
               <div ref={messagesEndRef} />
             </ScrollArea>
+
+            {/* New messages indicator */}
+            {newMsgCount > 0 && (
+              <div className="absolute bottom-36 left-1/2 -translate-x-1/2 z-10">
+                <Button
+                  size="sm"
+                  className="rounded-full shadow-lg gap-1.5 text-xs"
+                  onClick={scrollToBottom}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  {newMsgCount} nova{newMsgCount > 1 ? 's' : ''} mensage{newMsgCount > 1 ? 'ns' : 'm'}
+                </Button>
+              </div>
+            )}
 
             {/* AI Suggestion Panel */}
             {selectedThread.ai_mode === 'assisted' && profile?.organization_id && (
