@@ -785,6 +785,23 @@ serve(async (req) => {
         return respond({ ok: true, message: "Evento reprocessado" });
       }
 
+      // ─── DEBUG: META CAPI LOGS ───
+      case "debug_meta_capi": {
+        const { organization_id, limit: rawLimit } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+        const limit = Math.min(rawLimit || 50, 100);
+
+        const { data, error } = await supabase
+          .from("meta_capi_logs")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, items: data || [] });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }
