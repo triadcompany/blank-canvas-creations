@@ -99,8 +99,11 @@ serve(async (req) => {
     const pagesData = await pagesRes.json();
 
     if (!pagesData.data || pagesData.data.length === 0) {
-      console.error("[instagram-exchange] No pages found:", pagesData);
-      return new Response(JSON.stringify({ error: 'Nenhuma página do Facebook encontrada. Verifique se sua conta tem páginas.' }), { status: 400, headers });
+      console.error("[instagram-exchange] No pages found. Response:", JSON.stringify(pagesData));
+      return new Response(JSON.stringify({
+        error: 'NO_FACEBOOK_PAGES',
+        message: 'Nenhuma Página do Facebook encontrada. Para usar mensagens do Instagram, o Instagram deve ser conta profissional vinculada a uma Página do Facebook, e você precisa ser admin dessa Página.',
+      }), { status: 400, headers });
     }
     console.log("[instagram-exchange] Found", pagesData.data.length, "pages");
 
@@ -123,8 +126,11 @@ serve(async (req) => {
     }
 
     if (!selectedPage || !igAccount) {
-      console.error("[instagram-exchange] No Instagram Business Account linked to any page");
-      return new Response(JSON.stringify({ error: 'Nenhuma conta Instagram Business vinculada às suas páginas do Facebook' }), { status: 400, headers });
+      console.error("[instagram-exchange] No Instagram Business Account linked to any page. Pages checked:", pagesData.data.length);
+      return new Response(JSON.stringify({
+        error: 'NO_IG_BUSINESS',
+        message: 'Nenhuma conta Instagram Business vinculada às suas páginas do Facebook. Converta seu Instagram para conta profissional e vincule a uma Página do Facebook.',
+      }), { status: 400, headers });
     }
 
     // Step 5: Persist connection

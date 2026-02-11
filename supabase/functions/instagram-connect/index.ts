@@ -131,12 +131,7 @@ async function handleAction(
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
       const redirectUri = params.redirectUri || 'https://autolead.lovable.app/settings?tab=instagram&callback=true';
 
-      const scope = [
-        'instagram_basic',
-        'instagram_manage_messages',
-        'pages_show_list',
-        'pages_read_engagement',
-      ].join(',');
+      const scope = 'instagram_basic,instagram_manage_messages,pages_show_list,pages_read_engagement';
 
       const state = btoa(JSON.stringify({ userId, organizationId }));
 
