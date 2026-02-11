@@ -583,6 +583,90 @@ serve(async (req) => {
         return respond({ ok: true, heartbeat: data });
       }
 
+      // ─── SIMULATE INBOUND FIRST MESSAGE (admin testing) ───
+      case "simulate_inbound": {
+        const { organization_id, phone, channel, message_body } = params;
+        if (!organization_id || !phone) return respond({ ok: false, message: "organization_id and phone required" }, 400);
+
+        const traceId = `sim_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+        const normalizedPhone = (phone as string).replace(/[\s\-\+\(\)]/g, "");
+        const ch = (channel as string) || "whatsapp";
+        const body = (message_body as string) || "anuncio";
+        const normalizedBody = body.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+        // Publish event directly to Event Bus
+        const idempotencyKey = `${organization_id}:sim:${normalizedPhone}:${traceId}`;
+        const { data: eventData, error: eventErr } = await supabase
+          .from("automation_events")
+          .insert({
+            organization_id,
+            event_name: "inbound.first_message",
+            entity_type: "conversation",
+            entity_id: normalizedPhone,
+            payload: {
+              phone: normalizedPhone,
+              contact_name: "Simulação Admin",
+              message_body: body,
+              message_body_normalized: normalizedBody,
+              channel: ch,
+              trace_id: traceId,
+              simulated: true,
+            },
+            source: "human",
+            idempotency_key: idempotencyKey,
+            status: "pending",
+          })
+          .select("id")
+          .single();
+
+        if (eventErr) {
+          return respond({ ok: false, message: eventErr.message }, 500);
+        }
+
+        // Also create initial execution record
+        await supabase.from("automation_executions").insert({
+          organization_id,
+          trace_id: traceId,
+          event_name: "inbound.first_message",
+          phone: normalizedPhone,
+          channel: ch,
+          message_text: body.substring(0, 500),
+          status: "event_published",
+          debug_json: {
+            simulated: true,
+            event_id: eventData?.id,
+            timestamp: new Date().toISOString(),
+          },
+        }).catch(() => {});
+
+        // Fire event-dispatcher
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/event-dispatcher`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({}),
+          });
+        } catch { /* non-critical */ }
+
+        // Fire worker after small delay
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/automation-worker`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({}),
+          });
+        } catch { /* non-critical */ }
+
+        return respond({
+          ok: true,
+          trace_id: traceId,
+          event_id: eventData?.id,
+          message: "Evento simulado publicado. Verifique a aba Execuções.",
+        });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }

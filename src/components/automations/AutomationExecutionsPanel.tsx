@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   CheckCircle2, XCircle, Clock, Play, Loader2, AlertTriangle, Eye,
-  RotateCw, Activity, Search,
+  RotateCw, Activity, Search, Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface Execution {
   id: string;
@@ -57,13 +60,14 @@ async function apiCall(action: string, params: Record<string, unknown>) {
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   received:            { label: "Recebido",    color: "bg-blue-500/10 text-blue-600 border-blue-200", icon: Clock },
+  event_published:     { label: "Publicado",   color: "bg-blue-500/10 text-blue-600 border-blue-200", icon: Clock },
   automation_fired:    { label: "Disparou",    color: "bg-emerald-500/10 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
   success:             { label: "Sucesso",     color: "bg-emerald-500/10 text-emerald-600 border-emerald-200", icon: CheckCircle2 },
   no_match:            { label: "Sem match",   color: "bg-amber-500/10 text-amber-600 border-amber-200", icon: AlertTriangle },
   filter_failed:       { label: "Filtro",      color: "bg-destructive/10 text-destructive border-destructive/20", icon: XCircle },
   keyword_not_matched: { label: "Keyword ✗",   color: "bg-destructive/10 text-destructive border-destructive/20", icon: XCircle },
   error:               { label: "Erro",        color: "bg-destructive/10 text-destructive border-destructive/20", icon: XCircle },
-  skipped:             { label: "Pulado",       color: "bg-muted text-muted-foreground border-muted", icon: Clock },
+  skipped:             { label: "Pulado",      color: "bg-muted text-muted-foreground border-muted", icon: Clock },
 };
 
 interface Props {
@@ -72,12 +76,17 @@ interface Props {
 
 export function AutomationExecutionsPanel({ organizationId }: Props) {
   const { isAdmin } = useAuth();
+  const { toast } = useToast();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [stats, setStats] = useState<ExecStats>({ total: 0, success: 0, error: 0, no_match: 0, pending: 0 });
   const [loading, setLoading] = useState(true);
   const [heartbeat, setHeartbeat] = useState<WorkerHeartbeat | null>(null);
   const [workerRunning, setWorkerRunning] = useState(false);
   const [detailExec, setDetailExec] = useState<Execution | null>(null);
+  const [simOpen, setSimOpen] = useState(false);
+  const [simPhone, setSimPhone] = useState("5547999999999");
+  const [simText, setSimText] = useState("anuncio");
+  const [simLoading, setSimLoading] = useState(false);
 
   const fetchExecutions = useCallback(async () => {
     if (!organizationId) return;
@@ -111,12 +120,41 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
         body: JSON.stringify({}),
       });
     } catch { /* ignore */ }
-    // Wait briefly then refresh
     setTimeout(async () => {
       await fetchExecutions();
       await fetchHeartbeat();
       setWorkerRunning(false);
     }, 2000);
+  };
+
+  const handleSimulate = async () => {
+    if (!organizationId || !simPhone.trim()) return;
+    setSimLoading(true);
+    try {
+      const result = await apiCall("simulate_inbound", {
+        organization_id: organizationId,
+        phone: simPhone.trim(),
+        channel: "whatsapp",
+        message_body: simText.trim() || "anuncio",
+      });
+      if (result.ok) {
+        toast({
+          title: "Evento simulado!",
+          description: `trace_id: ${result.trace_id}. Atualizando execuções...`,
+        });
+        setSimOpen(false);
+        // Wait for processing then refresh
+        setTimeout(async () => {
+          await fetchExecutions();
+          await fetchHeartbeat();
+        }, 3000);
+      } else {
+        toast({ title: "Erro", description: result.message, variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Erro", description: String(err), variant: "destructive" });
+    }
+    setSimLoading(false);
   };
 
   const heartbeatAge = heartbeat
@@ -169,6 +207,14 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
             }
           </Button>
         )}
+        {isAdmin && (
+          <Button
+            variant="outline" size="sm" onClick={() => setSimOpen(true)}
+            className="font-poppins gap-1.5"
+          >
+            <Send className="h-3.5 w-3.5" /> Simular Primeira Mensagem
+          </Button>
+        )}
       </div>
 
       {/* Executions list */}
@@ -180,8 +226,8 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center py-10">
             <Search className="h-10 w-10 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground font-poppins">
-              Nenhuma execução registrada. Envie uma mensagem com a palavra-chave para testar.
+            <p className="text-sm text-muted-foreground font-poppins text-center">
+              Nenhuma execução registrada. Use "Simular Primeira Mensagem" ou envie uma mensagem com a palavra-chave para testar.
             </p>
           </CardContent>
         </Card>
@@ -215,10 +261,13 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
                               → {String((debug as any).automation_name)}
                             </span>
                           )}
-                          {(debug as any).phone && (
+                          {exec.phone && (
                             <span className="text-[10px] text-muted-foreground font-poppins">
-                              📱 {String((debug as any).phone).slice(-8)}
+                              📱 {exec.phone.slice(-8)}
                             </span>
+                          )}
+                          {(debug as any).simulated && (
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0">SIM</Badge>
                           )}
                         </div>
                         {exec.fail_reason && (
@@ -228,7 +277,7 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
                         )}
                         <p className="text-[10px] text-muted-foreground font-poppins mt-0.5">
                           {format(new Date(exec.created_at), "dd/MM/yy HH:mm:ss", { locale: ptBR })}
-                          {" · trace: "}{exec.trace_id.substring(0, 12)}
+                          {" · trace: "}{exec.trace_id.substring(0, 16)}
                         </p>
                       </div>
                       <Button
@@ -275,11 +324,29 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
                     {format(new Date(detailExec.created_at), "dd/MM/yy HH:mm:ss", { locale: ptBR })}
                   </span>
                 </div>
+                {detailExec.phone && (
+                  <div>
+                    <span className="text-muted-foreground font-poppins">Telefone:</span>
+                    <span className="ml-2 font-poppins">{detailExec.phone}</span>
+                  </div>
+                )}
+                {detailExec.channel && (
+                  <div>
+                    <span className="text-muted-foreground font-poppins">Canal:</span>
+                    <span className="ml-2 font-poppins">{detailExec.channel}</span>
+                  </div>
+                )}
               </div>
               {detailExec.fail_reason && (
                 <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
                   <p className="text-sm font-poppins font-medium text-destructive">Motivo da falha:</p>
                   <p className="text-sm font-poppins mt-1">{detailExec.fail_reason}</p>
+                </div>
+              )}
+              {detailExec.message_text && (
+                <div>
+                  <p className="text-sm font-poppins font-medium mb-1">Mensagem:</p>
+                  <p className="text-sm font-poppins bg-muted p-2 rounded">{detailExec.message_text}</p>
                 </div>
               )}
               <div>
@@ -290,6 +357,38 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Simulate modal */}
+      <Dialog open={simOpen} onOpenChange={setSimOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-poppins">Simular Primeira Mensagem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="font-poppins">Telefone</Label>
+              <Input value={simPhone} onChange={(e) => setSimPhone(e.target.value)}
+                placeholder="5547999999999" className="font-poppins" />
+            </div>
+            <div>
+              <Label className="font-poppins">Texto da mensagem</Label>
+              <Input value={simText} onChange={(e) => setSimText(e.target.value)}
+                placeholder="anuncio" className="font-poppins" />
+            </div>
+            <p className="text-xs text-muted-foreground font-poppins">
+              Publica um evento <code>inbound.first_message</code> no Event Bus, sem depender do WhatsApp real.
+              O event-dispatcher e o worker processarão normalmente.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSimOpen(false)} className="font-poppins">Cancelar</Button>
+            <Button onClick={handleSimulate} disabled={simLoading || !simPhone.trim()} className="btn-gradient text-white font-poppins gap-2">
+              {simLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Simular
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
