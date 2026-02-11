@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -40,6 +40,31 @@ export interface OrgMember {
 
 type FilterMode = 'all' | 'mine' | 'unassigned';
 
+// Deduplicate and sort messages
+function dedupeAndSort(msgs: InboxMessage[]): InboxMessage[] {
+  const map = new Map<string, InboxMessage>();
+  for (const m of msgs) {
+    // Prefer non-temp messages over optimistic ones
+    const existing = map.get(m.id);
+    if (!existing || (existing.id.startsWith('temp-') && !m.id.startsWith('temp-'))) {
+      map.set(m.id, m);
+    }
+    // Also dedup by external_message_id
+    if (m.external_message_id) {
+      const byExt = [...map.values()].find(
+        x => x.external_message_id === m.external_message_id && x.id !== m.id
+      );
+      if (byExt && byExt.id.startsWith('temp-')) {
+        map.delete(byExt.id);
+      }
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+  });
+}
+
 export function useInbox() {
   const { profile, role, isAdmin } = useAuth();
   const [threads, setThreads] = useState<InboxThread[]>([]);
@@ -51,9 +76,16 @@ export function useInbox() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [newMessageFlag, setNewMessageFlag] = useState(0); // increments on inbound message for scroll UX
 
   const orgId = profile?.organization_id;
   const myProfileId = profile?.id;
+
+  // Refs to avoid recreating realtime channel
+  const selectedThreadIdRef = useRef(selectedThreadId);
+  selectedThreadIdRef.current = selectedThreadId;
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
 
   // Fetch org members for assignment dropdown
   const fetchOrgMembers = useCallback(async () => {
@@ -104,7 +136,7 @@ export function useInbox() {
         ...row,
         lead_id: row.lead_id || null,
         lead_stage_name: row.lead?.stage?.name || null,
-        lead: undefined, // remove nested object from thread
+        lead: undefined,
       }));
       setThreads(mapped);
     } catch (err: any) {
@@ -134,7 +166,7 @@ export function useInbox() {
         .limit(200);
 
       if (error) throw error;
-      setMessages((data as any[]) || []);
+      setMessages(dedupeAndSort((data as any[]) || []));
     } catch (err: any) {
       console.error('Error fetching messages:', err);
       toast.error('Erro ao carregar mensagens');
@@ -143,12 +175,12 @@ export function useInbox() {
     }
   }, [orgId]);
 
-  // Realtime: listen for new messages
+  // ── Realtime subscriptions (stable channel, uses refs) ──
   useEffect(() => {
     if (!orgId) return;
 
     const channel = supabase
-      .channel('inbox-messages-realtime')
+      .channel(`inbox-rt-${orgId}`)
       .on(
         'postgres_changes',
         {
@@ -158,14 +190,50 @@ export function useInbox() {
           filter: `organization_id=eq.${orgId}`,
         },
         (payload) => {
-          const newMsg = payload.new as any;
-          if (newMsg.conversation_id === selectedThreadId) {
+          const newMsg = payload.new as InboxMessage;
+
+          // If this message belongs to the currently open conversation, append it
+          if (newMsg.conversation_id === selectedThreadIdRef.current) {
             setMessages(prev => {
+              // Dedup: skip if already exists by id or external_message_id
               if (prev.some(m => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
+              if (newMsg.external_message_id && prev.some(m => m.external_message_id === newMsg.external_message_id)) {
+                // Replace optimistic message
+                return dedupeAndSort([...prev.filter(m => m.external_message_id !== newMsg.external_message_id), newMsg]);
+              }
+              // Remove any temp- message that matches body+direction (optimistic replacement)
+              const withoutOptimistic = prev.filter(m => {
+                if (!m.id.startsWith('temp-')) return true;
+                return !(m.body === newMsg.body && m.direction === newMsg.direction);
+              });
+              return dedupeAndSort([...withoutOptimistic, newMsg]);
             });
+
+            if (newMsg.direction === 'inbound') {
+              setNewMessageFlag(f => f + 1);
+            }
           }
-          fetchThreads();
+
+          // Update the conversation list in-memory
+          setThreads(prev => {
+            const updated = prev.map(t => {
+              if (t.id !== newMsg.conversation_id) return t;
+              return {
+                ...t,
+                last_message_at: newMsg.created_at,
+                last_message_preview: (newMsg.body || '').substring(0, 100),
+                unread_count: newMsg.conversation_id === selectedThreadIdRef.current
+                  ? 0
+                  : t.unread_count + (newMsg.direction === 'inbound' ? 1 : 0),
+              };
+            });
+            // Re-sort by last_message_at desc
+            return updated.sort((a, b) => {
+              const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+              const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+              return tb - ta;
+            });
+          });
         }
       )
       .on(
@@ -176,7 +244,41 @@ export function useInbox() {
           table: 'conversations',
           filter: `organization_id=eq.${orgId}`,
         },
+        (payload) => {
+          const updated = payload.new as any;
+          setThreads(prev => {
+            const newList = prev.map(t => {
+              if (t.id !== updated.id) return t;
+              return {
+                ...t,
+                last_message_at: updated.last_message_at ?? t.last_message_at,
+                last_message_preview: updated.last_message_preview ?? t.last_message_preview,
+                unread_count: updated.unread_count ?? t.unread_count,
+                assigned_to: updated.assigned_to ?? t.assigned_to,
+                assigned_at: updated.assigned_at ?? t.assigned_at,
+                contact_name: updated.contact_name ?? t.contact_name,
+                lead_id: updated.lead_id ?? t.lead_id,
+                ai_mode: updated.ai_mode ?? t.ai_mode,
+              };
+            });
+            return newList.sort((a, b) => {
+              const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+              const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+              return tb - ta;
+            });
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+          filter: `organization_id=eq.${orgId}`,
+        },
         () => {
+          // New conversation created — do a full refresh to get lead join data
           fetchThreads();
         }
       )
@@ -185,7 +287,37 @@ export function useInbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [orgId, selectedThreadId, fetchThreads]);
+    // Only depend on orgId — refs handle the rest
+  }, [orgId, fetchThreads]);
+
+  // ── Fallback polling for open conversation ──
+  useEffect(() => {
+    if (!orgId || !selectedThreadId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const lastMsg = messages[messages.length - 1];
+        const since = lastMsg?.created_at || new Date(0).toISOString();
+        
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', selectedThreadId)
+          .eq('organization_id', orgId)
+          .gt('created_at', since)
+          .order('created_at', { ascending: true })
+          .limit(50);
+
+        if (error || !data?.length) return;
+
+        setMessages(prev => dedupeAndSort([...prev, ...(data as InboxMessage[])]));
+      } catch {
+        // silent fallback
+      }
+    }, 7000);
+
+    return () => clearInterval(interval);
+  }, [orgId, selectedThreadId, messages]);
 
   // Zero unread_count when selecting a conversation
   const clearUnread = useCallback(async (conversationId: string) => {
@@ -235,10 +367,27 @@ export function useInbox() {
       external_message_id: null,
       created_at: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, optimisticMsg]);
+    setMessages(prev => dedupeAndSort([...prev, optimisticMsg]));
+
+    // Update thread list immediately (optimistic)
+    setThreads(prev => {
+      const updated = prev.map(t => {
+        if (t.id !== selectedThreadId) return t;
+        return {
+          ...t,
+          last_message_at: optimisticMsg.created_at,
+          last_message_preview: text.trim().substring(0, 100),
+        };
+      });
+      return updated.sort((a, b) => {
+        const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+        const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+        return tb - ta;
+      });
+    });
 
     try {
-      const selectedConv = threads.find(t => t.id === selectedThreadId);
+      const selectedConv = threadsRef.current.find(t => t.id === selectedThreadId);
       const res = await supabase.functions.invoke('whatsapp-send', {
         body: {
           organization_id: orgId,
@@ -254,8 +403,7 @@ export function useInbox() {
       const data = res.data as any;
       if (data?.error) throw new Error(data.error);
 
-      await fetchMessages(selectedThreadId);
-      await fetchThreads();
+      // Realtime will replace the optimistic message; no need for full fetch
     } catch (err: any) {
       console.error('Error sending message:', err);
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
@@ -263,7 +411,7 @@ export function useInbox() {
     } finally {
       setSending(false);
     }
-  }, [orgId, selectedThreadId, threads, fetchMessages, fetchThreads]);
+  }, [orgId, selectedThreadId]);
 
   // Assign conversation
   const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
@@ -277,8 +425,7 @@ export function useInbox() {
     );
 
     try {
-      console.log('[Inbox] Assigning conversation:', { threadId, profileId, orgId });
-      const { error, data } = await supabase
+      const { error } = await supabase
         .from('conversations')
         .update({
           assigned_to: profileId,
@@ -288,11 +435,7 @@ export function useInbox() {
         .eq('organization_id', orgId)
         .select('id, assigned_to');
 
-      if (error) {
-        console.error('[Inbox] Assignment DB error:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
-        throw error;
-      }
-      console.log('[Inbox] Assignment success:', data);
+      if (error) throw error;
       toast.success(profileId ? 'Conversa atribuída' : 'Atribuição removida');
     } catch (err: any) {
       console.error('[Inbox] Assignment failed:', err);
@@ -322,7 +465,6 @@ export function useInbox() {
     if (!orgId || !profile) return null;
 
     try {
-      // 1. Create the lead
       const { data: newLead, error: leadError } = await supabase
         .from('leads')
         .insert({
@@ -335,7 +477,6 @@ export function useInbox() {
 
       if (leadError) throw leadError;
 
-      // 2. Link conversation -> lead
       const { error: linkError } = await supabase
         .from('conversations')
         .update({ lead_id: newLead.id } as any)
@@ -344,12 +485,10 @@ export function useInbox() {
 
       if (linkError) throw linkError;
 
-      // 3. Update local state
       setThreads(prev =>
         prev.map(t => t.id === conversationId ? { ...t, lead_id: newLead.id } : t)
       );
 
-      // 4. Auto-distribute (non-blocking)
       (supabase.rpc as any)('distribute_lead', {
         p_lead_id: newLead.id,
         p_organization_id: orgId,
@@ -357,7 +496,6 @@ export function useInbox() {
         if (res.error) console.error('Lead distribution error:', res.error);
       });
 
-      // 5. Automation trigger (non-blocking)
       fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -423,6 +561,7 @@ export function useInbox() {
     orgMembers,
     profile,
     myProfileId,
+    newMessageFlag,
     setFilter,
     setSearch,
     selectThread,
