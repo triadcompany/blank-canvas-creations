@@ -588,7 +588,7 @@ serve(async (req) => {
         const { organization_id, phone, channel, message_body } = params;
         if (!organization_id || !phone) return respond({ ok: false, message: "organization_id and phone required" }, 400);
 
-        const traceId = `sim_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+        const traceId = crypto.randomUUID();
         const normalizedPhone = (phone as string).replace(/[\s\-\+\(\)]/g, "");
         const ch = (channel as string) || "whatsapp";
         const body = (message_body as string) || "anuncio";
