@@ -92,15 +92,28 @@ async function processEvent(supabase: any, event: any) {
   }
 
   // ── Find matching automations ──
-  let query = supabase
-    .from("automations")
-    .select("id, name, trigger_type, trigger_event_name, allow_ai_triggers, allow_human_triggers, throttle_seconds, channel")
-    .eq("organization_id", orgId)
-    .eq("is_active", true)
-    .eq("trigger_type", "event")
-    .eq("trigger_event_name", eventName);
+  // For "inbound.first_message" events, match automations with trigger_type "first_message"
+  // For other events, match automations with trigger_type "event" and matching trigger_event_name
+  let automations: any[] = [];
 
-  const { data: automations } = await query;
+  if (eventName === "inbound.first_message") {
+    const { data } = await supabase
+      .from("automations")
+      .select("id, name, trigger_type, trigger_event_name, allow_ai_triggers, allow_human_triggers, throttle_seconds, channel")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .eq("trigger_type", "first_message");
+    automations = data || [];
+  } else {
+    const { data } = await supabase
+      .from("automations")
+      .select("id, name, trigger_type, trigger_event_name, allow_ai_triggers, allow_human_triggers, throttle_seconds, channel")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .eq("trigger_type", "event")
+      .eq("trigger_event_name", eventName);
+    automations = data || [];
+  }
 
   if (!automations || automations.length === 0) {
     // No matching automations — mark as processed (nothing to do)
@@ -145,6 +158,75 @@ async function processEvent(supabase: any, event: any) {
         skippedCount++;
         continue;
       }
+    }
+
+    // ── First Message trigger: keyword matching + first-touch dedup ──
+    if (automation.trigger_type === "first_message") {
+      const payload = event.payload || {};
+      const phone = payload.phone || "";
+      const messageBody = payload.message_body || "";
+      const eventChannel = payload.channel || "whatsapp";
+
+      // Channel filter: check if automation's flow trigger restricts channel
+      const { data: flowForTrigger } = await supabase
+        .from("automation_flows")
+        .select("nodes")
+        .eq("automation_id", automation.id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const triggerNode = (flowForTrigger?.nodes || []).find((n: any) => n.type === "trigger");
+      const triggerConfig = triggerNode?.data?.config || {};
+
+      // Channel filter
+      const triggerChannel = triggerConfig.channel || "all";
+      if (triggerChannel !== "all" && triggerChannel !== eventChannel) {
+        await logEventRun(supabase, event.id, automation.id, orgId, "skipped", `Channel mismatch: ${eventChannel} != ${triggerChannel}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Keyword match
+      if (triggerConfig.useKeyword) {
+        const keyword = (triggerConfig.keyword || "").trim();
+        const matchType = triggerConfig.matchType || "contains";
+        const normalizedBody = messageBody.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const normalizedKeyword = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        let matched = false;
+        switch (matchType) {
+          case "contains": matched = normalizedBody.includes(normalizedKeyword); break;
+          case "equals": matched = normalizedBody === normalizedKeyword; break;
+          case "starts_with": matched = normalizedBody.startsWith(normalizedKeyword); break;
+          case "regex":
+            try { matched = new RegExp(keyword, "i").test(messageBody); } catch { matched = false; }
+            break;
+          default: matched = normalizedBody.includes(normalizedKeyword);
+        }
+
+        if (!matched) {
+          await logEventRun(supabase, event.id, automation.id, orgId, "skipped", `Keyword not matched: "${keyword}" (${matchType})`);
+          skippedCount++;
+          continue;
+        }
+      }
+
+      // First-touch dedup: insert record (skip if already exists)
+      const { error: ftErr } = await supabase
+        .from("whatsapp_first_touch")
+        .insert({ organization_id: orgId, phone, first_message_id: event.id });
+
+      if (ftErr) {
+        if (ftErr.code === "23505") {
+          await logEventRun(supabase, event.id, automation.id, orgId, "skipped", "First-touch already exists");
+          skippedCount++;
+          continue;
+        }
+        console.error(`[event-dispatcher] First-touch insert error:`, ftErr);
+      }
+
+      console.log(`[event-dispatcher] First-touch recorded for ${phone} — proceeding with automation ${automation.name}`);
     }
 
     // ── Anti-conflict: block message-sending automations when human_active ──

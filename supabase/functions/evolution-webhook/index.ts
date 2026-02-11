@@ -611,8 +611,13 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
         await wakePausedRuns(supabase, orgId, leadId, now);
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
-      } else if (containsAdMarker(text || "")) {
-        // ── Keyword "anuncio" detected — check first-touch dedup + org settings ──
+      }
+
+      // ── Publish inbound_first_message event to Event Bus (first-touch check) ──
+      await publishFirstMessageEvent(supabase, orgId, normalizedPhone, pushName, text || displayBody, conversationId, "whatsapp");
+
+      // Legacy: keyword "anuncio" detected — direct lead creation fallback
+      if (!leadId && containsAdMarker(text || "")) {
         await handleAdKeywordLead(supabase, orgId, normalizedPhone, pushName, externalMessageId, conversationId);
       }
     } else {
@@ -697,6 +702,89 @@ async function fetchAndSaveProfilePicture(supabase: any, instanceName: string, p
     }
   } catch (err) {
     console.log(`[evolution-webhook] Profile picture fetch error for ${phone}:`, err);
+  }
+}
+
+// ── Helper: Publish first message event to Event Bus ──
+async function publishFirstMessageEvent(
+  supabase: any,
+  orgId: string,
+  phone: string,
+  pushName: string,
+  messageBody: string,
+  conversationId: string | null,
+  channel: string,
+) {
+  try {
+    // First-touch dedup check (don't insert yet — just check)
+    const { data: existing } = await supabase
+      .from("whatsapp_first_touch")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (existing) {
+      // Not a first message — skip event publishing
+      return;
+    }
+
+    // Check if any active automation uses the first_message trigger
+    const { data: automations } = await supabase
+      .from("automations")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .eq("trigger_type", "first_message");
+
+    if (!automations || automations.length === 0) {
+      // No active first_message automations — skip
+      return;
+    }
+
+    // Publish event to Event Bus
+    const idempotencyKey = `${orgId}:inbound.first_message:${phone}:${new Date().toISOString().split('T')[0]}`;
+
+    const { error: eventErr } = await supabase
+      .from("automation_events")
+      .insert({
+        organization_id: orgId,
+        event_name: "inbound.first_message",
+        entity_type: "conversation",
+        entity_id: conversationId || phone,
+        conversation_id: conversationId,
+        payload: {
+          phone,
+          contact_name: pushName || null,
+          message_body: messageBody || "",
+          channel,
+        },
+        source: "system",
+        idempotency_key: idempotencyKey,
+        status: "pending",
+      });
+
+    if (eventErr) {
+      if (eventErr.code === "23505") {
+        console.log(`[evolution-webhook] First message event already published (idempotent) for ${phone}`);
+      } else {
+        console.error(`[evolution-webhook] Error publishing first message event:`, eventErr);
+      }
+      return;
+    }
+
+    console.log(`[evolution-webhook] ✅ Published inbound.first_message event for ${phone} (channel=${channel})`);
+
+    // Fire-and-forget: invoke event-dispatcher
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    fetch(`${supabaseUrl}/functions/v1/event-dispatcher`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({}),
+    }).catch(() => {});
+  } catch (err) {
+    console.error("[evolution-webhook] publishFirstMessageEvent error:", err);
   }
 }
 
