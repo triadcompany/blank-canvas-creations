@@ -72,6 +72,9 @@ async function processEvent(supabase: any, event: any) {
   const orgId = event.organization_id;
   const eventName = event.event_name;
   const source = event.source;
+  const traceId = event.payload?.trace_id || `evt_${event.id.substring(0, 8)}`;
+
+  console.log(`[AUTOMATION_CONSUME] trace_id=${traceId} event_type=${eventName} org_id=${orgId} event_id=${event.id}`);
 
   // ── Check conversation ai_state for anti-conflict ──
   if (event.conversation_id && source === "ai") {
@@ -87,13 +90,12 @@ async function processEvent(supabase: any, event: any) {
         .from("automation_events")
         .update({ status: "skipped", processed_at: new Date().toISOString(), error: "Blocked: human_active" })
         .eq("id", event.id);
+      await updateExecution(supabase, orgId, traceId, "skipped", "human_active on conversation", { skipped_reason: "human_active" });
       return { skipped: 1 };
     }
   }
 
   // ── Find matching automations ──
-  // For "inbound.first_message" events, match automations with trigger_type "first_message"
-  // For other events, match automations with trigger_type "event" and matching trigger_event_name
   let automations: any[] = [];
 
   if (eventName === "inbound.first_message") {
@@ -115,13 +117,15 @@ async function processEvent(supabase: any, event: any) {
     automations = data || [];
   }
 
+  console.log(`[AUTOMATION_MATCH] trace_id=${traceId} active_count=${automations.length} candidates=[${automations.map((a: any) => `{id=${a.id.substring(0,8)},trigger_type=${a.trigger_type},name=${a.name}}`).join(",")}]`);
+
   if (!automations || automations.length === 0) {
-    // No matching automations — mark as processed (nothing to do)
     await supabase
       .from("automation_events")
       .update({ status: "processed", processed_at: new Date().toISOString() })
       .eq("id", event.id);
     console.log(`[event-dispatcher] Event ${event.id} (${eventName}): no matching automations`);
+    await updateExecution(supabase, orgId, traceId, "no_match", "No active automations matched", { automations_found: 0 });
     return { skipped: 0 };
   }
 
@@ -132,11 +136,13 @@ async function processEvent(supabase: any, event: any) {
     // ── Source permission check ──
     if (source === "ai" && !automation.allow_ai_triggers) {
       await logEventRun(supabase, event.id, automation.id, orgId, "skipped", "allow_ai_triggers=false");
+      console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} final_match=false fail_reason=allow_ai_triggers_false`);
       skippedCount++;
       continue;
     }
     if (source === "human" && !automation.allow_human_triggers) {
       await logEventRun(supabase, event.id, automation.id, orgId, "skipped", "allow_human_triggers=false");
+      console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} final_match=false fail_reason=allow_human_triggers_false`);
       skippedCount++;
       continue;
     }
@@ -155,12 +161,13 @@ async function processEvent(supabase: any, event: any) {
 
       if (recentRuns && recentRuns.length > 0) {
         await logEventRun(supabase, event.id, automation.id, orgId, "skipped", `Throttled (${automation.throttle_seconds}s)`);
+        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} final_match=false fail_reason=throttled`);
         skippedCount++;
         continue;
       }
     }
 
-    // ── First Message trigger: keyword matching + first-touch dedup ──
+    // ── First Message trigger: keyword matching (NO first-touch dedup here — webhook handles it) ──
     if (automation.trigger_type === "first_message") {
       const payload = event.payload || {};
       const phone = payload.phone || "";
@@ -182,7 +189,15 @@ async function processEvent(supabase: any, event: any) {
       // Channel filter
       const triggerChannel = triggerConfig.channel || "all";
       if (triggerChannel !== "all" && triggerChannel !== eventChannel) {
-        await logEventRun(supabase, event.id, automation.id, orgId, "skipped", `Channel mismatch: ${eventChannel} != ${triggerChannel}`);
+        const reason = `Channel mismatch: ${eventChannel} != ${triggerChannel}`;
+        await logEventRun(supabase, event.id, automation.id, orgId, "skipped", reason);
+        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} final_match=false fail_reason=channel_mismatch`);
+        await updateExecution(supabase, orgId, traceId, "filter_failed", reason, {
+          automation_id: automation.id,
+          automation_name: automation.name,
+          channel_expected: triggerChannel,
+          channel_got: eventChannel,
+        });
         skippedCount++;
         continue;
       }
@@ -191,8 +206,8 @@ async function processEvent(supabase: any, event: any) {
       if (triggerConfig.useKeyword) {
         const keyword = (triggerConfig.keyword || "").trim();
         const matchType = triggerConfig.matchType || "contains";
-        const normalizedBody = messageBody.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const normalizedKeyword = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const normalizedBody = messageBody.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+        const normalizedKeyword = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
         let matched = false;
         switch (matchType) {
@@ -205,28 +220,29 @@ async function processEvent(supabase: any, event: any) {
           default: matched = normalizedBody.includes(normalizedKeyword);
         }
 
+        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=true keyword="${keyword}" match_type=${matchType} normalized_message_text="${normalizedBody.substring(0,80)}" keyword_matched=${matched} final_match=${matched}`);
+
         if (!matched) {
-          await logEventRun(supabase, event.id, automation.id, orgId, "skipped", `Keyword not matched: "${keyword}" (${matchType})`);
+          const reason = `Keyword not matched: "${keyword}" (${matchType}) in "${normalizedBody.substring(0,60)}"`;
+          await logEventRun(supabase, event.id, automation.id, orgId, "skipped", reason);
+          await updateExecution(supabase, orgId, traceId, "keyword_not_matched", reason, {
+            automation_id: automation.id,
+            automation_name: automation.name,
+            keyword,
+            match_type: matchType,
+            normalized_message: normalizedBody.substring(0, 200),
+          });
           skippedCount++;
           continue;
         }
+      } else {
+        console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=false final_match=true`);
       }
 
-      // First-touch dedup: insert record (skip if already exists)
-      const { error: ftErr } = await supabase
-        .from("whatsapp_first_touch")
-        .insert({ organization_id: orgId, phone, first_message_id: event.id });
-
-      if (ftErr) {
-        if (ftErr.code === "23505") {
-          await logEventRun(supabase, event.id, automation.id, orgId, "skipped", "First-touch already exists");
-          skippedCount++;
-          continue;
-        }
-        console.error(`[event-dispatcher] First-touch insert error:`, ftErr);
-      }
-
-      console.log(`[event-dispatcher] First-touch recorded for ${phone} — proceeding with automation ${automation.name}`);
+      // NOTE: First-touch dedup is now handled by the webhook (publishFirstMessageEvent)
+      // The webhook inserts the first-touch record BEFORE publishing the event
+      // So we don't need to re-check/insert first-touch here
+      console.log(`[event-dispatcher] First-touch already handled by webhook for ${phone} — proceeding with automation ${automation.name}`);
     }
 
     // ── Anti-conflict: block message-sending automations when human_active ──
@@ -238,7 +254,6 @@ async function processEvent(supabase: any, event: any) {
         .maybeSingle();
 
       if (conv?.ai_state === "human_active") {
-        // Check if automation flow has message nodes
         const { data: flow } = await supabase
           .from("automation_flows")
           .select("nodes")
@@ -256,11 +271,11 @@ async function processEvent(supabase: any, event: any) {
       }
     }
 
-    // ── Execute automation via automation-trigger ──
+    // ── Execute automation ──
     try {
+      console.log(`[AUTOMATION_FIRE] trace_id=${traceId} automation_id=${automation.id}`);
       const runId = await logEventRun(supabase, event.id, automation.id, orgId, "pending", null);
 
-      // Create an automation run
       const entityId = event.lead_id || event.conversation_id || event.entity_id || event.id;
       const entityType = event.lead_id ? "lead" : event.conversation_id ? "conversation" : event.entity_type;
 
@@ -297,14 +312,28 @@ async function processEvent(supabase: any, event: any) {
         continue;
       }
 
-      const entryNodeId = flow.entry_node_id || (flow.nodes as any[])?.[0]?.id;
+      // Find entry node: skip trigger node, use first node connected to trigger
+      const nodes = (flow.nodes as any[]) || [];
+      const edges = (flow.edges as any[]) || [];
+      const triggerNode = nodes.find((n: any) => n.type === "trigger");
+
+      let firstActionNodeId: string | null = null;
+      if (triggerNode) {
+        const outEdge = edges.find((e: any) => e.source === triggerNode.id);
+        if (outEdge) {
+          firstActionNodeId = outEdge.target;
+        }
+      }
+
+      // Fallback to entry_node_id or first node
+      const entryNodeId = firstActionNodeId || flow.entry_node_id || nodes[0]?.id;
       if (!entryNodeId) {
         await updateEventRun(supabase, runId, "failed", "No entry node");
         await supabase.from("automation_runs").update({ status: "failed", last_error: "No entry node" }).eq("id", run.id);
         continue;
       }
 
-      const entryNode = (flow.nodes as any[])?.find((n: any) => n.id === entryNodeId);
+      const entryNode = nodes.find((n: any) => n.id === entryNodeId);
 
       await supabase.from("automation_jobs").insert({
         organization_id: orgId,
@@ -334,13 +363,23 @@ async function processEvent(supabase: any, event: any) {
         node_id: entryNodeId,
         level: "info",
         message: `Automação disparada por evento: ${eventName} (source: ${source})`,
-        data: { event_id: event.id, event_name: eventName, source },
+        data: { event_id: event.id, event_name: eventName, source, trace_id: traceId },
+      });
+
+      // Update execution trace
+      await updateExecution(supabase, orgId, traceId, "automation_fired", null, {
+        automation_id: automation.id,
+        automation_name: automation.name,
+        run_id: run.id,
+        entry_node_id: entryNodeId,
+        entry_node_type: entryNode?.type,
       });
 
       executedCount++;
-      console.log(`[event-dispatcher] Automation ${automation.name} triggered for event ${event.id}`);
+      console.log(`[AUTOMATION_ACTION] trace_id=${traceId} automation_id=${automation.id} action_type=run_created result=success run_id=${run.id}`);
     } catch (err) {
-      console.error(`[event-dispatcher] Automation ${automation.id} execution error:`, err);
+      console.error(`[AUTOMATION_ACTION] trace_id=${traceId} automation_id=${automation.id} result=error error_message=${err}`);
+      await updateExecution(supabase, orgId, traceId, "error", String(err), { automation_id: automation.id });
     }
   }
 
@@ -382,6 +421,7 @@ async function logEventRun(
       organization_id: orgId,
       status,
       skipped_reason: skippedReason,
+      started_at: new Date().toISOString(),
     })
     .select("id")
     .single();
@@ -394,4 +434,42 @@ async function updateEventRun(supabase: any, runId: string, status: string, erro
     .from("automation_event_runs")
     .update({ status, finished_at: new Date().toISOString(), error })
     .eq("id", runId);
+}
+
+// ── Update automation_executions trace ──
+async function updateExecution(
+  supabase: any,
+  orgId: string,
+  traceId: string,
+  status: string,
+  failReason: string | null,
+  extraDebug: Record<string, unknown>,
+) {
+  try {
+    // Try to update existing execution first
+    const { data: existing } = await supabase
+      .from("automation_executions")
+      .select("id, debug_json")
+      .eq("organization_id", orgId)
+      .eq("trace_id", traceId)
+      .maybeSingle();
+
+    if (existing) {
+      const mergedDebug = { ...(existing.debug_json || {}), ...extraDebug, [`step_${status}`]: new Date().toISOString() };
+      await supabase
+        .from("automation_executions")
+        .update({ status, fail_reason: failReason, debug_json: mergedDebug })
+        .eq("id", existing.id);
+    } else {
+      // Create new execution record
+      await supabase.from("automation_executions").insert({
+        organization_id: orgId,
+        trace_id: traceId,
+        event_name: "inbound.first_message",
+        status,
+        fail_reason: failReason,
+        debug_json: { ...extraDebug, [`step_${status}`]: new Date().toISOString() },
+      });
+    }
+  } catch { /* non-critical */ }
 }

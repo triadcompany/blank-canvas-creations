@@ -536,6 +536,54 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_executions: {
+        Row: {
+          automation_event_id: string | null
+          automation_id: string | null
+          channel: string | null
+          created_at: string
+          debug_json: Json
+          event_name: string
+          fail_reason: string | null
+          id: string
+          message_text: string | null
+          organization_id: string
+          phone: string | null
+          status: string
+          trace_id: string
+        }
+        Insert: {
+          automation_event_id?: string | null
+          automation_id?: string | null
+          channel?: string | null
+          created_at?: string
+          debug_json?: Json
+          event_name: string
+          fail_reason?: string | null
+          id?: string
+          message_text?: string | null
+          organization_id: string
+          phone?: string | null
+          status?: string
+          trace_id: string
+        }
+        Update: {
+          automation_event_id?: string | null
+          automation_id?: string | null
+          channel?: string | null
+          created_at?: string
+          debug_json?: Json
+          event_name?: string
+          fail_reason?: string | null
+          id?: string
+          message_text?: string | null
+          organization_id?: string
+          phone?: string | null
+          status?: string
+          trace_id?: string
+        }
+        Relationships: []
+      }
       automation_flows: {
         Row: {
           automation_id: string
