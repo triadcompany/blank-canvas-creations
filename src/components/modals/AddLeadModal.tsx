@@ -279,13 +279,9 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
                         </SelectItem>
                       ))
                     ) : (
-                      <>
-                        <SelectItem value="Facebook Ads">Facebook Ads</SelectItem>
-                        <SelectItem value="Instagram">Instagram</SelectItem>
-                        <SelectItem value="Google">Google</SelectItem>
-                        <SelectItem value="Indicação">Indicação</SelectItem>
-                        <SelectItem value="Orgânico">Orgânico</SelectItem>
-                      </>
+                      <SelectItem value="" disabled>
+                        Nenhuma origem cadastrada — vá em Configurações → Origens de Leads
+                      </SelectItem>
                     )}
                   </SelectContent>
                 </Select>

@@ -403,6 +403,7 @@ const LEAD_ALLOWED_FIELDS = [
   "observations", "stage_id", "seller_id", "created_by",
   "created_at", "updated_at", "interest", "price",
   "valor_negocio", "servico", "cidade", "estado", "assigned_to",
+  "lead_source_id",
 ];
 
 function filterLeadPayload(payload: Record<string, unknown>) {
@@ -668,6 +669,20 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
     const rawMessageBody = ctx.message_body || ctx.message_text || "";
     const interestText = (rawMessageBody.trim() || "Lead criado automaticamente via primeira mensagem.").substring(0, 2000);
 
+    // ── Resolve lead_source_id from source name ──
+    let resolvedLeadSourceId: string | null = null;
+    if (source && orgId) {
+      const { data: matchedSource } = await supabase
+        .from("lead_sources")
+        .select("id")
+        .eq("organization_id", orgId)
+        .ilike("name", source)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (matchedSource) resolvedLeadSourceId = matchedSource.id;
+    }
+
     // Create lead with ONLY contact-safe fields
     const rawLeadPayload: Record<string, unknown> = {
       organization_id: orgId,
@@ -680,6 +695,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       assigned_to: resolvedSellerId,
       created_by: resolvedCreatedBy,
       interest: interestText,
+      lead_source_id: resolvedLeadSourceId,
     };
 
     const { filtered: safeLeadPayload, dropped: droppedFields } = filterLeadPayload(rawLeadPayload);

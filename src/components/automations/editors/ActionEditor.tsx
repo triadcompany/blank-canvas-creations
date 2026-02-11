@@ -69,7 +69,7 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
     const fetchData = async () => {
       const [pRes, sRes, mRes] = await Promise.all([
         supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
-        supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).order("name"),
+        supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("sort_order").order("name"),
         supabase.from("profiles").select("id, name").eq("organization_id", orgId).order("name"),
       ]);
       if (pRes.data) setPipelines(pRes.data as Pipeline[]);
@@ -137,15 +137,17 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
                 <SelectValue placeholder="Selecione a origem" />
               </SelectTrigger>
               <SelectContent>
-                {sources.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>
-                    {s.name}
+                {sources.length > 0 ? (
+                  sources.map((s) => (
+                    <SelectItem key={s.id} value={s.name}>
+                      {s.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="" disabled>
+                    Nenhuma origem cadastrada
                   </SelectItem>
-                ))}
-                <SelectItem value="Meta Ads">Meta Ads</SelectItem>
-                <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                <SelectItem value="Instagram">Instagram</SelectItem>
-                <SelectItem value="Indicação">Indicação</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>

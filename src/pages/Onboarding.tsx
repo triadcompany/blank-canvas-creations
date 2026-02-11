@@ -97,12 +97,18 @@ export default function Onboarding() {
       console.log("✅ Admin role created");
 
       // 4. Create default lead sources
-      const defaultSources = ["Meta Ads", "Google Ads", "Orgânico", "Site", "Indicação"];
+      const defaultSources = [
+        { name: "Meta Ads", sort_order: 10 },
+        { name: "Indicação", sort_order: 20 },
+        { name: "Site", sort_order: 30 },
+        { name: "Orgânico", sort_order: 40 },
+      ];
       const { error: sourcesError } = await supabase
         .from("lead_sources")
         .insert(
-          defaultSources.map((name) => ({
-            name,
+          defaultSources.map((s) => ({
+            name: s.name,
+            sort_order: s.sort_order,
             organization_id: newOrg.id,
             created_by: clerkUserId,
             is_active: true,

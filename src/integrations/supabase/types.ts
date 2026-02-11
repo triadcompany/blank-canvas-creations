@@ -3290,32 +3290,35 @@ export type Database = {
       lead_sources: {
         Row: {
           created_at: string | null
-          created_by: string
+          created_by: string | null
           description: string | null
           id: string
           is_active: boolean | null
           name: string
           organization_id: string
+          sort_order: number
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
-          created_by: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean | null
           name: string
           organization_id: string
+          sort_order?: number
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
-          created_by?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
           organization_id?: string
+          sort_order?: number
           updated_at?: string | null
         }
         Relationships: [
@@ -3341,6 +3344,7 @@ export type Database = {
           last_inbound_message_at: string | null
           last_inbound_message_text: string | null
           last_reply_at: string | null
+          lead_source_id: string | null
           name: string
           observations: string | null
           organization_id: string | null
@@ -3365,6 +3369,7 @@ export type Database = {
           last_inbound_message_at?: string | null
           last_inbound_message_text?: string | null
           last_reply_at?: string | null
+          lead_source_id?: string | null
           name: string
           observations?: string | null
           organization_id?: string | null
@@ -3389,6 +3394,7 @@ export type Database = {
           last_inbound_message_at?: string | null
           last_inbound_message_text?: string | null
           last_reply_at?: string | null
+          lead_source_id?: string | null
           name?: string
           observations?: string | null
           organization_id?: string | null
@@ -3428,6 +3434,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_lead_source_id_fkey"
+            columns: ["lead_source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
             referencedColumns: ["id"]
           },
           {
