@@ -21,7 +21,7 @@ serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    const verifyToken = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "autolead_instagram_verify";
+    const verifyToken = Deno.env.get("META_WEBHOOK_VERIFY_TOKEN") || "meta_webhook_autolead_v1";
 
     // Health check
     if (!mode && !token && !challenge) {
