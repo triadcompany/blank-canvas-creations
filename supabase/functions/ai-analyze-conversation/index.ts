@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadIntentDefinitions, saveConversationIntelligence } from "../_shared/intent-loader.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,6 +91,18 @@ serve(async (req) => {
     // Available stage names for prompt context
     const availableStageNames = pipelineStages.map((s: any) => s.name).join(", ");
 
+    // ── Load dynamic intent definitions ──
+    let intentDefs: { intent_key: string; intent_label: string }[] = [];
+    try {
+      intentDefs = await loadIntentDefinitions(supabase, organization_id);
+    } catch (e) {
+      console.error("[ai-analyze] Failed to load intents:", e);
+      intentDefs = [{ intent_key: "unknown", intent_label: "Indefinido" }];
+    }
+
+    const intentList = intentDefs.map(i => `- ${i.intent_key}: ${i.intent_label}`).join("\n");
+    const intentKeys = intentDefs.map(i => i.intent_key).join(", ");
+
     // 4. Build context for GPT
     const contactName = conv.contact_name || conv.contact_phone;
     const currentStageName = conv.lead?.stage?.name || null;
@@ -113,9 +126,12 @@ CONTEXTO:
 
 REGRAS PARA RESPOSTA:
 - Sugira UMA resposta curta e natural (como se fosse por WhatsApp)
-- Identifique a intenção do cliente (interest, question, objection, complaint, closing, greeting, purchase_interest, no_interest, scheduling, other)
+- Identifique a intenção do cliente usando APENAS as intents listadas abaixo
 - Seja direto e comercial, focado em avançar a negociação
 - Responda em português brasileiro
+
+INTENTS DISPONÍVEIS (use APENAS estas):
+${intentList}
 
 REGRAS PARA SUGESTÃO DE ETAPA:
 - Analise a conversa e sugira a etapa mais adequada do funil, usando APENAS os nomes de etapas disponíveis listados acima.
@@ -131,13 +147,15 @@ REGRAS PARA SUGESTÃO DE ETAPA:
 
 Responda EXATAMENTE neste formato JSON:
 {
-  "intent": "string",
+  "intent": "intent_key válida da lista (ex: ${intentKeys.split(", ").slice(0, 3).join(", ")})",
+  "confidence": 0.0,
+  "sentiment": "positive | neutral | negative",
+  "urgency_level": "low | medium | high",
   "summary": "resumo curto da conversa em 1 frase",
   "suggested_reply": "texto da resposta sugerida",
   "suggested_action_type": "move_stage | qualify | followup | handoff | null",
   "suggested_stage_name": "nome exato da etapa ou null",
-  "suggested_reason": "motivo curto da sugestão de etapa ou null",
-  "confidence": 0.0
+  "suggested_reason": "motivo curto da sugestão de etapa ou null"
 }`;
 
     // 5. Call OpenAI
@@ -183,8 +201,23 @@ Responda EXATAMENTE neste formato JSON:
         suggested_stage_name: null,
         suggested_reason: null,
         confidence: 0.3,
+        sentiment: "neutral",
+        urgency_level: "low",
       };
     }
+
+    // Validate intent against loaded definitions
+    const validIntentKeys = new Set(intentDefs.map(i => i.intent_key));
+    if (!validIntentKeys.has(aiResult.intent)) {
+      aiResult.intent = "unknown";
+    }
+    const detectedIntentLabel = intentDefs.find(i => i.intent_key === aiResult.intent)?.intent_label || "Indefinido";
+
+    // Validate sentiment and urgency
+    const validSentiments = ["positive", "neutral", "negative"];
+    const validUrgencies = ["low", "medium", "high"];
+    aiResult.sentiment = validSentiments.includes(aiResult.sentiment) ? aiResult.sentiment : "neutral";
+    aiResult.urgency_level = validUrgencies.includes(aiResult.urgency_level) ? aiResult.urgency_level : "low";
 
     // 6. Resolve stage suggestion to real IDs
     let suggested_pipeline_id: string | null = null;
@@ -226,6 +259,7 @@ Responda EXATAMENTE neste formato JSON:
     // Build final result
     const finalResult = {
       intent: aiResult.intent || "unknown",
+      intent_label: detectedIntentLabel,
       summary: aiResult.summary || "",
       suggested_reply: aiResult.suggested_reply || "",
       suggested_actions: [], // keep backward compat
@@ -235,11 +269,24 @@ Responda EXATAMENTE neste formato JSON:
       suggested_stage_name,
       suggested_reason,
       confidence: aiResult.confidence || 0,
+      sentiment: aiResult.sentiment,
+      urgency_level: aiResult.urgency_level,
       // Context for UI
       current_stage_name: currentStageName,
       current_stage_id: currentStageId,
       lead_id: conv.lead?.id || null,
     };
+
+    // Save conversation intelligence (non-blocking)
+    saveConversationIntelligence(supabase, {
+      organization_id,
+      conversation_id,
+      last_detected_intent: aiResult.intent || "unknown",
+      intent_label: detectedIntentLabel,
+      confidence: aiResult.confidence || 0,
+      sentiment: aiResult.sentiment,
+      urgency_level: aiResult.urgency_level,
+    }).catch(e => console.error("[ai-analyze] Intelligence save error:", e));
 
     // 7. Log to ai_interactions (audit)
     const { data: interactionData } = await supabase.from("ai_interactions").insert({

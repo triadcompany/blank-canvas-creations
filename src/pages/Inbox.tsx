@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { cn } from '@/lib/utils';
 import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
+import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
 
 const BLOCK_REASON_LABELS: Record<string, string> = {
   throttle_active: 'Throttle ativo',
@@ -817,6 +818,14 @@ export default function InboxPage() {
                   </Button>
                 )}
               </div>
+            )}
+
+            {/* Conversation Intelligence Badge */}
+            {profile?.organization_id && (
+              <ConversationIntelligenceBadge
+                conversationId={selectedThread.id}
+                organizationId={profile.organization_id}
+              />
             )}
 
             {/* Messages */}
