@@ -11,17 +11,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log("[instagram-connect] start", {
-    method: req.method,
-    hasAuth: !!req.headers.get("authorization"),
-  });
-
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Validate required env vars upfront
+    // Validate required env vars
     const required = ["META_APP_ID", "META_APP_SECRET"];
     const missing = required.filter(k => !Deno.env.get(k));
     if (missing.length > 0) {
@@ -32,80 +27,83 @@ serve(async (req) => {
       });
     }
 
-    // Auth: try Supabase native first, then Clerk-style profile lookup
-    const authHeader = req.headers.get('Authorization');
-    let userId: string | null = null;
-    let organizationId: string | null = null;
-
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '');
-
-      // Try Supabase auth
-      const { data: authData } = await supabaseAdmin.auth.getUser(token);
-      if (authData?.user) {
-        userId = authData.user.id;
-      }
-    }
-
-    // If no Supabase user, try to find by Clerk — look for profile via header or body
-    if (!userId) {
-      // Parse body to get potential user context
-      let body: any = {};
-      try {
-        body = await req.json();
-      } catch {
-        return new Response(JSON.stringify({ error: 'Invalid request body' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Try to find user from the anon key session
-      const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-        global: { headers: { Authorization: authHeader || '' } },
-      });
-      const { data: claimsData } = await supabaseAnon.auth.getUser();
-      if (claimsData?.user) {
-        userId = claimsData.user.id;
-      }
-
-      if (!userId) {
-        console.error("[instagram-connect] Auth failed — no valid user found");
-        return new Response(JSON.stringify({ error: 'Não autorizado. Faça login novamente.' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Get org from profile
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('organization_id')
-        .eq('user_id', userId)
-        .single();
-
-      organizationId = profile?.organization_id || null;
-
-      return handleAction(body, userId, organizationId, supabaseAdmin, corsHeaders);
-    }
-
-    // Get org from profile
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('organization_id')
-      .eq('user_id', userId)
-      .single();
-
-    organizationId = profile?.organization_id || null;
-
-    if (!organizationId) {
-      return new Response(JSON.stringify({ error: 'Organização não encontrada para este usuário' }), {
+    // Parse body
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid request body' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const body = await req.json();
+    const { profileId, organizationId: bodyOrgId } = body;
+
+    console.log("[instagram-connect] start", {
+      method: req.method,
+      action: body.action,
+      profileId,
+      bodyOrgId,
+    });
+
+    // Auth: identify user via profileId from body (Clerk-based auth)
+    let userId: string | null = null;
+    let organizationId: string | null = null;
+
+    if (profileId) {
+      // Verify profile exists and get org
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, user_id, organization_id')
+        .eq('id', profileId)
+        .single();
+
+      if (profileError || !profile) {
+        console.error("[instagram-connect] Profile not found:", profileId, profileError);
+        return new Response(JSON.stringify({ error: 'Perfil não encontrado', code: 'PROFILE_NOT_FOUND' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      userId = profile.user_id || profile.id;
+      organizationId = profile.organization_id;
+    }
+
+    // Fallback: try Supabase Auth header (for non-Clerk users)
+    if (!userId) {
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: authData } = await supabaseAdmin.auth.getUser(token);
+        if (authData?.user) {
+          userId = authData.user.id;
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('organization_id')
+            .eq('user_id', userId)
+            .single();
+          organizationId = profile?.organization_id || null;
+        }
+      }
+    }
+
+    if (!userId) {
+      console.error("[instagram-connect] Auth failed — no valid user found");
+      return new Response(JSON.stringify({ error: 'Não autorizado. Faça login novamente.', code: 'AUTH_FAILED' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!organizationId) {
+      return new Response(JSON.stringify({ error: 'Organização não encontrada para este usuário', code: 'NO_ORG' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return handleAction(body, userId, organizationId, supabaseAdmin, corsHeaders);
 
   } catch (error) {
@@ -120,19 +118,12 @@ serve(async (req) => {
 async function handleAction(
   body: any,
   userId: string,
-  organizationId: string | null,
+  organizationId: string,
   supabaseAdmin: any,
   corsHeaders: Record<string, string>,
 ) {
   const { action, ...params } = body;
   console.log("[instagram-connect] action:", action, "userId:", userId, "orgId:", organizationId);
-
-  if (!organizationId) {
-    return new Response(JSON.stringify({ error: 'Organização não encontrada' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
 
   switch (action) {
     case 'get_oauth_url': {
@@ -148,10 +139,7 @@ async function handleAction(
         'pages_read_engagement',
       ].join(',');
 
-      const state = btoa(JSON.stringify({
-        userId,
-        organizationId,
-      }));
+      const state = btoa(JSON.stringify({ userId, organizationId }));
 
       const oauthUrl = `https://www.facebook.com/v18.0/dialog/oauth?` +
         `client_id=${appId}` +
@@ -235,7 +223,6 @@ async function handleAction(
         });
       }
 
-      // Save to social_integrations for webhook routing
       await supabaseAdmin.from('social_integrations').upsert({
         organization_id: organizationId,
         platform: 'instagram',
