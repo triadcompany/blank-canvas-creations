@@ -20,6 +20,7 @@ import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } f
 import { useAuth } from "@/contexts/AuthContext";
 import { AutomationFlowEditor } from "@/components/automations/AutomationFlowEditor";
 import { AutomationRunsPanel } from "@/components/automations/AutomationRunsPanel";
+import { AutomationExecutionsPanel } from "@/components/automations/AutomationExecutionsPanel";
 import { AutomationStatsCards } from "@/components/automations/AutomationStatsCards";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,7 +34,7 @@ export default function Automacoes() {
     getFlow, saveFlow, createFromTemplate,
     listRuns, listLogs, getRunStats, triggerWorker,
   } = useAutomations();
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
 
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [currentFlow, setCurrentFlow] = useState<AutomationFlow | null>(null);
@@ -52,6 +53,7 @@ export default function Automacoes() {
 
   // Global stats for list view
   const [globalStats, setGlobalStats] = useState<RunStats>({ total: 0, running: 0, completed: 0, failed: 0, waiting: 0 });
+  const [activeListTab, setActiveListTab] = useState("automations");
 
   // Load global stats on mount
   useEffect(() => {
@@ -353,90 +355,102 @@ export default function Automacoes() {
           </div>
         </div>
 
-        {/* Global stats */}
-        {globalStats.total > 0 && <AutomationStatsCards stats={globalStats} />}
+        <Tabs value={activeListTab} onValueChange={setActiveListTab} className="w-full">
+          <TabsList className="font-poppins">
+            <TabsTrigger value="automations">Automações</TabsTrigger>
+            <TabsTrigger value="executions">Execuções</TabsTrigger>
+          </TabsList>
 
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : automations.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <Zap className="h-16 w-16 text-muted-foreground/30 mb-4" />
-              <h3 className="text-lg font-poppins font-semibold mb-2">Nenhuma automação criada</h3>
-              <p className="text-muted-foreground font-poppins text-sm mb-6 text-center max-w-md">
-                Crie fluxos automáticos para enviar mensagens, mover leads no pipeline e muito mais.
-              </p>
-              {isAdmin && (
-                <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-                  <Plus className="h-4 w-4" /> Criar primeira automação
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {automations.map((automation) => (
-              <Card
-                key={automation.id}
-                className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => setEditingAutomation(automation)}
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className={`p-2.5 rounded-xl ${automation.is_active ? "bg-primary/10" : "bg-muted"}`}>
-                        <Zap className={`h-5 w-5 ${automation.is_active ? "text-primary" : "text-muted-foreground"}`} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-poppins font-semibold text-foreground truncate">{automation.name}</h3>
-                          <Badge variant={automation.is_active ? "default" : "secondary"} className="text-xs">
-                            {automation.is_active ? "Ativo" : "Inativo"}
-                          </Badge>
-                        </div>
-                        {automation.description && (
-                          <p className="text-sm text-muted-foreground font-poppins truncate">{automation.description}</p>
-                        )}
-                        <p className="text-xs text-muted-foreground font-poppins mt-1">
-                          Criada em {format(new Date(automation.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {isAdmin && (
-                        <Button
-                          variant="ghost" size="icon"
-                          onClick={() => toggleActive(automation.id, automation.is_active)}
-                          title={automation.is_active ? "Desativar" : "Ativar"}
-                        >
-                          {automation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost" size="icon"
-                        onClick={() => duplicateAutomation(automation)}
-                        title="Duplicar"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      {isAdmin && (
-                        <Button
-                          variant="ghost" size="icon"
-                          onClick={() => deleteAutomation(automation.id)}
-                          className="text-destructive hover:text-destructive" title="Excluir"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+          <TabsContent value="automations" className="mt-4 space-y-4">
+            {globalStats.total > 0 && <AutomationStatsCards stats={globalStats} />}
+
+            {loading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : automations.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-16">
+                  <Zap className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                  <h3 className="text-lg font-poppins font-semibold mb-2">Nenhuma automação criada</h3>
+                  <p className="text-muted-foreground font-poppins text-sm mb-6 text-center max-w-md">
+                    Crie fluxos automáticos para enviar mensagens, mover leads no pipeline e muito mais.
+                  </p>
+                  {isAdmin && (
+                    <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
+                      <Plus className="h-4 w-4" /> Criar primeira automação
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            ) : (
+              <div className="grid gap-4">
+                {automations.map((automation) => (
+                  <Card
+                    key={automation.id}
+                    className="hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setEditingAutomation(automation)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className={`p-2.5 rounded-xl ${automation.is_active ? "bg-primary/10" : "bg-muted"}`}>
+                            <Zap className={`h-5 w-5 ${automation.is_active ? "text-primary" : "text-muted-foreground"}`} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-poppins font-semibold text-foreground truncate">{automation.name}</h3>
+                              <Badge variant={automation.is_active ? "default" : "secondary"} className="text-xs">
+                                {automation.is_active ? "Ativo" : "Inativo"}
+                              </Badge>
+                            </div>
+                            {automation.description && (
+                              <p className="text-sm text-muted-foreground font-poppins truncate">{automation.description}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground font-poppins mt-1">
+                              Criada em {format(new Date(automation.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost" size="icon"
+                              onClick={() => toggleActive(automation.id, automation.is_active)}
+                              title={automation.is_active ? "Desativar" : "Ativar"}
+                            >
+                              {automation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost" size="icon"
+                            onClick={() => duplicateAutomation(automation)}
+                            title="Duplicar"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost" size="icon"
+                              onClick={() => deleteAutomation(automation.id)}
+                              className="text-destructive hover:text-destructive" title="Excluir"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="executions" className="mt-4">
+            <AutomationExecutionsPanel organizationId={profile?.organization_id} />
+          </TabsContent>
+        </Tabs>
 
         {/* Create Dialog */}
         <Dialog open={createDialog} onOpenChange={setCreateDialog}>

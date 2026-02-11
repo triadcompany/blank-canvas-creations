@@ -515,6 +515,74 @@ serve(async (req) => {
         return respond({ ok: true, automation: kwAutomation });
       }
 
+      // ─── LIST EXECUTIONS (automation_executions table) ───
+      case "list_executions": {
+        const { organization_id, automation_id, status: filterStatus, limit: rawLimit, offset: rawOffset } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+
+        const limit = Math.min(Number(rawLimit) || 50, 100);
+        const offset = Number(rawOffset) || 0;
+
+        let query = supabase
+          .from("automation_executions")
+          .select("*", { count: "exact" })
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (automation_id) query = query.eq("automation_id", automation_id);
+        if (filterStatus) query = query.eq("status", filterStatus);
+
+        const { data, error, count } = await query;
+        if (error) return respond({ ok: false, message: error.message }, 500);
+
+        // Compute stats
+        const items = data || [];
+        const statsQuery = supabase
+          .from("automation_executions")
+          .select("status")
+          .eq("organization_id", organization_id);
+        if (automation_id) statsQuery.eq("automation_id", automation_id);
+        const { data: allStatuses } = await statsQuery;
+
+        const execStats = { total: 0, success: 0, error: 0, no_match: 0, pending: 0 };
+        for (const row of allStatuses || []) {
+          execStats.total++;
+          if (row.status === "success" || row.status === "automation_fired") execStats.success++;
+          else if (row.status === "error" || row.status === "filter_failed" || row.status === "keyword_not_matched" || row.status === "no_match") execStats.error++;
+          else if (row.status === "received") execStats.pending++;
+        }
+
+        return respond({ ok: true, items, total: count || 0, stats: execStats });
+      }
+
+      // ─── EXECUTION DETAIL ───
+      case "execution_detail": {
+        const { id } = params;
+        if (!id) return respond({ ok: false, message: "id required" }, 400);
+
+        const { data, error } = await supabase
+          .from("automation_executions")
+          .select("*")
+          .eq("id", id)
+          .single();
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, execution: data });
+      }
+
+      // ─── WORKER HEARTBEAT ───
+      case "worker_heartbeat": {
+        const { data, error } = await supabase
+          .from("worker_heartbeats")
+          .select("*")
+          .eq("worker_name", "automation-worker")
+          .maybeSingle();
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, heartbeat: data });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }

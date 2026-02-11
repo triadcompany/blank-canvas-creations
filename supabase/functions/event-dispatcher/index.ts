@@ -23,7 +23,6 @@ serve(async (req) => {
   );
 
   try {
-    // Fetch pending events (FIFO, max 50 per batch)
     const { data: events, error: fetchError } = await supabase
       .from("automation_events")
       .select("*")
@@ -76,6 +75,17 @@ async function processEvent(supabase: any, event: any) {
 
   console.log(`[AUTOMATION_CONSUME] trace_id=${traceId} event_type=${eventName} org_id=${orgId} event_id=${event.id}`);
 
+  // ── ALWAYS create execution record at "received" step ──
+  await upsertExecution(supabase, orgId, traceId, eventName, "received", null, {
+    event_id: event.id,
+    event_name: eventName,
+    source,
+    phone: event.payload?.phone || null,
+    message_body: (event.payload?.message_body || "").substring(0, 200),
+    channel: event.payload?.channel || null,
+    step_received: new Date().toISOString(),
+  });
+
   // ── Check conversation ai_state for anti-conflict ──
   if (event.conversation_id && source === "ai") {
     const { data: conv } = await supabase
@@ -90,7 +100,7 @@ async function processEvent(supabase: any, event: any) {
         .from("automation_events")
         .update({ status: "skipped", processed_at: new Date().toISOString(), error: "Blocked: human_active" })
         .eq("id", event.id);
-      await updateExecution(supabase, orgId, traceId, "skipped", "human_active on conversation", { skipped_reason: "human_active" });
+      await upsertExecution(supabase, orgId, traceId, eventName, "skipped", "human_active on conversation", { skipped_reason: "human_active" });
       return { skipped: 1 };
     }
   }
@@ -125,7 +135,7 @@ async function processEvent(supabase: any, event: any) {
       .update({ status: "processed", processed_at: new Date().toISOString() })
       .eq("id", event.id);
     console.log(`[event-dispatcher] Event ${event.id} (${eventName}): no matching automations`);
-    await updateExecution(supabase, orgId, traceId, "no_match", "No active automations matched", { automations_found: 0 });
+    await upsertExecution(supabase, orgId, traceId, eventName, "no_match", "NO_ACTIVE_AUTOMATION", { automations_found: 0 });
     return { skipped: 0 };
   }
 
@@ -167,14 +177,13 @@ async function processEvent(supabase: any, event: any) {
       }
     }
 
-    // ── First Message trigger: keyword matching (NO first-touch dedup here — webhook handles it) ──
+    // ── First Message trigger: keyword matching ──
     if (automation.trigger_type === "first_message") {
       const payload = event.payload || {};
       const phone = payload.phone || "";
       const messageBody = payload.message_body || "";
       const eventChannel = payload.channel || "whatsapp";
 
-      // Channel filter: check if automation's flow trigger restricts channel
       const { data: flowForTrigger } = await supabase
         .from("automation_flows")
         .select("nodes")
@@ -189,10 +198,10 @@ async function processEvent(supabase: any, event: any) {
       // Channel filter
       const triggerChannel = triggerConfig.channel || "all";
       if (triggerChannel !== "all" && triggerChannel !== eventChannel) {
-        const reason = `Channel mismatch: ${eventChannel} != ${triggerChannel}`;
+        const reason = `CHANNEL_MISMATCH: ${eventChannel} != ${triggerChannel}`;
         await logEventRun(supabase, event.id, automation.id, orgId, "skipped", reason);
         console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} final_match=false fail_reason=channel_mismatch`);
-        await updateExecution(supabase, orgId, traceId, "filter_failed", reason, {
+        await upsertExecution(supabase, orgId, traceId, eventName, "filter_failed", reason, {
           automation_id: automation.id,
           automation_name: automation.name,
           channel_expected: triggerChannel,
@@ -223,9 +232,9 @@ async function processEvent(supabase: any, event: any) {
         console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=true keyword="${keyword}" match_type=${matchType} normalized_message_text="${normalizedBody.substring(0,80)}" keyword_matched=${matched} final_match=${matched}`);
 
         if (!matched) {
-          const reason = `Keyword not matched: "${keyword}" (${matchType}) in "${normalizedBody.substring(0,60)}"`;
+          const reason = `KEYWORD_NOT_MATCHED: "${keyword}" (${matchType}) in "${normalizedBody.substring(0,60)}"`;
           await logEventRun(supabase, event.id, automation.id, orgId, "skipped", reason);
-          await updateExecution(supabase, orgId, traceId, "keyword_not_matched", reason, {
+          await upsertExecution(supabase, orgId, traceId, eventName, "keyword_not_matched", reason, {
             automation_id: automation.id,
             automation_name: automation.name,
             keyword,
@@ -239,9 +248,6 @@ async function processEvent(supabase: any, event: any) {
         console.log(`[AUTOMATION_FILTER] trace_id=${traceId} automation_id=${automation.id.substring(0,8)} channel_expected=${triggerChannel} channel_got=${eventChannel} keyword_filter_enabled=false final_match=true`);
       }
 
-      // NOTE: First-touch dedup is now handled by the webhook (publishFirstMessageEvent)
-      // The webhook inserts the first-touch record BEFORE publishing the event
-      // So we don't need to re-check/insert first-touch here
       console.log(`[event-dispatcher] First-touch already handled by webhook for ${phone} — proceeding with automation ${automation.name}`);
     }
 
@@ -312,7 +318,6 @@ async function processEvent(supabase: any, event: any) {
         continue;
       }
 
-      // Find entry node: skip trigger node, use first node connected to trigger
       const nodes = (flow.nodes as any[]) || [];
       const edges = (flow.edges as any[]) || [];
       const triggerNode = nodes.find((n: any) => n.type === "trigger");
@@ -325,7 +330,6 @@ async function processEvent(supabase: any, event: any) {
         }
       }
 
-      // Fallback to entry_node_id or first node
       const entryNodeId = firstActionNodeId || flow.entry_node_id || nodes[0]?.id;
       if (!entryNodeId) {
         await updateEventRun(supabase, runId, "failed", "No entry node");
@@ -355,7 +359,6 @@ async function processEvent(supabase: any, event: any) {
       await supabase.from("automation_runs").update({ status: "running", current_node_id: entryNodeId }).eq("id", run.id);
       await updateEventRun(supabase, runId, "success", null);
 
-      // Log
       await supabase.from("automation_logs").insert({
         organization_id: orgId,
         automation_id: automation.id,
@@ -366,8 +369,7 @@ async function processEvent(supabase: any, event: any) {
         data: { event_id: event.id, event_name: eventName, source, trace_id: traceId },
       });
 
-      // Update execution trace
-      await updateExecution(supabase, orgId, traceId, "automation_fired", null, {
+      await upsertExecution(supabase, orgId, traceId, eventName, "automation_fired", null, {
         automation_id: automation.id,
         automation_name: automation.name,
         run_id: run.id,
@@ -379,7 +381,7 @@ async function processEvent(supabase: any, event: any) {
       console.log(`[AUTOMATION_ACTION] trace_id=${traceId} automation_id=${automation.id} action_type=run_created result=success run_id=${run.id}`);
     } catch (err) {
       console.error(`[AUTOMATION_ACTION] trace_id=${traceId} automation_id=${automation.id} result=error error_message=${err}`);
-      await updateExecution(supabase, orgId, traceId, "error", String(err), { automation_id: automation.id });
+      await upsertExecution(supabase, orgId, traceId, eventName, "error", String(err), { automation_id: automation.id });
     }
   }
 
@@ -436,17 +438,17 @@ async function updateEventRun(supabase: any, runId: string, status: string, erro
     .eq("id", runId);
 }
 
-// ── Update automation_executions trace ──
-async function updateExecution(
+// ── Upsert automation_executions trace (ALWAYS persists) ──
+async function upsertExecution(
   supabase: any,
   orgId: string,
   traceId: string,
+  eventName: string,
   status: string,
   failReason: string | null,
   extraDebug: Record<string, unknown>,
 ) {
   try {
-    // Try to update existing execution first
     const { data: existing } = await supabase
       .from("automation_executions")
       .select("id, debug_json")
@@ -461,15 +463,16 @@ async function updateExecution(
         .update({ status, fail_reason: failReason, debug_json: mergedDebug })
         .eq("id", existing.id);
     } else {
-      // Create new execution record
       await supabase.from("automation_executions").insert({
         organization_id: orgId,
         trace_id: traceId,
-        event_name: "inbound.first_message",
+        event_name: eventName,
         status,
         fail_reason: failReason,
         debug_json: { ...extraDebug, [`step_${status}`]: new Date().toISOString() },
       });
     }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    console.error("[event-dispatcher] upsertExecution error:", err);
+  }
 }

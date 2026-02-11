@@ -5997,6 +5997,30 @@ export type Database = {
           },
         ]
       }
+      worker_heartbeats: {
+        Row: {
+          error_count: number
+          last_run_at: string
+          processed_count: number
+          updated_at: string
+          worker_name: string
+        }
+        Insert: {
+          error_count?: number
+          last_run_at?: string
+          processed_count?: number
+          updated_at?: string
+          worker_name: string
+        }
+        Update: {
+          error_count?: number
+          last_run_at?: string
+          processed_count?: number
+          updated_at?: string
+          worker_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       crm_funnel: {
