@@ -524,8 +524,11 @@ export default function InboxPage() {
     setResettingFirstTouch(true);
     try {
       const res = await supabase.functions.invoke('reset-first-touch', {
-        method: 'POST',
-        body: { phone: selectedThread.contact_phone, channel: 'whatsapp' },
+        body: {
+          organization_id: profile.organization_id,
+          phone: selectedThread.contact_phone,
+          channel: 'whatsapp',
+        },
       });
 
       if (res.error) throw new Error(res.error.message || 'Erro ao resetar');
@@ -565,27 +568,15 @@ export default function InboxPage() {
   };
 
   const handleCheckFirstTouchStatus = async () => {
-    if (!selectedThread) return;
+    if (!selectedThread || !profile?.organization_id) return;
     setFtStatusLoading(true);
     setFtStatusData(null);
     setFtStatusOpen(true);
     try {
-      const res = await supabase.functions.invoke('reset-first-touch', {
-        method: 'GET',
-        headers: {},
-        body: undefined,
-      });
-      // GET with query params not supported via invoke — use fetch directly
-    } catch {}
-
-    // Use fetch directly for GET
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(
-        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/reset-first-touch?phone=${encodeURIComponent(selectedThread.contact_phone)}`,
+        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/reset-first-touch?organization_id=${encodeURIComponent(profile.organization_id)}&phone=${encodeURIComponent(selectedThread.contact_phone)}`,
         {
           headers: {
-            Authorization: `Bearer ${session?.access_token || ''}`,
             apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
           },
         }
