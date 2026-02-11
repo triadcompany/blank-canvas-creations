@@ -151,12 +151,30 @@ export function InstagramSettings() {
         },
       });
 
-      if (error) throw error;
+      console.log('[InstagramSettings] invoke result:', { data, error });
+
+      if (error) {
+        console.error('[InstagramSettings] invoke error:', error.message, data);
+        toast({
+          title: "Erro ao conectar",
+          description: `Erro: ${error.message}${data ? ` — ${JSON.stringify(data)}` : ''}`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       if (data?.url) {
         window.location.href = data.url;
+      } else {
+        console.error('[InstagramSettings] No URL in response:', data);
+        toast({
+          title: "Erro ao conectar",
+          description: data?.error || "Resposta inesperada da API",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
+      console.error('[InstagramSettings] catch error:', error);
       toast({
         title: "Erro ao conectar",
         description: error.message || "Não foi possível iniciar a conexão com o Instagram",
