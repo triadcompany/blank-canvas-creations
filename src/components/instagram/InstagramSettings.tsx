@@ -193,12 +193,15 @@ export function InstagramSettings() {
           });
           fetchConnections();
         } else {
-          console.error('[InstagramSettings] Exchange error:', { status: res.status, body: data });
+          console.error('[InstagramSettings] Exchange FULL error JSON:', JSON.stringify(data, null, 2));
+          console.error('[InstagramSettings] Exchange status:', res.status);
           const isNoPages = data?.error === 'NO_FACEBOOK_PAGES' || data?.error === 'NO_IG_BUSINESS';
+          const meName = data?.me?.name ? ` (Usuário Meta: ${data.me.name})` : '';
+          const pagesCount = data?.accounts?.data?.length ?? data?.pages_checked?.length ?? '?';
           toast({
             title: isNoPages ? "Página/Conta não encontrada" : `Erro ao conectar (${res.status})`,
             description: isNoPages
-              ? (data?.message || 'Converta o IG para profissional, vincule a uma Página do Facebook e seja admin da Página.')
+              ? `${data?.message || 'Converta o IG para profissional, vincule a uma Página do Facebook e seja admin da Página.'}${meName} — Páginas encontradas: ${pagesCount}`
               : (data?.message || data?.error || "Falha ao processar o código de autorização"),
             variant: "destructive",
           });
