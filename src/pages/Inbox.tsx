@@ -25,6 +25,8 @@ import {
   Pause,
   Play,
   AlertCircle,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -41,6 +43,18 @@ import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
 import { AudioPlayer } from '@/components/inbox/AudioPlayer';
 import { AudioRecorder } from '@/components/inbox/AudioRecorder';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from 'sonner';
 
 const BLOCK_REASON_LABELS: Record<string, string> = {
   throttle_active: 'Throttle ativo',
@@ -409,6 +423,9 @@ export default function InboxPage() {
   const [messageText, setMessageText] = useState('');
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const [createLeadModalOpen, setCreateLeadModalOpen] = useState(false);
+  const [resetFirstTouchOpen, setResetFirstTouchOpen] = useState(false);
+  const [resetAlsoDeleteLead, setResetAlsoDeleteLead] = useState(false);
+  const [resettingFirstTouch, setResettingFirstTouch] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -496,6 +513,43 @@ export default function InboxPage() {
     if (!selectedThread) return;
     setAssignPopoverOpen(false);
     await assignThread(selectedThread.id, profileId);
+  };
+
+  const handleResetFirstTouch = async () => {
+    if (!selectedThread || !profile?.organization_id) return;
+    setResettingFirstTouch(true);
+    try {
+      const { error: ftError } = await supabase
+        .from('whatsapp_first_touch' as any)
+        .delete()
+        .eq('organization_id', profile.organization_id)
+        .eq('phone', selectedThread.contact_phone);
+      if (ftError) throw ftError;
+
+      if (resetAlsoDeleteLead && selectedThread.lead_id) {
+        await supabase
+          .from('conversations')
+          .update({ lead_id: null } as any)
+          .eq('id', selectedThread.id)
+          .eq('organization_id', profile.organization_id);
+
+        await supabase
+          .from('leads')
+          .delete()
+          .eq('id', selectedThread.lead_id)
+          .eq('organization_id', profile.organization_id);
+      }
+
+      toast.success('Primeira interação resetada com sucesso.');
+      refreshThreads();
+    } catch (err: any) {
+      console.error('Error resetting first touch:', err);
+      toast.error(err.message || 'Erro ao resetar primeira interação');
+    } finally {
+      setResettingFirstTouch(false);
+      setResetFirstTouchOpen(false);
+      setResetAlsoDeleteLead(false);
+    }
   };
 
   const filters: { key: string; label: string; adminOnly?: boolean }[] = [
@@ -771,6 +825,25 @@ export default function InboxPage() {
                     </PopoverContent>
                   </Popover>
                 )}
+
+                {/* Reset First Touch (admin only) */}
+                {isAdmin && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                          onClick={() => setResetFirstTouchOpen(true)}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Resetar First Touch</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             </div>
 
@@ -945,6 +1018,47 @@ export default function InboxPage() {
           onSave={(data) => createLeadFromConversation(selectedThread.id, data)}
         />
       )}
+
+      {/* Reset First Touch Dialog */}
+      <AlertDialog open={resetFirstTouchOpen} onOpenChange={setResetFirstTouchOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resetar Primeira Interação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso permitirá que a próxima mensagem com a palavra-chave "anuncio" deste contato crie um novo lead automaticamente.
+              O histórico de mensagens será mantido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {selectedThread?.lead_id && (
+            <div className="flex items-center space-x-2 py-2">
+              <Checkbox
+                id="delete-lead"
+                checked={resetAlsoDeleteLead}
+                onCheckedChange={(checked) => setResetAlsoDeleteLead(checked === true)}
+              />
+              <label htmlFor="delete-lead" className="text-sm text-muted-foreground cursor-pointer flex items-center gap-1.5">
+                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                Também deletar o lead vinculado
+              </label>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resettingFirstTouch}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetFirstTouch}
+              disabled={resettingFirstTouch}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {resettingFirstTouch ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : null}
+              Resetar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
