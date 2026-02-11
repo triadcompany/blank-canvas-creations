@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { MetaEventMappings } from "./MetaEventMappings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,6 +128,7 @@ export function MetaIntegration() {
       <Tabs defaultValue="config">
         <TabsList>
           <TabsTrigger value="config">Configuração</TabsTrigger>
+          <TabsTrigger value="mappings">Mapeamento de Eventos</TabsTrigger>
           <TabsTrigger value="logs">Logs de Envio</TabsTrigger>
         </TabsList>
 
@@ -251,6 +253,9 @@ export function MetaIntegration() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+        <TabsContent value="mappings" className="space-y-4 mt-4">
+          <MetaEventMappings />
         </TabsContent>
 
         <TabsContent value="logs" className="space-y-4 mt-4">
