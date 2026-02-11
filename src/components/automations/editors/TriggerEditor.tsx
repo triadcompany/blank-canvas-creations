@@ -63,6 +63,20 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
             Dispara apenas na primeira mensagem de um contato (dedup via <code>whatsapp_first_touch</code>). Funciona com WhatsApp e Instagram.
           </p>
 
+          {/* Normalize toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Ignorar acentos e maiúsculas</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Normaliza texto para comparação (ex: "AnÚncio" = "anuncio")
+              </p>
+            </div>
+            <Switch
+              checked={config.ignore_accents_case ?? true}
+              onCheckedChange={(v) => onChange({ ...config, ignore_accents_case: v })}
+            />
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
               <Label className="font-poppins text-sm">Filtrar por palavra-chave</Label>
@@ -109,7 +123,10 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
 
               {config.matchType === "regex" && (
                 <p className="text-[10px] text-muted-foreground bg-muted p-2 rounded">
-                  Exemplo: <code>anun[cç]io|promo[çc][aã]o</code> — case-insensitive por padrão
+                  Exemplo: <code>anun[cç]io|promo[çc][aã]o</code>
+                  {(config.ignore_accents_case ?? true)
+                    ? " — normalização será aplicada antes do regex"
+                    : " — case-insensitive por padrão (flag 'i')"}
                 </p>
               )}
             </>
