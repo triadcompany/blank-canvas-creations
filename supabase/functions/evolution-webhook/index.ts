@@ -365,16 +365,16 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       });
     }
 
-    // ── 3) AI AUTO FAST: Respond inline if ai_mode=auto + inbound ──
+    // ── 3) AI AUTO: Enqueue job if ai_mode=auto + inbound ──
     if (!isFromMe && conversationId) {
-      // Reset reply counter on inbound
+      // Reset reply counter on every inbound
       await supabase.from("conversations")
         .update({ ai_reply_count_since_last_lead: 0 })
         .eq("id", conversationId);
 
       const { data: convCheck } = await supabase
         .from("conversations")
-        .select("ai_mode, ai_state, contact_name, contact_phone, lead_id")
+        .select("ai_mode, ai_state")
         .eq("id", conversationId)
         .single();
 
@@ -382,32 +382,28 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (convCheck?.ai_mode === "auto" && convCheck?.ai_state !== "human_active") {
         // ════════════════════════════════════════════
-        //  AUTO FAST — Respond inline, no queue
+        //  ENQUEUE — simple, no blockers
         // ════════════════════════════════════════════
-        const fastStart = Date.now();
-        try {
-          const replyText = await fastAutoReply(supabase, orgId, conversationId, convCheck, displayBody, instanceName);
-          const latencyMs = Date.now() - fastStart;
-          
-          if (replyText) {
-            console.log(`[evolution-webhook] ✅ AUTO FAST replied conv=${conversationId} latency=${latencyMs}ms reply="${replyText.substring(0, 50)}..."`);
+        const idempKey = `${orgId}:${conversationId}:${externalMessageId || Date.now()}`;
+        const { error: enqueueErr } = await supabase.from("ai_auto_reply_jobs").insert({
+          organization_id: orgId,
+          conversation_id: conversationId,
+          inbound_message_id: externalMessageId || "unknown",
+          idempotency_key: idempKey,
+          status: "pending",
+        });
+
+        if (enqueueErr) {
+          // Idempotency duplicate is OK
+          if (enqueueErr.code === "23505") {
+            console.log(`[evolution-webhook] Job already exists (idempotency): ${idempKey}`);
           } else {
-            console.log(`[evolution-webhook] AUTO FAST: no reply generated conv=${conversationId} latency=${latencyMs}ms`);
+            console.error(`[evolution-webhook] Enqueue error:`, enqueueErr);
           }
-        } catch (fastErr) {
-          const latencyMs = Date.now() - fastStart;
-          console.error(`[evolution-webhook] ❌ AUTO FAST error conv=${conversationId} latency=${latencyMs}ms:`, fastErr);
-          
-          // Log failure but don't block webhook response
-          await supabase.from("ai_auto_reply_jobs").insert({
-            organization_id: orgId,
-            conversation_id: conversationId,
-            inbound_message_id: externalMessageId || "unknown",
-            idempotency_key: `${orgId}:fast:${conversationId}:${externalMessageId || Date.now()}`,
-            status: "failed",
-            error: String(fastErr),
-            result: { mode: "fast", latency_ms: latencyMs, responded: false },
-          }).catch(() => {});
+        } else {
+          console.log(`[evolution-webhook] ✅ Job enqueued: conv=${conversationId} key=${idempKey}`);
+          // Invoke worker immediately
+          invokeAutoReplyWorker();
         }
       } else if (convCheck) {
         console.log(`[evolution-webhook] Auto-reply SKIPPED: conv=${conversationId} reason=${convCheck.ai_mode !== 'auto' ? 'ai_mode=' + convCheck.ai_mode : 'ai_state=' + convCheck.ai_state}`);
@@ -553,155 +549,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
   return respond({ ok: true });
 }
 
-// ════════════════════════════════════════════════════════════════
-//  AUTO FAST — Inline AI reply (no queue, no worker, < 2s target)
-// ════════════════════════════════════════════════════════════════
-async function fastAutoReply(
-  supabase: any,
-  orgId: string,
-  conversationId: string,
-  conv: any,
-  inboundText: string,
-  instanceName: string,
-): Promise<string | null> {
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-  const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
-  const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
-
-  if (!OPENAI_API_KEY) {
-    console.error("[AUTO FAST] OPENAI_API_KEY not configured");
-    return null;
-  }
-  if (!evolutionApiKey || !evolutionBaseUrl) {
-    console.error("[AUTO FAST] Evolution not configured");
-    return null;
-  }
-
-  // ── 1. Fetch last 15 messages for context (lightweight) ──
-  const { data: msgs } = await supabase
-    .from("messages")
-    .select("direction, body, ai_generated")
-    .eq("conversation_id", conversationId)
-    .eq("organization_id", orgId)
-    .order("created_at", { ascending: false })
-    .limit(15);
-
-  const chatHistory = (msgs || []).reverse().map((m: any) => {
-    const prefix = m.direction === 'inbound' ? 'CLIENTE' : (m.ai_generated ? 'IA' : 'ATENDENTE');
-    return `[${prefix}] ${m.body}`;
-  }).join("\n");
-
-  // ── 2. Fetch org prompt (cached per org in practice) ──
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("ai_system_prompt")
-    .eq("id", orgId)
-    .single();
-
-  const contactName = conv.contact_name || conv.contact_phone;
-  const orgPrompt = org?.ai_system_prompt || "";
-
-  // ── 3. Minimal fast prompt ──
-  const systemPrompt = `Você é um assistente comercial de vendas via WhatsApp. Responda de forma curta, natural e empática.
-${orgPrompt ? `\nINSTRUÇÕES DA EMPRESA:\n${orgPrompt}\n` : ""}
-REGRAS:
-- Responda em 1-3 frases (WhatsApp)
-- NUNCA mencione que é IA
-- Português brasileiro
-- Foque em avançar a conversa
-
-Contato: ${contactName}`;
-
-  // ── 4. Call OpenAI (gpt-4o-mini for speed) ──
-  const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+// ── Helper: Invoke ai-auto-reply worker (fire-and-forget) ──
+function invokeAutoReplyWorker() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  fetch(`${supabaseUrl}/functions/v1/ai-auto-reply`, {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: chatHistory ? `Histórico:\n${chatHistory}` : `Mensagem: ${inboundText}` },
-      ],
-      temperature: 0.5,
-      max_tokens: 200,
-    }),
-  });
-
-  if (!openaiRes.ok) {
-    const errText = await openaiRes.text();
-    console.error("[AUTO FAST] OpenAI error:", openaiRes.status, errText.substring(0, 200));
-    return null;
-  }
-
-  const openaiData = await openaiRes.json();
-  let replyText = openaiData.choices?.[0]?.message?.content?.trim() || "";
-
-  // Strip JSON wrapper if model returned it
-  if (replyText.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(replyText);
-      replyText = parsed.reply || parsed.text || parsed.message || replyText;
-    } catch { /* use raw */ }
-  }
-
-  if (!replyText) return null;
-
-  // ── 5. Send via Evolution ──
-  const { data: integration } = await supabase
-    .from("whatsapp_integrations")
-    .select("instance_name, status")
-    .eq("organization_id", orgId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!integration || integration.status !== "connected") {
-    console.error("[AUTO FAST] WhatsApp not connected for org", orgId);
-    return null;
-  }
-
-  const phone = (conv.contact_phone || "").replace(/\D/g, "");
-  const sendRes = await fetch(
-    `${evolutionBaseUrl}/message/sendText/${integration.instance_name}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-      body: JSON.stringify({ number: phone, text: replyText }),
-    }
-  );
-
-  if (!sendRes.ok) {
-    const sendErr = await sendRes.text();
-    console.error("[AUTO FAST] Evolution send error:", sendErr.substring(0, 200));
-    return null;
-  }
-
-  const sendData = await sendRes.json();
-  const externalId = sendData?.key?.id || sendData?.messageId || null;
-  const now = new Date().toISOString();
-
-  // ── 6. Save outbound message ──
-  await supabase.from("messages").insert({
-    organization_id: orgId,
-    conversation_id: conversationId,
-    direction: "outbound",
-    body: replyText,
-    external_message_id: externalId,
-    ai_generated: true,
-  });
-
-  // ── 7. Update conversation ──
-  await supabase.from("conversations")
-    .update({
-      last_message_at: now,
-      last_message_preview: replyText.substring(0, 100),
-      last_ai_reply_at: now,
-    })
-    .eq("id", conversationId);
-
-  return replyText;
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+    body: JSON.stringify({}),
+  }).catch(err => console.error("[evolution-webhook] Failed to invoke ai-auto-reply:", err));
 }
 
 // ── Helper: Fetch profile picture from Evolution API ──

@@ -13,26 +13,6 @@ const respond = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-// ── Block reason logger ──
-async function logBlockReason(
-  supabase: any,
-  jobId: string,
-  orgId: string,
-  convId: string,
-  blockReason: string,
-  details: Record<string, unknown>,
-) {
-  console.warn(`[ai-auto-reply] BLOCKED job=${jobId} conv=${convId} reason=${blockReason}`, JSON.stringify(details));
-  
-  // Update the job with detailed block info
-  await supabase.from("ai_auto_reply_jobs").update({
-    status: "blocked",
-    error: blockReason,
-    result: { block_reason: blockReason, ...details },
-    processed_at: new Date().toISOString(),
-  }).eq("id", jobId);
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -48,25 +28,24 @@ serve(async (req) => {
   if (!OPENAI_API_KEY) return respond({ error: "OPENAI_API_KEY not configured" }, 500);
 
   try {
-    console.log("[ai-auto-reply] Worker started, looking for pending jobs...");
-    
+    // Fetch pending jobs (FIFO)
     const { data: jobs, error: jobsError } = await supabase
       .from("ai_auto_reply_jobs")
       .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
-      .limit(5);
+      .limit(10);
 
     if (jobsError) {
       console.error("[ai-auto-reply] Error fetching jobs:", jobsError);
-      return respond({ error: "Failed to fetch jobs", detail: jobsError.message }, 500);
+      return respond({ error: jobsError.message }, 500);
     }
-
-    console.log(`[ai-auto-reply] Found ${jobs?.length || 0} pending jobs`);
 
     if (!jobs || jobs.length === 0) {
       return respond({ processed: 0, message: "No pending jobs" });
     }
+
+    console.log(`[ai-auto-reply] Found ${jobs.length} pending jobs`);
 
     let processed = 0;
     let failed = 0;
@@ -78,23 +57,19 @@ serve(async (req) => {
           .update({ status: "processing" })
           .eq("id", job.id);
 
-        const result = await processAutoReply(supabase, job, OPENAI_API_KEY, evolutionApiKey!, evolutionBaseUrl!);
+        const result = await processJob(supabase, job, OPENAI_API_KEY, evolutionApiKey!, evolutionBaseUrl!);
 
-        if (result.status !== "blocked") {
-          await supabase.from("ai_auto_reply_jobs")
-            .update({
-              status: result.status,
-              result: result.data,
-              error: result.error || null,
-              processed_at: new Date().toISOString(),
-            })
-            .eq("id", job.id);
-        }
-        // blocked jobs are already updated by logBlockReason
+        await supabase.from("ai_auto_reply_jobs")
+          .update({
+            status: result.status,
+            result: result.data || null,
+            error: result.error || null,
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
 
         if (result.status === "completed") processed++;
         else failed++;
-
       } catch (err) {
         console.error(`[ai-auto-reply] Job ${job.id} error:`, err);
         await supabase.from("ai_auto_reply_jobs")
@@ -111,7 +86,7 @@ serve(async (req) => {
   }
 });
 
-async function processAutoReply(
+async function processJob(
   supabase: any,
   job: any,
   openaiKey: string,
@@ -119,11 +94,14 @@ async function processAutoReply(
   evolutionBaseUrl: string,
 ): Promise<{ status: string; data?: any; error?: string }> {
   const { organization_id: orgId, conversation_id: convId, inbound_message_id } = job;
-  const now = new Date();
-  const nowIso = now.toISOString();
-  console.log(`[ai-auto-reply] Processing job=${job.id} conv=${convId} org=${orgId}`);
+  const startTime = Date.now();
 
-  // ── 1. Fetch conversation ──
+  // ── 1. SLA delay: random 10-40 seconds ──
+  const delaySec = 10 + Math.random() * 30;
+  console.log(`[ai-auto-reply] Job=${job.id} waiting ${delaySec.toFixed(1)}s (SLA delay)`);
+  await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
+
+  // ── 2. Fetch conversation (fresh state) ──
   const { data: conv, error: convError } = await supabase
     .from("conversations")
     .select("*, lead:leads!lead_id(id, name, stage_id, stage:pipeline_stages!stage_id(id, name, pipeline_id, sensitive))")
@@ -132,314 +110,150 @@ async function processAutoReply(
     .single();
 
   if (convError || !conv) {
-    return { status: "failed", error: `Conv fetch error: ${convError?.message || "not found"}` };
+    return { status: "failed", error: `Conv not found: ${convError?.message || "missing"}` };
   }
 
-  // ── 2. Guardrails with detailed logging ──
-  const blockDetails = {
-    job_id: job.id,
-    conversation_id: convId,
-    ai_mode: conv.ai_mode,
-    ai_state: conv.ai_state,
-    last_ai_reply_at: conv.last_ai_reply_at,
-    ai_reply_count_since_last_lead: conv.ai_reply_count_since_last_lead,
-    inbound_message_id,
-    now: nowIso,
-  };
+  // ── 3. ONLY 3 allowed blockers ──
 
-  // Check ai_mode
-  if (conv.ai_mode !== "auto") {
-    await logBlockReason(supabase, job.id, orgId, convId, "ai_mode_not_auto", {
-      ...blockDetails,
-      current_ai_mode: conv.ai_mode,
-    });
-    return { status: "blocked", error: "ai_mode != auto" };
-  }
-
-  // Check ai_state
+  // 3a. Human took over
   if (conv.ai_state === "human_active") {
-    await logBlockReason(supabase, job.id, orgId, convId, "ai_state_human_active", blockDetails);
-    return { status: "blocked", error: "human_active lock" };
+    console.log(`[ai-auto-reply] CANCELLED job=${job.id}: human_active`);
+    return { status: "cancelled_human", data: { reason: "human_active" } };
   }
 
-  // Check sensitive stage
+  // 3b. AI mode changed
+  if (conv.ai_mode !== "auto") {
+    console.log(`[ai-auto-reply] CANCELLED job=${job.id}: ai_mode=${conv.ai_mode}`);
+    return { status: "cancelled_human", data: { reason: `ai_mode_changed_to_${conv.ai_mode}` } };
+  }
+
+  // 3c. Sensitive stage
   if (conv.lead?.stage?.sensitive === true) {
-    await logBlockReason(supabase, job.id, orgId, convId, "sensitive_stage", {
-      ...blockDetails,
-      stage_name: conv.lead.stage.name,
-    });
-
-    await supabase.from("automation_events").insert({
-      organization_id: orgId,
-      event_name: "handoff.to_human.by_ai",
-      entity_type: "conversation",
-      entity_id: convId,
-      source: "ai",
-      payload: { reason: "sensitive_stage", stage_name: conv.lead.stage.name },
-      status: "pending",
-    }).catch(() => {});
-
+    console.log(`[ai-auto-reply] CANCELLED job=${job.id}: sensitive stage "${conv.lead.stage.name}"`);
     await supabase.from("conversations")
       .update({ ai_state: "human_active" })
       .eq("id", convId);
-
-    return { status: "blocked", error: `Sensitive stage: ${conv.lead.stage.name}` };
+    return { status: "cancelled_sensitive_stage", data: { stage: conv.lead.stage.name } };
   }
 
-  // ── 3. Org settings ──
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("ai_system_prompt, ai_auto_reply_throttle_seconds, ai_auto_max_without_reply, ai_auto_debounce_seconds")
-    .eq("id", orgId)
-    .single();
-
-  const throttleSec = org?.ai_auto_reply_throttle_seconds || 20;
-  const maxWithoutReply = org?.ai_auto_max_without_reply || 2;
-
-  // ── 4. Throttle check ──
-  if (conv.last_ai_reply_at) {
-    const lastReplyTime = new Date(conv.last_ai_reply_at).getTime();
-    const diffSeconds = (now.getTime() - lastReplyTime) / 1000;
-
-    if (diffSeconds < throttleSec) {
-      const secondsRemaining = Math.ceil(throttleSec - diffSeconds);
-      await logBlockReason(supabase, job.id, orgId, convId, "throttle_active", {
-        ...blockDetails,
-        diff_seconds: Math.round(diffSeconds),
-        throttle_seconds: throttleSec,
-        seconds_remaining: secondsRemaining,
-      });
-      return { status: "blocked", error: `Throttled: ${Math.round(diffSeconds)}s < ${throttleSec}s (${secondsRemaining}s remaining)` };
-    }
-  }
-
-  // ── 5. Max without reply check ──
-  // IMPORTANT: The counter is reset to 0 by evolution-webhook when inbound arrives.
-  // So if we're here processing an inbound, the counter should already be 0.
-  // Re-read the counter fresh to avoid stale data.
-  const { data: freshConv } = await supabase
-    .from("conversations")
-    .select("ai_reply_count_since_last_lead")
-    .eq("id", convId)
-    .single();
-
-  const currentCount = freshConv?.ai_reply_count_since_last_lead || 0;
-
-  if (currentCount >= maxWithoutReply) {
-    await logBlockReason(supabase, job.id, orgId, convId, "max_ai_replies_without_lead_response", {
-      ...blockDetails,
-      ai_reply_count_since_last_lead: currentCount,
-      max_without_reply: maxWithoutReply,
-    });
-    return { status: "blocked", error: `Max ${maxWithoutReply} AI replies without lead response (current: ${currentCount})` };
-  }
-
-  // ── 6. Debounce ──
-  const debounceSec = org?.ai_auto_debounce_seconds || 4;
-  await new Promise(resolve => setTimeout(resolve, debounceSec * 1000));
-
-  // Check if a newer inbound message arrived during debounce
-  const { data: newerMsgs } = await supabase
+  // 3d. Check if human sent a manual message AFTER the inbound
+  const { data: humanMsgs } = await supabase
     .from("messages")
     .select("id")
     .eq("conversation_id", convId)
     .eq("organization_id", orgId)
-    .eq("direction", "inbound")
-    .gt("id", inbound_message_id)
+    .eq("direction", "outbound")
+    .eq("ai_generated", false)
+    .gt("created_at", job.created_at)
     .limit(1);
 
-  if (newerMsgs && newerMsgs.length > 0) {
-    await logBlockReason(supabase, job.id, orgId, convId, "debounce_waiting", {
-      ...blockDetails,
-      newer_message_id: newerMsgs[0].id,
-      debounce_seconds: debounceSec,
-    });
-    return { status: "blocked", error: "Newer inbound arrived during debounce — skipping" };
+  if (humanMsgs && humanMsgs.length > 0) {
+    console.log(`[ai-auto-reply] CANCELLED job=${job.id}: human sent manual message after inbound`);
+    return { status: "cancelled_human", data: { reason: "human_replied_after_inbound" } };
   }
 
-  // Re-check ai_state after debounce
-  const { data: convRefresh } = await supabase
-    .from("conversations")
-    .select("ai_state, ai_mode")
-    .eq("id", convId)
-    .single();
-
-  if (convRefresh?.ai_state === "human_active" || convRefresh?.ai_mode !== "auto") {
-    await logBlockReason(supabase, job.id, orgId, convId, convRefresh?.ai_state === "human_active" ? "ai_state_human_active" : "ai_mode_not_auto", {
-      ...blockDetails,
-      post_debounce_ai_state: convRefresh?.ai_state,
-      post_debounce_ai_mode: convRefresh?.ai_mode,
-    });
-    return { status: "blocked", error: "State changed during debounce" };
-  }
-
-  // ── 7. Fetch messages for context ──
+  // ── 4. Build context ──
   const { data: msgs } = await supabase
     .from("messages")
-    .select("direction, body, created_at, ai_generated")
+    .select("direction, body, ai_generated, created_at")
     .eq("conversation_id", convId)
     .eq("organization_id", orgId)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(20);
 
   const messages = (msgs || []).reverse();
-
-  // ── 8. Fetch pipeline stages ──
-  let pipelineStages: any[] = [];
-  let defaultPipelineId: string | null = null;
-
-  const { data: defaultPipeline } = await supabase
-    .from("pipelines")
-    .select("id, name")
-    .eq("organization_id", orgId)
-    .eq("is_default", true)
-    .eq("is_active", true)
-    .limit(1)
-    .single();
-
-  if (defaultPipeline) {
-    defaultPipelineId = defaultPipeline.id;
-    const { data: stages } = await supabase
-      .from("pipeline_stages")
-      .select("id, name, position, sensitive")
-      .eq("pipeline_id", defaultPipeline.id)
-      .eq("is_active", true)
-      .order("position", { ascending: true });
-    pipelineStages = stages || [];
-  }
-
-  const stageMap: Record<string, { id: string; name: string; sensitive: boolean }> = {};
-  for (const s of pipelineStages) {
-    stageMap[s.name.toLowerCase()] = { id: s.id, name: s.name, sensitive: s.sensitive };
-  }
-  const availableStageNames = pipelineStages.map((s: any) => s.name).join(", ");
-
-  // ── 9. Build AI prompt ──
-  const contactName = conv.contact_name || conv.contact_phone;
-  const currentStageName = conv.lead?.stage?.name || null;
-  const leadInfo = conv.lead
-    ? `Lead vinculado: "${conv.lead.name}", etapa atual: "${currentStageName || 'N/A'}"`
-    : "Sem lead vinculado.";
-
   const chatHistory = messages.map((m: any) => {
     const prefix = m.direction === 'inbound' ? 'CLIENTE' : (m.ai_generated ? 'IA' : 'ATENDENTE');
     return `[${prefix}] ${m.body}`;
   }).join("\n");
 
+  // ── 5. Org prompt ──
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("ai_system_prompt")
+    .eq("id", orgId)
+    .single();
+
+  const contactName = conv.contact_name || conv.contact_phone;
   const orgPrompt = org?.ai_system_prompt || "";
 
-  const systemPrompt = `Você é um assistente comercial de vendas via WhatsApp. Responda ao cliente de forma natural, empática e comercial.
-
-${orgPrompt ? `INSTRUÇÕES DA EMPRESA:\n${orgPrompt}\n` : ""}
-CONTEXTO:
-- Contato: ${contactName}
-- ${leadInfo}
-- Etapas do pipeline: ${availableStageNames || "Nenhuma"}
-
+  const systemPrompt = `Você é um assistente comercial de vendas via WhatsApp. Responda de forma curta, natural e empática.
+${orgPrompt ? `\nINSTRUÇÕES DA EMPRESA:\n${orgPrompt}\n` : ""}
 REGRAS:
-- Responda de forma curta e natural (WhatsApp)
-- Seja proativo mas não insistente
-- NUNCA mencione que é uma IA
-- Foque em avançar a negociação
+- Responda em 1-3 frases (WhatsApp)
+- NUNCA mencione que é IA
 - Português brasileiro
+- Foque em avançar a conversa
+- Seja proativo mas não insistente
 
-REGRAS DE ETAPA:
-- Sugira mudança APENAS se claramente necessário
-- Use APENAS nomes de etapas existentes: ${availableStageNames}
-- Se a etapa sugerida == etapa atual ("${currentStageName}"), retorne suggested_stage_name=null
-- Forneça confidence de 0.0 a 1.0 para a ação
-- Etapas sensíveis (NÃO sugerir): ${pipelineStages.filter(s => s.sensitive).map(s => s.name).join(", ") || "nenhuma"}
+Contato: ${contactName}`;
 
-Responda EXATAMENTE neste JSON:
-{
-  "reply": "texto da resposta para o cliente",
-  "intent": "string (greeting|interest|question|objection|closing|scheduling|other)",
-  "confidence": 0.0,
-  "actions": [
-    {"type":"suggest_stage","stage_name":"NomeExato","reason":"motivo","confidence":0.85}
-  ],
-  "handoff_required": false,
-  "handoff_reason": ""
-}`;
+  // ── 6. Call OpenAI (gpt-4o-mini, 20s timeout) ──
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
 
-  // ── 10. Call OpenAI ──
-  const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openaiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Histórico:\n\n${chatHistory || "(sem mensagens)"}` },
-      ],
-      temperature: 0.5,
-      max_tokens: 500,
-    }),
-  });
+  let openaiRes: Response;
+  try {
+    openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openaiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: chatHistory ? `Histórico:\n${chatHistory}` : "(sem histórico)" },
+        ],
+        temperature: 0.5,
+        max_tokens: 200,
+      }),
+      signal: controller.signal,
+    });
+  } catch (fetchErr: any) {
+    clearTimeout(timeout);
+    if (fetchErr.name === "AbortError") {
+      return { status: "failed", error: "OpenAI timeout (20s)" };
+    }
+    throw fetchErr;
+  }
+  clearTimeout(timeout);
 
   if (!openaiRes.ok) {
     const errText = await openaiRes.text();
-    console.error("[ai-auto-reply] OpenAI error:", errText);
-    return { status: "failed", error: `OpenAI error: ${openaiRes.status}` };
+    console.error("[ai-auto-reply] OpenAI error:", openaiRes.status, errText.substring(0, 200));
+    return { status: "failed", error: `OpenAI ${openaiRes.status}` };
   }
 
   const openaiData = await openaiRes.json();
-  const rawContent = openaiData.choices?.[0]?.message?.content || "{}";
+  let replyText = openaiData.choices?.[0]?.message?.content?.trim() || "";
 
-  let aiResult: any;
-  try {
-    const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, rawContent];
-    aiResult = JSON.parse(jsonMatch[1].trim());
-  } catch {
-    aiResult = { reply: rawContent, intent: "unknown", confidence: 0.3, actions: [], handoff_required: false };
+  // Strip JSON wrapper if returned
+  if (replyText.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(replyText);
+      replyText = parsed.reply || parsed.text || parsed.message || replyText;
+    } catch { /* use raw */ }
   }
 
-  // ── 11. Handoff check ──
-  if (aiResult.handoff_required) {
-    await supabase.from("conversations")
-      .update({ ai_state: "human_active" })
-      .eq("id", convId);
-
-    await supabase.from("automation_events").insert({
-      organization_id: orgId,
-      event_name: "handoff.to_human.by_ai",
-      entity_type: "conversation",
-      entity_id: convId,
-      source: "ai",
-      payload: { reason: aiResult.handoff_reason || "AI requested handoff" },
-      status: "pending",
-    }).catch(() => {});
-
-    return { status: "completed", data: { ...aiResult, action: "handoff" } };
-  }
-
-  // ── 12. Log to ai_interactions ──
-  const { data: interactionData } = await supabase.from("ai_interactions").insert({
-    organization_id: orgId,
-    agent_name: "auto-reply",
-    interaction_type: "auto_reply",
-    input_data: {
-      conversation_id: convId,
-      inbound_message_id,
-      lead_id: conv.lead?.id || null,
-      ai_mode: "auto",
-      messages_count: messages.length,
-    },
-    output_data: aiResult,
-    status: "completed",
-  }).select("id").single();
-
-  const aiInteractionId = interactionData?.id || null;
-
-  // ── 13. Send message via Evolution ──
-  const replyText = aiResult.reply?.trim();
   if (!replyText) {
-    return { status: "completed", data: { ...aiResult, action: "no_reply" } };
+    return { status: "completed", data: { responded: false, reason: "empty_reply" } };
   }
 
+  // ── 7. Re-check state before sending (prevent sending after human took over during LLM call) ──
+  const { data: freshConv } = await supabase
+    .from("conversations")
+    .select("ai_state, ai_mode")
+    .eq("id", convId)
+    .single();
+
+  if (freshConv?.ai_state === "human_active" || freshConv?.ai_mode !== "auto") {
+    console.log(`[ai-auto-reply] CANCELLED job=${job.id}: state changed during LLM call`);
+    return { status: "cancelled_human", data: { reason: "state_changed_during_llm" } };
+  }
+
+  // ── 8. Send via Evolution ──
   const { data: integration } = await supabase
     .from("whatsapp_integrations")
     .select("instance_name, status")
@@ -451,7 +265,7 @@ Responda EXATAMENTE neste JSON:
     return { status: "failed", error: "WhatsApp not connected" };
   }
 
-  const phone = conv.contact_phone.replace(/\D/g, "");
+  const phone = (conv.contact_phone || "").replace(/\D/g, "");
   const sendRes = await fetch(
     `${evolutionBaseUrl}/message/sendText/${integration.instance_name}`,
     {
@@ -461,15 +275,18 @@ Responda EXATAMENTE neste JSON:
     }
   );
 
-  const sendData = await sendRes.json();
   if (!sendRes.ok) {
-    console.error("[ai-auto-reply] Evolution send error:", sendData);
-    return { status: "failed", error: `Evolution error: ${JSON.stringify(sendData)}` };
+    const sendErr = await sendRes.text();
+    console.error("[ai-auto-reply] Evolution error:", sendErr.substring(0, 200));
+    return { status: "failed", error: `Evolution ${sendRes.status}` };
   }
 
+  const sendData = await sendRes.json();
   const externalId = sendData?.key?.id || sendData?.messageId || null;
+  const now = new Date().toISOString();
+  const latencyMs = Date.now() - startTime;
 
-  // ── 14. Save outbound message ──
+  // ── 9. Save outbound message ──
   await supabase.from("messages").insert({
     organization_id: orgId,
     conversation_id: convId,
@@ -477,92 +294,20 @@ Responda EXATAMENTE neste JSON:
     body: replyText,
     external_message_id: externalId,
     ai_generated: true,
-    ai_interaction_id: aiInteractionId,
   });
 
-  // ── 15. Update conversation — CRITICAL: update last_ai_reply_at AND increment counter ──
+  // ── 10. Update conversation ──
   await supabase.from("conversations")
     .update({
-      last_message_at: nowIso,
+      last_message_at: now,
       last_message_preview: replyText.substring(0, 100),
-      last_ai_reply_at: nowIso,
-      ai_reply_count_since_last_lead: currentCount + 1,
+      last_ai_reply_at: now,
     })
     .eq("id", convId);
 
-  console.log(`[ai-auto-reply] Updated conv=${convId}: last_ai_reply_at=${nowIso}, ai_reply_count=${currentCount + 1}`);
-
-  // ── 16. Publish event ──
-  await supabase.from("automation_events").insert({
-    organization_id: orgId,
-    event_name: "conversation.ai_message_sent",
-    entity_type: "conversation",
-    entity_id: convId,
-    source: "ai",
-    payload: {
-      reply: replyText,
-      intent: aiResult.intent,
-      confidence: aiResult.confidence,
-      ai_interaction_id: aiInteractionId,
-    },
-    status: "pending",
-    idempotency_key: `${orgId}:ai_msg:${convId}:${job.inbound_message_id}`,
-  }).catch(() => {});
-
-  // ── 17. Stage movement (controlled) ──
-  const stageActions = (aiResult.actions || []).filter(
-    (a: any) => a.type === "suggest_stage" && a.stage_name
-  );
-
-  for (const action of stageActions) {
-    const matched = stageMap[action.stage_name.toLowerCase()];
-    if (!matched) continue;
-    if (matched.sensitive) continue;
-    if (matched.id === conv.lead?.stage?.id) continue;
-
-    const confidence = action.confidence || aiResult.confidence || 0;
-
-    if (confidence >= 0.80 && conv.lead?.id) {
-      await supabase.from("leads")
-        .update({ stage_id: matched.id, updated_at: nowIso })
-        .eq("id", conv.lead.id);
-
-      await supabase.from("automation_events").insert({
-        organization_id: orgId,
-        event_name: "lead.stage_changed.by_ai",
-        entity_type: "lead",
-        entity_id: conv.lead.id,
-        source: "ai",
-        payload: {
-          from_stage: currentStageName,
-          to_stage: matched.name,
-          reason: action.reason,
-          confidence,
-          ai_interaction_id: aiInteractionId,
-        },
-        status: "pending",
-        idempotency_key: `${orgId}:stage:${conv.lead.id}:${matched.id}:${nowIso.substring(0, 10)}`,
-      }).catch(() => {});
-
-      console.log(`[ai-auto-reply] Stage moved: ${currentStageName} → ${matched.name} (confidence=${confidence})`);
-    } else if (conv.lead?.id) {
-      await supabase.from("automation_events").insert({
-        organization_id: orgId,
-        event_name: "lead.stage_change_suggested.by_ai",
-        entity_type: "lead",
-        entity_id: conv.lead.id,
-        source: "ai",
-        payload: {
-          suggested_stage: matched.name,
-          reason: action.reason,
-          confidence,
-          ai_interaction_id: aiInteractionId,
-        },
-        status: "pending",
-      }).catch(() => {});
-    }
-  }
-
-  console.log(`[ai-auto-reply] ✅ Replied to conv=${convId} intent=${aiResult.intent} reply="${replyText.substring(0, 50)}..."`);
-  return { status: "completed", data: { reply: replyText, intent: aiResult.intent, confidence: aiResult.confidence } };
+  console.log(`[ai-auto-reply] ✅ Job=${job.id} replied conv=${convId} latency=${latencyMs}ms reply="${replyText.substring(0, 50)}..."`);
+  return {
+    status: "completed",
+    data: { responded: true, latency_ms: latencyMs, reply_preview: replyText.substring(0, 100) },
+  };
 }
