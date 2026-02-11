@@ -379,6 +379,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         .eq("id", conversationId)
         .single();
 
+      console.log(`[evolution-webhook] Auto-reply check: conv=${conversationId} ai_mode=${convCheck?.ai_mode} ai_state=${convCheck?.ai_state}`);
+
       if (convCheck?.ai_mode === "auto" && convCheck?.ai_state !== "human_active") {
         // Get the message ID we just inserted
         const { data: lastMsg } = await supabase
@@ -393,18 +395,26 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
         if (lastMsg) {
           const idempotencyKey = `${orgId}:${conversationId}:${lastMsg.id}`;
-          await supabase.from("ai_auto_reply_jobs").insert({
+          
+          // IMPORTANT: Check { error } response, not .catch() — Supabase SDK doesn't throw on DB errors
+          const { error: enqueueError } = await supabase.from("ai_auto_reply_jobs").insert({
             organization_id: orgId,
             conversation_id: conversationId,
             inbound_message_id: lastMsg.id,
             idempotency_key: idempotencyKey,
             status: "pending",
-          }).catch((err: any) => {
-            // Ignore duplicate (idempotency)
-            if (!String(err?.message || err).includes("duplicate")) {
-              console.error("[evolution-webhook] Failed to enqueue auto-reply:", err);
-            }
           });
+
+          if (enqueueError) {
+            // Ignore duplicate (idempotency)
+            if (String(enqueueError.message || "").includes("duplicate")) {
+              console.log(`[evolution-webhook] Auto-reply job already exists (idempotency): conv=${conversationId}`);
+            } else {
+              console.error(`[evolution-webhook] Failed to enqueue auto-reply job: conv=${conversationId}`, enqueueError);
+            }
+          } else {
+            console.log(`[evolution-webhook] Auto-reply job ENQUEUED: conv=${conversationId} msg=${lastMsg.id}`);
+          }
 
           // Fire-and-forget: invoke auto-reply worker
           const workerUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-auto-reply`;
@@ -415,8 +425,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
               Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
             },
             body: JSON.stringify({}),
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            console.log(`[evolution-webhook] ai-auto-reply invoked: status=${res.status} result=${JSON.stringify(data)}`);
           }).catch(err => console.error("[evolution-webhook] Failed to invoke ai-auto-reply:", err));
+        } else {
+          console.warn(`[evolution-webhook] Auto-reply: no inbound message found to enqueue for conv=${conversationId}`);
         }
+      } else if (convCheck) {
+        console.log(`[evolution-webhook] Auto-reply SKIPPED: conv=${conversationId} reason=${convCheck.ai_mode !== 'auto' ? 'ai_mode=' + convCheck.ai_mode : 'ai_state=' + convCheck.ai_state}`);
       }
     }
 
@@ -493,35 +510,30 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           .from("leads")
           .select("id")
           .eq("organization_id", orgId)
-          .or(`phone.eq.${variant},whatsapp.eq.${variant}`)
+          .eq("phone", variant)
           .maybeSingle();
         if (lead) { leadId = lead.id; break; }
       }
 
       if (leadId) {
         await supabase.from("leads").update({
-          last_reply_at: now,
-          last_inbound_message_at: now,
-          last_inbound_message_text: (text || "").substring(0, 500),
           updated_at: now,
         }).eq("id", leadId);
 
         await wakePausedRuns(supabase, orgId, leadId, now);
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       } else if (containsAdMarker(text || "")) {
-        await supabase.from("leads").insert({
+        const { error: adLeadErr } = await supabase.from("leads").insert({
           organization_id: orgId,
           name: pushName || "Lead WhatsApp",
           phone: normalizedPhone,
-          whatsapp: normalizedPhone,
           source: "Meta Ads",
-          canal: "WhatsApp",
-          status: "novo",
-          last_reply_at: now,
-          last_inbound_message_at: now,
-          last_inbound_message_text: (text || "").substring(0, 500),
         });
-        console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
+        if (adLeadErr) {
+          console.error(`[evolution-webhook] Ad lead creation failed:`, adLeadErr);
+        } else {
+          console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
+        }
       }
     } else {
       // ── Outbound from WhatsApp (human sent manually) ──
