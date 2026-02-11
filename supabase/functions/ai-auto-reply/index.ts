@@ -177,6 +177,14 @@ async function processJob(
     return `[${prefix}] ${m.body}`;
   }).join("\n");
 
+  // Detect if the latest inbound message is a media message
+  const lastInbound = messages.filter((m: any) => m.direction === 'inbound').pop();
+  const lastInboundBody = lastInbound?.body || "";
+  const isMediaMessage = lastInboundBody.startsWith("📎");
+  const mediaMatch = lastInboundBody.match(/^📎 \((\w+)\)\s?(.*)?$/);
+  const mediaType = mediaMatch ? mediaMatch[1] : null;
+  const mediaCaption = mediaMatch && mediaMatch[2] ? mediaMatch[2].trim() : null;
+
   // ── 5. Org prompt + dynamic intents ──
   const { data: org } = await supabase
     .from("organizations")
@@ -199,6 +207,20 @@ async function processJob(
   const intentList = intentDefs.map(i => `- ${i.intent_key}: ${i.intent_label}`).join("\n");
   const intentKeys = intentDefs.map(i => i.intent_key).join(", ");
 
+  // Build media context for the prompt
+  let mediaContext = "";
+  if (isMediaMessage && mediaType) {
+    if (mediaCaption) {
+      mediaContext = `\nCONTEXTO DA ÚLTIMA MENSAGEM:
+O cliente enviou ${mediaType === "imagem" ? "uma imagem" : mediaType === "áudio" ? "um áudio" : mediaType === "vídeo" ? "um vídeo" : "um documento"} com a descrição: "${mediaCaption}"
+Responda levando em conta essa descrição.`;
+    } else {
+      mediaContext = `\nCONTEXTO DA ÚLTIMA MENSAGEM:
+O cliente enviou ${mediaType === "imagem" ? "uma imagem" : mediaType === "áudio" ? "um áudio" : mediaType === "vídeo" ? "um vídeo" : "um documento"} sem descrição.
+Você NÃO consegue ver o conteúdo da mídia. Responda de forma amigável pedindo mais detalhes sobre o que foi enviado.`;
+    }
+  }
+
   const systemPrompt = `Você é um assistente comercial de vendas via WhatsApp. Responda de forma curta, natural e empática.
 ${orgPrompt ? `\nINSTRUÇÕES DA EMPRESA:\n${orgPrompt}\n` : ""}
 REGRAS:
@@ -207,7 +229,7 @@ REGRAS:
 - Português brasileiro
 - Foque em avançar a conversa
 - Seja proativo mas não insistente
-
+${mediaContext}
 Contato: ${contactName}
 
 ANÁLISE DE INTENÇÃO (obrigatória):
