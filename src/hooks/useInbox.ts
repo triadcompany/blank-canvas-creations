@@ -549,28 +549,43 @@ export function useInbox() {
   // Toggle ai_mode for a conversation (off / assisted / auto)
   const toggleAiMode = useCallback(async (threadId: string, newMode: string) => {
     if (!orgId) return;
-    try {
-      const updateData: any = { ai_mode: newMode };
-      // When switching to AUTO, set ai_state = ai_active
-      if (newMode === 'auto') {
-        updateData.ai_state = 'ai_active';
-        updateData.ai_reply_count_since_last_lead = 0;
-      }
-      // When switching away from AUTO, clear ai_state
-      if (newMode === 'off' || newMode === 'assisted') {
-        updateData.ai_state = null;
-      }
 
-      const { error } = await supabase
+    // Validate mode value
+    const validModes = ['off', 'assisted', 'auto'];
+    if (!validModes.includes(newMode)) {
+      console.error('[Inbox] Invalid ai_mode value:', newMode);
+      toast.error(`Valor inválido para modo IA: "${newMode}"`);
+      return;
+    }
+
+    // Save previous state for rollback
+    const prevThread = threadsRef.current.find(t => t.id === threadId);
+    const prevMode = prevThread?.ai_mode;
+    const prevState = prevThread?.ai_state;
+
+    // Minimal update: only ai_mode + ai_state
+    const updateData: { ai_mode: string; ai_state: string | null } = {
+      ai_mode: newMode,
+      ai_state: newMode === 'auto' ? 'ai_active' : null,
+    };
+
+    // Optimistic update
+    setThreads(prev =>
+      prev.map(t => t.id === threadId ? { ...t, ...updateData } : t)
+    );
+
+    try {
+      console.log('[Inbox] Toggling ai_mode:', { threadId, updateData });
+
+      const { error, status } = await supabase
         .from('conversations')
         .update(updateData)
         .eq('id', threadId)
         .eq('organization_id', orgId);
-      if (error) throw error;
 
-      setThreads(prev =>
-        prev.map(t => t.id === threadId ? { ...t, ...updateData } : t)
-      );
+      console.log('[Inbox] Toggle response:', { status, error });
+
+      if (error) throw error;
 
       const modeLabels: Record<string, string> = {
         off: 'IA desativada',
@@ -579,8 +594,13 @@ export function useInbox() {
       };
       toast.success(modeLabels[newMode] || 'Modo alterado');
     } catch (err: any) {
-      console.error('Error toggling ai_mode:', err);
-      toast.error('Erro ao alterar modo da IA');
+      console.error('[Inbox] Error toggling ai_mode:', err);
+      // Rollback
+      setThreads(prev =>
+        prev.map(t => t.id === threadId ? { ...t, ai_mode: prevMode || 'off', ai_state: prevState || null } : t)
+      );
+      const detail = err?.message || err?.code || 'Erro desconhecido';
+      toast.error(`Erro ao alterar modo da IA: ${detail}`);
     }
   }, [orgId]);
 
