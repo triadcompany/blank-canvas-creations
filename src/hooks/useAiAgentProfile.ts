@@ -55,6 +55,11 @@ export interface AiAgentProfile {
       urgency_level: string[];
     };
   };
+  autonomous_rules: {
+    mode: 'all' | 'traffic_only' | 'organic_only' | 'unassigned_only';
+    only_outside_business_hours: boolean;
+    pause_after_qualification: boolean;
+  };
   examples: FewShotExample[];
   response_time: string;
   questions_per_message: number;
@@ -95,6 +100,11 @@ const defaultProfile: AiAgentProfile = {
   },
   prioritization_rules: {
     priority_when: { intents: [], urgency_level: [] },
+  },
+  autonomous_rules: {
+    mode: 'all',
+    only_outside_business_hours: false,
+    pause_after_qualification: false,
   },
   examples: [],
   response_time: '20-40',
@@ -204,6 +214,7 @@ export function useAiAgentProfile() {
           funnel_rules: (data.funnel_rules as any) || {},
           qualification_rules: (data.qualification_rules as any) || { qualified_when: { intents: [], urgency_level: [], sentiment: [] } },
           prioritization_rules: (data.prioritization_rules as any) || { priority_when: { intents: [], urgency_level: [] } },
+          autonomous_rules: (data.autonomous_rules as any) || { mode: 'all', only_outside_business_hours: false, pause_after_qualification: false },
           examples: (data.examples as any) || [],
         });
         setHasExisting(true);
@@ -224,6 +235,7 @@ export function useAiAgentProfile() {
           funnel_rules: (v.funnel_rules as any) || {},
           qualification_rules: (v.qualification_rules as any) || { qualified_when: { intents: [], urgency_level: [], sentiment: [] } },
           prioritization_rules: (v.prioritization_rules as any) || { priority_when: { intents: [], urgency_level: [] } },
+          autonomous_rules: (v.autonomous_rules as any) || { mode: 'all', only_outside_business_hours: false, pause_after_qualification: false },
           examples: (v.examples as any) || [],
         })));
       }
@@ -267,6 +279,7 @@ export function useAiAgentProfile() {
           funnel_rules: agentProfile.funnel_rules as any,
           qualification_rules: agentProfile.qualification_rules as any,
           prioritization_rules: agentProfile.prioritization_rules as any,
+          autonomous_rules: agentProfile.autonomous_rules as any,
           examples: agentProfile.examples as any,
           response_time: agentProfile.response_time,
           questions_per_message: agentProfile.questions_per_message,

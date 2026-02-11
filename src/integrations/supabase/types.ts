@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           agent_name: string
           agent_role: string
+          autonomous_rules: Json | null
           business_description: string | null
           created_at: string
           created_by: string | null
@@ -42,6 +43,7 @@ export type Database = {
         Insert: {
           agent_name?: string
           agent_role?: string
+          autonomous_rules?: Json | null
           business_description?: string | null
           created_at?: string
           created_by?: string | null
@@ -66,6 +68,7 @@ export type Database = {
         Update: {
           agent_name?: string
           agent_role?: string
+          autonomous_rules?: Json | null
           business_description?: string | null
           created_at?: string
           created_by?: string | null
