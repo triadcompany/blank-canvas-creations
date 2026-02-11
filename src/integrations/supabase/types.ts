@@ -3756,6 +3756,58 @@ export type Database = {
           },
         ]
       }
+      organization_automation_settings: {
+        Row: {
+          created_at: string
+          id: string
+          meta_ads_keyword_enabled: boolean
+          meta_ads_pipeline_id: string | null
+          meta_ads_stage_id: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          meta_ads_keyword_enabled?: boolean
+          meta_ads_pipeline_id?: string | null
+          meta_ads_stage_id?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          meta_ads_keyword_enabled?: boolean
+          meta_ads_pipeline_id?: string | null
+          meta_ads_stage_id?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_automation_settings_meta_ads_pipeline_id_fkey"
+            columns: ["meta_ads_pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_meta_ads_stage_id_fkey"
+            columns: ["meta_ads_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_webhooks: {
         Row: {
           created_at: string
@@ -5428,6 +5480,41 @@ export type Database = {
             foreignKeyName: "whatsapp_config_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_first_touch: {
+        Row: {
+          created_at: string
+          first_message_at: string
+          first_message_id: string | null
+          id: string
+          organization_id: string
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          first_message_at?: string
+          first_message_id?: string | null
+          id?: string
+          organization_id: string
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          first_message_at?: string
+          first_message_id?: string | null
+          id?: string
+          organization_id?: string
+          phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
