@@ -177,28 +177,29 @@ export function InstagramSettings() {
         const data = await res.json();
         console.log('[InstagramSettings] Exchange response:', { status: res.status, ok: data?.ok });
 
-        if (res.ok && data?.ok) {
-          // Clean URL
-          const url = new URL(window.location.href);
-          url.searchParams.delete('code');
-          url.searchParams.delete('state');
-          url.searchParams.delete('callback');
-          window.history.replaceState({}, '', url.toString());
+        // Always clean URL to prevent re-processing
+        const url = new URL(window.location.href);
+        url.searchParams.delete('code');
+        url.searchParams.delete('state');
+        url.searchParams.delete('callback');
+        window.history.replaceState({}, '', url.toString());
 
+        if (res.ok && data?.ok) {
           toast({
             title: "Instagram conectado com sucesso!",
             description: data.connection?.instagram_username
               ? `Conta @${data.connection.instagram_username} conectada.`
               : "A conta foi vinculada à sua organização.",
           });
-
-          // Refetch connections
           fetchConnections();
         } else {
-          console.error('[InstagramSettings] Exchange error:', data);
+          console.error('[InstagramSettings] Exchange error:', { status: res.status, body: data });
+          const isNoPages = data?.error === 'NO_FACEBOOK_PAGES' || data?.error === 'NO_IG_BUSINESS';
           toast({
-            title: `Erro ao conectar (${res.status})`,
-            description: data?.error || "Falha ao processar o código de autorização",
+            title: isNoPages ? "Página/Conta não encontrada" : `Erro ao conectar (${res.status})`,
+            description: isNoPages
+              ? (data?.message || 'Converta o IG para profissional, vincule a uma Página do Facebook e seja admin da Página.')
+              : (data?.message || data?.error || "Falha ao processar o código de autorização"),
             variant: "destructive",
           });
         }
