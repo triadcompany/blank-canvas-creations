@@ -664,6 +664,10 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
     leadId = existingLead.id;
     console.log(`[automation-worker] Lead found: ${leadId} (${existingLead.name}) for ${phone}`);
   } else {
+    // ── Resolve interest from first message ──
+    const rawMessageBody = ctx.message_body || ctx.message_text || "";
+    const interestText = (rawMessageBody.trim() || "Lead criado automaticamente via primeira mensagem.").substring(0, 2000);
+
     // Create lead with ONLY contact-safe fields
     const rawLeadPayload: Record<string, unknown> = {
       organization_id: orgId,
@@ -675,6 +679,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       seller_id: resolvedSellerId,
       assigned_to: resolvedSellerId,
       created_by: resolvedCreatedBy,
+      interest: interestText,
     };
 
     const { filtered: safeLeadPayload, dropped: droppedFields } = filterLeadPayload(rawLeadPayload);
@@ -808,6 +813,8 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       deal_payload_sent: dealPayload,
       seller_resolution: sellerResolution,
       created_by_resolution: { strategy: createdByStrategy, id: resolvedCreatedBy },
+      first_message_used: leadCreated,
+      first_message_preview: leadCreated ? (ctx.message_body || ctx.message_text || "").substring(0, 120) : null,
       phone,
       pipeline_id: resolvedPipelineId,
       stage_id: resolvedStageId,
