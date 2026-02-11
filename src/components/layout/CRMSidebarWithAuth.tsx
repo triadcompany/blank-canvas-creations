@@ -25,7 +25,7 @@ import {
   Cog,
   Building2,
   Zap,
-  MessageSquare,
+  
   Crown,
   MailCheck,
   PlayCircle,
@@ -57,11 +57,6 @@ const menuItems = [
     title: "Prospecção",
     url: "/prospeccao",
     icon: Building2,
-  },
-  {
-    title: "Mensagens",
-    url: "/mensagens",
-    icon: MessageSquare,
   },
   {
     title: "Automações",

@@ -20,7 +20,7 @@ import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import Tasks from "./pages/Tasks";
 import NotFound from "./pages/NotFound";
-import Mensagens from "./pages/Mensagens";
+
 import LandingPage from "./pages/LandingPage";
 import Prospeccao from "./pages/Prospeccao";
 import Automacoes from "./pages/Automacoes";
@@ -119,13 +119,6 @@ const App = () => {
               <ProtectedRoute>
                 <CRMLayout>
                   <Tasks />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/mensagens" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Mensagens />
                 </CRMLayout>
               </ProtectedRoute>
             } />
