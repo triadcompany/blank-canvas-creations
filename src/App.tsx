@@ -26,6 +26,7 @@ import Prospeccao from "./pages/Prospeccao";
 import Automacoes from "./pages/Automacoes";
 import Onboarding from "./pages/Onboarding";
 import InboxPage from "./pages/Inbox";
+import TreinarAgente from "./pages/TreinarAgente";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -144,6 +145,13 @@ const App = () => {
               <ProtectedRoute>
                 <CRMLayout>
                   <InboxPage />
+                </CRMLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/treinar-agente" element={
+              <ProtectedRoute>
+                <CRMLayout>
+                  <TreinarAgente />
                 </CRMLayout>
               </ProtectedRoute>
             } />
