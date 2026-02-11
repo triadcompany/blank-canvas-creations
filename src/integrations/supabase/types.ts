@@ -3739,6 +3739,231 @@ export type Database = {
           },
         ]
       }
+      meta_capi_logs: {
+        Row: {
+          created_at: string
+          fail_reason: string | null
+          http_status: number | null
+          id: string
+          lead_id: string | null
+          meta_event: string
+          organization_id: string
+          pipeline_id: string | null
+          request_json: Json | null
+          response_json: Json | null
+          stage_id: string | null
+          status: string
+          trace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          fail_reason?: string | null
+          http_status?: number | null
+          id?: string
+          lead_id?: string | null
+          meta_event: string
+          organization_id: string
+          pipeline_id?: string | null
+          request_json?: Json | null
+          response_json?: Json | null
+          stage_id?: string | null
+          status?: string
+          trace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          fail_reason?: string | null
+          http_status?: number | null
+          id?: string
+          lead_id?: string | null
+          meta_event?: string
+          organization_id?: string
+          pipeline_id?: string | null
+          request_json?: Json | null
+          response_json?: Json | null
+          stage_id?: string | null
+          status?: string
+          trace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_capi_mappings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          meta_event: string
+          organization_id: string
+          pipeline_id: string | null
+          priority: number
+          stage_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          meta_event: string
+          organization_id: string
+          pipeline_id?: string | null
+          priority?: number
+          stage_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          meta_event?: string
+          organization_id?: string
+          pipeline_id?: string | null
+          priority?: number
+          stage_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_mappings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_capi_settings: {
+        Row: {
+          access_token: string
+          created_at: string
+          enabled: boolean
+          id: string
+          organization_id: string
+          pixel_id: string
+          test_event_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          organization_id: string
+          pixel_id: string
+          test_event_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          organization_id?: string
+          pixel_id?: string
+          test_event_code?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_event_mappings: {
         Row: {
           created_at: string

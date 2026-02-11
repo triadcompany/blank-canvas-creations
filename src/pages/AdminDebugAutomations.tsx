@@ -356,6 +356,82 @@ function ExecutionsTab({ orgId }: { orgId: string }) {
   );
 }
 
+// ═══════════════ TAB 4: META CAPI ═══════════════
+function MetaCapiTab({ orgId }: { orgId: string }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetch_ = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "debug_meta_capi", organization_id: orgId, limit: 50 }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setItems(data.items || []);
+    } else {
+      // Fallback: direct query via supabase client won't work from edge, try apiCall
+      setItems([]);
+    }
+    setLoading(false);
+  }, [orgId]);
+
+  useEffect(() => { fetch_(); }, [fetch_]);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={fetch_} className="font-poppins gap-1.5">
+          <RotateCw className="h-3.5 w-3.5" /> Atualizar
+        </Button>
+        <span className="text-xs text-muted-foreground">{items.length} registros</span>
+      </div>
+      {items.length === 0 ? <EmptyState text="Nenhum log Meta CAPI encontrado" /> : (
+        <ScrollArea className="max-h-[600px]">
+          <div className="space-y-2">
+            {items.map((item: any) => (
+              <Card key={item.id} className="overflow-hidden">
+                <CardContent className="p-3">
+                  <div className="flex items-start gap-3">
+                    <Send className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <StatusBadge status={item.status} />
+                        <span className="text-xs font-medium font-poppins">{item.meta_event}</span>
+                        {item.http_status && (
+                          <Badge variant="outline" className="text-[10px] px-1 py-0">HTTP {item.http_status}</Badge>
+                        )}
+                      </div>
+                      {item.fail_reason && (
+                        <p className="text-xs text-destructive truncate font-poppins">{item.fail_reason}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground font-poppins">
+                          {format(new Date(item.created_at), "dd/MM HH:mm:ss", { locale: ptBR })}
+                        </span>
+                        {item.lead_id && <span className="text-[10px] text-muted-foreground">lead: {item.lead_id?.substring(0, 8)}</span>}
+                        <TraceBadge traceId={item.trace_id} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <JsonViewer data={item.request_json} title="Request JSON" />
+                      <JsonViewer data={item.response_json} title="Response JSON" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  );
+}
+
 // ─── Shared ───
 function LoadingSpinner() {
   return (
@@ -445,6 +521,9 @@ export default function AdminDebugAutomations() {
           <TabsTrigger value="executions" className="gap-1.5">
             <Activity className="h-3.5 w-3.5" /> Executions
           </TabsTrigger>
+          <TabsTrigger value="metacapi" className="gap-1.5">
+            <Send className="h-3.5 w-3.5" /> Meta CAPI
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="inbound" className="mt-4">
@@ -455,6 +534,9 @@ export default function AdminDebugAutomations() {
         </TabsContent>
         <TabsContent value="executions" className="mt-4">
           {orgId && <ExecutionsTab orgId={orgId} />}
+        </TabsContent>
+        <TabsContent value="metacapi" className="mt-4">
+          {orgId && <MetaCapiTab orgId={orgId} />}
         </TabsContent>
       </Tabs>
     </div>

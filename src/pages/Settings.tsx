@@ -47,6 +47,7 @@ import { FollowupTemplatesManagement } from "@/components/settings/FollowupTempl
 import { FollowupCadencesManagement } from "@/components/settings/FollowupCadencesManagement";
 import { ClerkMigration } from "@/components/settings/ClerkMigration";
 import BillingSettings from "@/components/settings/BillingSettings";
+import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
@@ -109,7 +110,7 @@ export function Settings() {
     { id: "webhooks", icon: Webhook, label: "Webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads" },
     { id: "sources", icon: MapPin, label: "Origens de Leads" },
-    
+    { id: "meta-ads", icon: Zap, label: "Meta Ads (CAPI)" },
     { id: "notifications", icon: Bell, label: "Notificações" },
   ];
 
@@ -148,8 +149,8 @@ export function Settings() {
         );
       case "sources":
         return <LeadSourcesManagement />;
-
-
+      case "meta-ads":
+        return <MetaAdsSettings />;
       case "notifications":
         return (
           <Card className="card-gradient border-0">
