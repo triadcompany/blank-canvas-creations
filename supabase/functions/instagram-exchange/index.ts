@@ -34,7 +34,7 @@ serve(async (req) => {
     }
 
     const { code, state, organizationId, profileId } = body;
-    console.log("[instagram-exchange] start", { profileId, organizationId, hasCode: !!code, hasState: !!state });
+    console.log("[instagram-exchange] === START ===", { profileId, organizationId, hasCode: !!code, hasState: !!state });
 
     if (!code || !organizationId || !profileId) {
       return new Response(JSON.stringify({ error: 'Parâmetros obrigatórios: code, organizationId, profileId' }), { status: 400, headers });
@@ -60,24 +60,37 @@ serve(async (req) => {
     const userId = profile.user_id || profile.id;
     const redirectUri = 'https://autolead.lovable.app/settings?tab=instagram&callback=true';
 
-    // Step 1: Exchange code for short-lived token
-    console.log("[instagram-exchange] Exchanging code for token...");
-    const tokenRes = await fetch(
-      `https://graph.facebook.com/v18.0/oauth/access_token?` +
+    // ============================================================
+    // STEP A: Exchange code for token (USER token, NOT app token)
+    // ============================================================
+    const tokenUrl = `https://graph.facebook.com/v18.0/oauth/access_token?` +
       `client_id=${appId}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&client_secret=${appSecret}` +
-      `&code=${code}`
-    );
+      `&code=${code}`;
+
+    console.log("[instagram-exchange] [A] Token exchange — redirect_uri used:", redirectUri);
+    console.log("[instagram-exchange] [A] Token exchange — client_id:", appId);
+
+    const tokenRes = await fetch(tokenUrl);
     const tokenData = await tokenRes.json();
 
-    if (!tokenRes.ok || !tokenData.access_token) {
-      console.error("[instagram-exchange] Token exchange failed:", tokenData);
-      return new Response(JSON.stringify({ error: 'Falha ao trocar código por token', details: tokenData }), { status: 400, headers });
-    }
-    console.log("[instagram-exchange] Short-lived token obtained");
+    console.log("[instagram-exchange] [A] Token exchange — HTTP status:", tokenRes.status);
+    console.log("[instagram-exchange] [A] Token exchange — response body:", JSON.stringify({
+      ...tokenData,
+      access_token: tokenData.access_token ? `${tokenData.access_token.substring(0, 15)}...REDACTED` : undefined,
+    }));
 
-    // Step 2: Exchange for long-lived token
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error("[instagram-exchange] [A] Token exchange FAILED — full response:", JSON.stringify(tokenData));
+      return new Response(JSON.stringify({
+        error: 'TOKEN_EXCHANGE_FAILED',
+        message: 'Falha ao trocar código por token',
+        meta_response: tokenData,
+      }), { status: 400, headers });
+    }
+
+    // Exchange for long-lived token (still USER token)
     const longRes = await fetch(
       `https://graph.facebook.com/v18.0/oauth/access_token?` +
       `grant_type=fb_exchange_token` +
@@ -86,57 +99,82 @@ serve(async (req) => {
       `&fb_exchange_token=${tokenData.access_token}`
     );
     const longData = await longRes.json();
-    const longLivedToken = longData.access_token || tokenData.access_token;
-    const expiresIn = longData.expires_in || 5184000; // default 60 days
+    const userToken = longData.access_token || tokenData.access_token;
+    const expiresIn = longData.expires_in || 5184000;
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
-    console.log("[instagram-exchange] Long-lived token obtained, expires in", expiresIn, "seconds");
+    console.log("[instagram-exchange] [A] Long-lived token — HTTP status:", longRes.status, "expires_in:", expiresIn);
 
-    // Step 3: Fetch pages
-    console.log("[instagram-exchange] Fetching pages...");
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${longLivedToken}`
-    );
-    const pagesData = await pagesRes.json();
+    // ============================================================
+    // STEP B: Validate user identity (/me)
+    // ============================================================
+    const meRes = await fetch(`https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${userToken}`);
+    const meData = await meRes.json();
+    console.log("[instagram-exchange] [B] /me — HTTP status:", meRes.status, "body:", JSON.stringify(meData));
 
-    if (!pagesData.data || pagesData.data.length === 0) {
-      console.error("[instagram-exchange] No pages found. Response:", JSON.stringify(pagesData));
+    if (!meRes.ok) {
+      console.error("[instagram-exchange] [B] /me FAILED");
       return new Response(JSON.stringify({
-        error: 'NO_FACEBOOK_PAGES',
-        message: 'Nenhuma Página do Facebook encontrada. Para usar mensagens do Instagram, o Instagram deve ser conta profissional vinculada a uma Página do Facebook, e você precisa ser admin dessa Página.',
+        error: 'ME_FETCH_FAILED',
+        message: 'Falha ao validar identidade do usuário com o token',
+        meta_response: meData,
       }), { status: 400, headers });
     }
-    console.log("[instagram-exchange] Found", pagesData.data.length, "pages");
+
+    // ============================================================
+    // STEP C: Fetch pages (/me/accounts)
+    // ============================================================
+    const pagesRes = await fetch(
+      `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,perms&limit=200&access_token=${userToken}`
+    );
+    const pagesData = await pagesRes.json();
+    console.log("[instagram-exchange] [C] /me/accounts — HTTP status:", pagesRes.status);
+    console.log("[instagram-exchange] [C] /me/accounts — pages count:", pagesData.data?.length ?? 0);
+    console.log("[instagram-exchange] [C] /me/accounts — full body:", JSON.stringify(pagesData));
+
+    if (!pagesData.data || pagesData.data.length === 0) {
+      console.error("[instagram-exchange] [C] NO PAGES FOUND for user:", meData.name, "(", meData.id, ")");
+      return new Response(JSON.stringify({
+        error: 'NO_FACEBOOK_PAGES',
+        message: 'Nenhuma Página do Facebook encontrada para este usuário/token. Verifique se você é admin de alguma Página.',
+        me: meData,
+        accounts: pagesData,
+        scopes_hint: 'Verifique se o token é USER token e se o usuário é admin da Página.',
+      }), { status: 400, headers });
+    }
 
     // Step 4: Find Instagram Business Account on each page
     let selectedPage: any = null;
     let igAccount: any = null;
 
     for (const page of pagesData.data) {
+      console.log("[instagram-exchange] Checking page:", page.name, "(", page.id, ") perms:", JSON.stringify(page.perms));
       const igRes = await fetch(
         `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{id,username,profile_picture_url}&access_token=${page.access_token}`
       );
       const igData = await igRes.json();
+      console.log("[instagram-exchange] Page", page.id, "IG data:", JSON.stringify(igData));
 
       if (igData.instagram_business_account) {
         selectedPage = page;
         igAccount = igData.instagram_business_account;
-        console.log("[instagram-exchange] Found IG account:", igAccount.username, "on page:", page.name);
+        console.log("[instagram-exchange] ✅ Found IG account:", igAccount.username, "on page:", page.name);
         break;
       }
     }
 
     if (!selectedPage || !igAccount) {
-      console.error("[instagram-exchange] No Instagram Business Account linked to any page. Pages checked:", pagesData.data.length);
+      console.error("[instagram-exchange] No IG Business Account found. Pages checked:", pagesData.data.length);
       return new Response(JSON.stringify({
         error: 'NO_IG_BUSINESS',
-        message: 'Nenhuma conta Instagram Business vinculada às suas páginas do Facebook. Converta seu Instagram para conta profissional e vincule a uma Página do Facebook.',
+        message: 'Nenhuma conta Instagram Business vinculada às suas Páginas. Converta seu Instagram para conta profissional e vincule a uma Página.',
+        me: meData,
+        pages_checked: pagesData.data.map((p: any) => ({ id: p.id, name: p.name })),
       }), { status: 400, headers });
     }
 
     // Step 5: Persist connection
     console.log("[instagram-exchange] Saving connection...");
 
-    // Upsert social_integrations
     await supabaseAdmin.from('social_integrations').upsert({
       organization_id: organizationId,
       platform: 'instagram',
@@ -146,7 +184,6 @@ serve(async (req) => {
       status: 'active',
     }, { onConflict: 'organization_id,platform,page_id' });
 
-    // Upsert instagram_connections
     const { data: connection, error: saveError } = await supabaseAdmin
       .from('instagram_connections')
       .upsert({
@@ -170,7 +207,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Falha ao salvar conexão', details: saveError.message }), { status: 500, headers });
     }
 
-    // Grant permissions to connecting user
     await supabaseAdmin
       .from('instagram_user_permissions')
       .upsert({
@@ -184,7 +220,7 @@ serve(async (req) => {
         onConflict: 'connection_id,user_id',
       });
 
-    console.log("[instagram-exchange] Connection saved successfully:", connection.id);
+    console.log("[instagram-exchange] === SUCCESS === connection:", connection.id, "IG:", igAccount.username);
 
     return new Response(JSON.stringify({
       ok: true,
