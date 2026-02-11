@@ -47,7 +47,7 @@ import { FollowupTemplatesManagement } from "@/components/settings/FollowupTempl
 import { FollowupCadencesManagement } from "@/components/settings/FollowupCadencesManagement";
 import { ClerkMigration } from "@/components/settings/ClerkMigration";
 import BillingSettings from "@/components/settings/BillingSettings";
-import { KeywordRulesManagement } from "@/components/settings/KeywordRulesManagement";
+
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Dialog,
@@ -109,7 +109,7 @@ export function Settings() {
     { id: "webhooks", icon: Webhook, label: "Webhooks" },
     { id: "distribution", icon: Users, label: "Distribuição de Leads" },
     { id: "sources", icon: MapPin, label: "Origens de Leads" },
-    { id: "keyword-rules", icon: Zap, label: "Captura Automática" },
+    
     { id: "notifications", icon: Bell, label: "Notificações" },
   ];
 
@@ -148,8 +148,8 @@ export function Settings() {
         );
       case "sources":
         return <LeadSourcesManagement />;
-      case "keyword-rules":
-        return <KeywordRulesManagement />;
+
+
       case "notifications":
         return (
           <Card className="card-gradient border-0">
