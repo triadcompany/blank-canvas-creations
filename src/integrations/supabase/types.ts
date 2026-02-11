@@ -3330,6 +3330,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          assigned_to: string | null
           cidade: string | null
           created_at: string | null
           created_by: string
@@ -3353,6 +3354,7 @@ export type Database = {
           valor_negocio: number | null
         }
         Insert: {
+          assigned_to?: string | null
           cidade?: string | null
           created_at?: string | null
           created_by: string
@@ -3376,6 +3378,7 @@ export type Database = {
           valor_negocio?: number | null
         }
         Update: {
+          assigned_to?: string | null
           cidade?: string | null
           created_at?: string | null
           created_by?: string
@@ -3399,6 +3402,20 @@ export type Database = {
           valor_negocio?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_created_by_fkey"
             columns: ["created_by"]
