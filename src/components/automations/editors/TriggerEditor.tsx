@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -10,6 +10,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { AI_EVENT_OPTIONS } from "@/services/automationEventBus";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 
 interface TriggerEditorProps {
   config: any;
@@ -36,6 +39,44 @@ const matchTypes = [
 ];
 
 export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
+  const { profile } = useAuth();
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [stages, setStages] = useState<{ id: string; name: string; position: number }[]>([]);
+  const [loadingPipelines, setLoadingPipelines] = useState(false);
+  const [loadingStages, setLoadingStages] = useState(false);
+
+  // Load pipelines when trigger type is deal_stage_changed
+  useEffect(() => {
+    if (config.triggerType !== "deal_stage_changed" || !profile?.organization_id) return;
+    setLoadingPipelines(true);
+    Promise.resolve(
+      supabase.rpc("get_org_pipelines", { p_org_id: profile.organization_id })
+    ).then(({ data }) => {
+        setPipelines((data || []).filter((p: any) => p.is_active).map((p: any) => ({ id: p.id, name: p.name })));
+      })
+      .finally(() => setLoadingPipelines(false));
+  }, [config.triggerType, profile?.organization_id]);
+
+  // Load stages when pipeline_id changes
+  useEffect(() => {
+    if (!config.pipeline_id) {
+      setStages([]);
+      return;
+    }
+    setLoadingStages(true);
+    Promise.resolve(
+      supabase.rpc("get_pipeline_stages", { p_pipeline_id: config.pipeline_id })
+    ).then(({ data }) => {
+        setStages(
+          (data || [])
+            .filter((s: any) => s.is_active)
+            .map((s: any) => ({ id: s.id, name: s.name, position: s.position }))
+            .sort((a: any, b: any) => a.position - b.position)
+        );
+      })
+      .finally(() => setLoadingStages(false));
+  }, [config.pipeline_id]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -216,30 +257,103 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
         </div>
       )}
 
-      {(config.triggerType === "lead_stage_changed" || config.triggerType === "deal_stage_changed") && (
+      {config.triggerType === "lead_stage_changed" && (
         <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/30">
-          {config.triggerType === "deal_stage_changed" && (
-            <p className="text-[11px] text-muted-foreground">
-              Dispara quando um lead é movido para a etapa destino no Kanban. Publica <code>deal.stage_changed</code> no Event Bus.
-            </p>
-          )}
           <div>
-            <Label className="font-poppins text-sm">Pipeline (opcional)</Label>
+            <Label className="font-poppins text-sm">Pipeline</Label>
             <Input
               className="mt-1.5"
-              placeholder="Nome do pipeline (vazio = qualquer)"
+              placeholder="Nome do pipeline"
               value={config.pipeline || ""}
               onChange={(e) => onChange({ ...config, pipeline: e.target.value })}
             />
           </div>
           <div>
-            <Label className="font-poppins text-sm">Etapa destino</Label>
+            <Label className="font-poppins text-sm">Etapa</Label>
             <Input
               className="mt-1.5"
-              placeholder="Nome da etapa (ex: Qualificado)"
+              placeholder="Nome da etapa"
               value={config.stage || ""}
               onChange={(e) => onChange({ ...config, stage: e.target.value })}
             />
+          </div>
+        </div>
+      )}
+
+      {config.triggerType === "deal_stage_changed" && (
+        <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/30">
+          <p className="text-[11px] text-muted-foreground">
+            Dispara quando um lead é movido para a etapa destino no Kanban. Publica <code>deal.stage_changed</code> no Event Bus.
+          </p>
+
+          <div>
+            <Label className="font-poppins text-sm">Pipeline</Label>
+            {loadingPipelines ? (
+              <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+              </div>
+            ) : (
+              <Select
+                value={config.pipeline_id || ""}
+                onValueChange={(v) => {
+                  const pipeline = pipelines.find(p => p.id === v);
+                  onChange({
+                    ...config,
+                    pipeline_id: v,
+                    pipeline: pipeline?.name || "",
+                    stage_id: "",
+                    stage: "",
+                  });
+                }}
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Selecione o pipeline" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pipelines.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <div>
+            <Label className="font-poppins text-sm">Etapa destino</Label>
+            {!config.pipeline_id ? (
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Selecione um pipeline primeiro
+              </p>
+            ) : loadingStages ? (
+              <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando etapas...
+              </div>
+            ) : (
+              <Select
+                value={config.stage_id || ""}
+                onValueChange={(v) => {
+                  const stage = stages.find(s => s.id === v);
+                  onChange({
+                    ...config,
+                    stage_id: v,
+                    stage: stage?.name || "",
+                  });
+                }}
+              >
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Selecione a etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stages.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
       )}

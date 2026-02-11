@@ -153,20 +153,37 @@ async function processEvent(supabase: any, event: any) {
         const trigNode = (flowData?.nodes || []).find((n: any) => n.type === "trigger");
         const trigConfig = trigNode?.data?.config || {};
         
-        // Check stage match
-        const configStage = (trigConfig.stage || "").toLowerCase().trim();
-        if (configStage && configStage !== toStageName && configStage !== toStageId) {
-          console.log(`[event-dispatcher] Stage mismatch: "${configStage}" vs "${toStageName}"`);
-          continue;
+        // Check stage match — prefer ID, fallback to name for legacy automations
+        const configStageId = trigConfig.stage_id || "";
+        const configStageName = (trigConfig.stage || "").toLowerCase().trim();
+        
+        if (configStageId) {
+          // New: compare by UUID
+          if (configStageId !== toStageId) {
+            console.log(`[event-dispatcher] Stage ID mismatch: "${configStageId}" vs "${toStageId}"`);
+            continue;
+          }
+        } else if (configStageName) {
+          // Legacy fallback: compare by name
+          if (configStageName !== toStageName) {
+            console.log(`[event-dispatcher] Stage name mismatch (legacy): "${configStageName}" vs "${toStageName}"`);
+            continue;
+          }
         }
         
-        // Check pipeline match (optional)
-        const configPipeline = (trigConfig.pipeline || "").toLowerCase().trim();
-        if (configPipeline && configPipeline !== pipelineId) {
-          // Try name match
+        // Check pipeline match — prefer ID, fallback to name for legacy
+        const configPipelineId = trigConfig.pipeline_id || "";
+        const configPipelineName = (trigConfig.pipeline || "").toLowerCase().trim();
+        
+        if (configPipelineId) {
+          if (configPipelineId !== pipelineId) {
+            console.log(`[event-dispatcher] Pipeline ID mismatch: "${configPipelineId}" vs "${pipelineId}"`);
+            continue;
+          }
+        } else if (configPipelineName) {
           const pipelineName = (payload.pipeline_name || "").toLowerCase().trim();
-          if (configPipeline !== pipelineName) {
-            console.log(`[event-dispatcher] Pipeline mismatch: "${configPipeline}" vs "${pipelineName}"`);
+          if (configPipelineName !== pipelineName) {
+            console.log(`[event-dispatcher] Pipeline name mismatch (legacy): "${configPipelineName}" vs "${pipelineName}"`);
             continue;
           }
         }
