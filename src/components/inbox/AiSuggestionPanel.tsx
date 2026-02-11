@@ -10,6 +10,7 @@ import { publishAutomationEvent, AI_EVENTS } from '@/services/automationEventBus
 
 interface AiSuggestion {
   intent: string;
+  intent_label?: string;
   summary: string;
   suggested_reply: string;
   suggested_actions: string[];
@@ -19,6 +20,8 @@ interface AiSuggestion {
   suggested_stage_name: string | null;
   suggested_reason: string | null;
   confidence: number;
+  sentiment?: string;
+  urgency_level?: string;
   current_stage_name: string | null;
   current_stage_id: string | null;
   lead_id: string | null;
@@ -220,7 +223,7 @@ export function AiSuggestionPanel({
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline" className="text-[10px] h-5">
                   <Lightbulb className="h-3 w-3 mr-1" />
-                  {intentLabels[suggestion.intent] || suggestion.intent}
+                  {suggestion.intent_label || intentLabels[suggestion.intent] || suggestion.intent}
                 </Badge>
                 <Badge
                   variant="secondary"
@@ -233,6 +236,22 @@ export function AiSuggestionPanel({
                 >
                   {Math.round(suggestion.confidence * 100)}% confiança
                 </Badge>
+                {suggestion.sentiment && suggestion.sentiment !== 'neutral' && (
+                  <Badge variant="secondary" className={cn(
+                    "text-[10px] h-5",
+                    suggestion.sentiment === 'positive' ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-700"
+                  )}>
+                    {suggestion.sentiment === 'positive' ? '😊 Positivo' : '😟 Negativo'}
+                  </Badge>
+                )}
+                {suggestion.urgency_level && suggestion.urgency_level !== 'low' && (
+                  <Badge variant="secondary" className={cn(
+                    "text-[10px] h-5",
+                    suggestion.urgency_level === 'high' ? "bg-red-500/10 text-red-700" : "bg-amber-500/10 text-amber-700"
+                  )}>
+                    ⚡ {suggestion.urgency_level === 'high' ? 'Alta' : 'Média'}
+                  </Badge>
+                )}
               </div>
 
               {/* Summary */}

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { loadIntentDefinitions, saveConversationIntelligence } from "../_shared/intent-loader.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -176,7 +177,7 @@ async function processJob(
     return `[${prefix}] ${m.body}`;
   }).join("\n");
 
-  // ── 5. Org prompt ──
+  // ── 5. Org prompt + dynamic intents ──
   const { data: org } = await supabase
     .from("organizations")
     .select("ai_system_prompt")
@@ -185,6 +186,18 @@ async function processJob(
 
   const contactName = conv.contact_name || conv.contact_phone;
   const orgPrompt = org?.ai_system_prompt || "";
+
+  // Load dynamic intents for this org
+  let intentDefs: { intent_key: string; intent_label: string }[] = [];
+  try {
+    intentDefs = await loadIntentDefinitions(supabase, orgId);
+  } catch (e) {
+    console.error("[ai-auto-reply] Failed to load intents, using fallback:", e);
+    intentDefs = [{ intent_key: "unknown", intent_label: "Indefinido" }];
+  }
+
+  const intentList = intentDefs.map(i => `- ${i.intent_key}: ${i.intent_label}`).join("\n");
+  const intentKeys = intentDefs.map(i => i.intent_key).join(", ");
 
   const systemPrompt = `Você é um assistente comercial de vendas via WhatsApp. Responda de forma curta, natural e empática.
 ${orgPrompt ? `\nINSTRUÇÕES DA EMPRESA:\n${orgPrompt}\n` : ""}
@@ -195,7 +208,23 @@ REGRAS:
 - Foque em avançar a conversa
 - Seja proativo mas não insistente
 
-Contato: ${contactName}`;
+Contato: ${contactName}
+
+ANÁLISE DE INTENÇÃO (obrigatória):
+Além da resposta, analise a intenção do cliente usando APENAS estas intents:
+${intentList}
+
+Responda EXATAMENTE neste formato JSON:
+{
+  "reply": "texto da resposta ao cliente",
+  "intent": "intent_key válida da lista acima",
+  "confidence": 0.0,
+  "sentiment": "positive | neutral | negative",
+  "urgency_level": "low | medium | high"
+}
+
+Se não conseguir identificar a intenção, use "unknown".
+Intents válidas: ${intentKeys}`;
 
   // ── 6. Call OpenAI (gpt-4o-mini, 20s timeout) ──
   const controller = new AbortController();
@@ -216,7 +245,8 @@ Contato: ${contactName}`;
           { role: "user", content: chatHistory ? `Histórico:\n${chatHistory}` : "(sem histórico)" },
         ],
         temperature: 0.5,
-        max_tokens: 200,
+        max_tokens: 400,
+        response_format: { type: "json_object" },
       }),
       signal: controller.signal,
     });
@@ -236,15 +266,46 @@ Contato: ${contactName}`;
   }
 
   const openaiData = await openaiRes.json();
-  let replyText = openaiData.choices?.[0]?.message?.content?.trim() || "";
+  const rawContent = openaiData.choices?.[0]?.message?.content?.trim() || "";
 
-  // Strip JSON wrapper if returned
-  if (replyText.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(replyText);
-      replyText = parsed.reply || parsed.text || parsed.message || replyText;
-    } catch { /* use raw */ }
+  // Parse structured response
+  let replyText = "";
+  let detectedIntent = "unknown";
+  let confidence = 0;
+  let sentiment = "neutral";
+  let urgencyLevel = "low";
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    replyText = parsed.reply || parsed.text || parsed.message || rawContent;
+    detectedIntent = parsed.intent || "unknown";
+    confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0;
+    sentiment = ["positive", "neutral", "negative"].includes(parsed.sentiment) ? parsed.sentiment : "neutral";
+    urgencyLevel = ["low", "medium", "high"].includes(parsed.urgency_level) ? parsed.urgency_level : "low";
+  } catch {
+    // Fallback: use raw as reply text
+    replyText = rawContent;
   }
+
+  // Validate intent is in the allowed list
+  const validKeys = new Set(intentDefs.map(i => i.intent_key));
+  if (!validKeys.has(detectedIntent)) {
+    detectedIntent = "unknown";
+  }
+
+  // Find label for the detected intent
+  const intentLabel = intentDefs.find(i => i.intent_key === detectedIntent)?.intent_label || "Indefinido";
+
+  // Save intelligence (non-blocking)
+  saveConversationIntelligence(supabase, {
+    organization_id: orgId,
+    conversation_id: convId,
+    last_detected_intent: detectedIntent,
+    intent_label: intentLabel,
+    confidence,
+    sentiment,
+    urgency_level: urgencyLevel,
+  }).catch(e => console.error("[ai-auto-reply] Intelligence save error:", e));
 
   if (!replyText) {
     return { status: "completed", data: { responded: false, reason: "empty_reply" } };

@@ -1182,6 +1182,57 @@ export type Database = {
           },
         ]
       }
+      conversation_intelligence: {
+        Row: {
+          confidence: number
+          conversation_id: string
+          id: string
+          intent_label: string | null
+          last_detected_intent: string
+          organization_id: string
+          sentiment: string
+          updated_at: string
+          urgency_level: string
+        }
+        Insert: {
+          confidence?: number
+          conversation_id: string
+          id?: string
+          intent_label?: string | null
+          last_detected_intent?: string
+          organization_id: string
+          sentiment?: string
+          updated_at?: string
+          urgency_level?: string
+        }
+        Update: {
+          confidence?: number
+          conversation_id?: string
+          id?: string
+          intent_label?: string | null
+          last_detected_intent?: string
+          organization_id?: string
+          sentiment?: string
+          updated_at?: string
+          urgency_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_intelligence_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_intelligence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           ai_mode: string
@@ -2737,6 +2788,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      intent_definitions: {
+        Row: {
+          created_at: string
+          id: string
+          intent_key: string
+          intent_label: string
+          scope_id: string | null
+          scope_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intent_key: string
+          intent_label: string
+          scope_id?: string | null
+          scope_type?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intent_key?: string
+          intent_label?: string
+          scope_id?: string | null
+          scope_type?: string
+        }
+        Relationships: []
       }
       investimentos_marketing: {
         Row: {
