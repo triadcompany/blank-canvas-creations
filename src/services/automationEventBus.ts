@@ -19,6 +19,9 @@ export const AI_EVENTS = {
   HANDOFF_TO_HUMAN_BY_AI: 'handoff.to_human.by_ai',
   HANDOFF_TO_AI_BY_HUMAN: 'handoff.to_ai.by_human',
 
+  // Inbound messaging events
+  INBOUND_FIRST_MESSAGE: 'inbound.first_message',
+
   // Reserved for future steps
   CONVERSATION_AI_SUGGESTED_REPLY: 'conversation.ai_suggested_reply',
   CONVERSATION_AI_MESSAGE_SENT: 'conversation.ai_message_sent',
@@ -35,6 +38,7 @@ export const AI_EVENT_OPTIONS = [
   { value: AI_EVENTS.LEAD_FOLLOWUP_NEEDED_BY_AI, label: 'Lead precisa follow-up (por IA)' },
   { value: AI_EVENTS.HANDOFF_TO_HUMAN_BY_AI, label: 'Handoff para humano (por IA)' },
   { value: AI_EVENTS.HANDOFF_TO_AI_BY_HUMAN, label: 'Handoff para IA (por humano)' },
+  { value: AI_EVENTS.INBOUND_FIRST_MESSAGE, label: 'Primeira mensagem recebida' },
   { value: AI_EVENTS.CONVERSATION_AI_SUGGESTED_REPLY, label: 'IA sugeriu resposta' },
   { value: AI_EVENTS.LEAD_CREATED_BY_AI, label: 'Lead criado (por IA)' },
 ];

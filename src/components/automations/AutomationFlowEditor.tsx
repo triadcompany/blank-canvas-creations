@@ -309,6 +309,8 @@ function getDefaultConfig(type: string) {
   switch (type) {
     case "trigger":
       return { triggerType: "lead_created" };
+    case "first_message_trigger":
+      return { triggerType: "first_message", useKeyword: false, keyword: "", matchType: "contains", channel: "all" };
     case "message":
       return { text: "", variables: [], buttons: [] };
     case "delay":
