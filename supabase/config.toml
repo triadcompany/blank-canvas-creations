@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.whatsapp-send-audio]
 verify_jwt = false
+
+[functions.meta-webhook]
+verify_jwt = false
+
+[functions.instagram-webhook]
+verify_jwt = false
