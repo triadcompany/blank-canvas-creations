@@ -19,6 +19,7 @@ interface TriggerEditorProps {
 const triggerTypes = [
   { value: "lead_created", label: "Lead criado" },
   { value: "lead_stage_changed", label: "Lead movido de etapa" },
+  { value: "deal_stage_changed", label: "📊 Mudança de etapa (Kanban)" },
   { value: "lead_from_instagram", label: "Lead via Instagram" },
   { value: "lead_from_whatsapp", label: "Lead via WhatsApp" },
   { value: "first_message", label: "📩 Primeira mensagem recebida" },
@@ -215,22 +216,27 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
         </div>
       )}
 
-      {config.triggerType === "lead_stage_changed" && (
-        <div className="space-y-3">
+      {(config.triggerType === "lead_stage_changed" || config.triggerType === "deal_stage_changed") && (
+        <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/30">
+          {config.triggerType === "deal_stage_changed" && (
+            <p className="text-[11px] text-muted-foreground">
+              Dispara quando um lead é movido para a etapa destino no Kanban. Publica <code>deal.stage_changed</code> no Event Bus.
+            </p>
+          )}
           <div>
-            <Label className="font-poppins text-sm">Pipeline</Label>
+            <Label className="font-poppins text-sm">Pipeline (opcional)</Label>
             <Input
               className="mt-1.5"
-              placeholder="Nome do pipeline"
+              placeholder="Nome do pipeline (vazio = qualquer)"
               value={config.pipeline || ""}
               onChange={(e) => onChange({ ...config, pipeline: e.target.value })}
             />
           </div>
           <div>
-            <Label className="font-poppins text-sm">Etapa</Label>
+            <Label className="font-poppins text-sm">Etapa destino</Label>
             <Input
               className="mt-1.5"
-              placeholder="Nome da etapa"
+              placeholder="Nome da etapa (ex: Qualificado)"
               value={config.stage || ""}
               onChange={(e) => onChange({ ...config, stage: e.target.value })}
             />

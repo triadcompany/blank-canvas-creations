@@ -117,6 +117,64 @@ async function processEvent(supabase: any, event: any) {
       .eq("is_active", true)
       .eq("trigger_type", "first_message");
     automations = data || [];
+  } else if (eventName === "deal.stage_changed") {
+    // Match automations with trigger_type = deal_stage_changed OR event trigger listening to deal.stage_changed
+    const { data: stageAutomations } = await supabase
+      .from("automations")
+      .select("id, name, trigger_type, trigger_event_name, allow_ai_triggers, allow_human_triggers, throttle_seconds, channel")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .in("trigger_type", ["deal_stage_changed", "event"])
+      .or(`trigger_type.eq.deal_stage_changed,trigger_event_name.eq.deal.stage_changed`);
+    
+    // Filter deal_stage_changed triggers by stage match
+    const payload = event.payload || {};
+    const toStageName = (payload.to_stage_name || "").toLowerCase().trim();
+    const toStageId = payload.to_stage_id || "";
+    const pipelineId = payload.pipeline_id || "";
+    
+    const matchedAutomations: any[] = [];
+    for (const auto of (stageAutomations || [])) {
+      if (auto.trigger_type === "event" && auto.trigger_event_name === "deal.stage_changed") {
+        matchedAutomations.push(auto);
+        continue;
+      }
+      
+      if (auto.trigger_type === "deal_stage_changed") {
+        // Load flow to check trigger config
+        const { data: flowData } = await supabase
+          .from("automation_flows")
+          .select("nodes")
+          .eq("automation_id", auto.id)
+          .order("version", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        const trigNode = (flowData?.nodes || []).find((n: any) => n.type === "trigger");
+        const trigConfig = trigNode?.data?.config || {};
+        
+        // Check stage match
+        const configStage = (trigConfig.stage || "").toLowerCase().trim();
+        if (configStage && configStage !== toStageName && configStage !== toStageId) {
+          console.log(`[event-dispatcher] Stage mismatch: "${configStage}" vs "${toStageName}"`);
+          continue;
+        }
+        
+        // Check pipeline match (optional)
+        const configPipeline = (trigConfig.pipeline || "").toLowerCase().trim();
+        if (configPipeline && configPipeline !== pipelineId) {
+          // Try name match
+          const pipelineName = (payload.pipeline_name || "").toLowerCase().trim();
+          if (configPipeline !== pipelineName) {
+            console.log(`[event-dispatcher] Pipeline mismatch: "${configPipeline}" vs "${pipelineName}"`);
+            continue;
+          }
+        }
+        
+        matchedAutomations.push(auto);
+      }
+    }
+    automations = matchedAutomations;
   } else {
     const { data } = await supabase
       .from("automations")

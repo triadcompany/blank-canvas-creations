@@ -381,6 +381,8 @@ async function processAction(supabase: any, node: any, job: any): Promise<JobRes
     case "create_lead":
     case "create_deal":
       return await processActionCreateLead(supabase, config, job);
+    case "send_meta_event":
+      return await processActionSendMetaEvent(supabase, config, job);
     case "end_automation":
       await completeRun(supabase, job);
       return { status: "done", output: { action_type: "end_automation", ended: true } };
@@ -1179,4 +1181,213 @@ async function completeRun(supabase: any, job: any) {
     message: "Automação concluída com sucesso",
     data: { completed_at: new Date().toISOString() },
   });
+}
+
+// ── SEND META EVENT (CAPI) ────────────────────────────
+
+async function hashSHA256(value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function processActionSendMetaEvent(supabase: any, config: any, job: any): Promise<JobResult> {
+  const params = config.params || {};
+  const eventName = params.event_name || "Lead";
+  const sendOnce = params.send_once !== false;
+  const includeTestCode = params.include_test_event_code === true;
+  const value = params.value ? parseFloat(params.value) : undefined;
+  const currency = params.currency || "BRL";
+
+  // Load run context
+  const { data: run } = await supabase
+    .from("automation_runs")
+    .select("context, entity_id, entity_type, organization_id")
+    .eq("id", job.run_id)
+    .single();
+
+  if (!run) {
+    return { status: "done", output: { error: "Run not found", skipped: true } };
+  }
+
+  const orgId = run.organization_id;
+  const ctx = run.context || {};
+  const leadId = ctx.lead_id || run.entity_id || null;
+  const phone = ctx.phone || ctx.lead_phone || "";
+  const email = ctx.email || ctx.lead_email || "";
+  const traceId = ctx.trace_id || null;
+
+  // 1. Load Meta integration config
+  const { data: metaConfig } = await supabase
+    .from("meta_integrations")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!metaConfig) {
+    return { status: "done", output: { error: "Meta integration not configured or inactive", skipped: true } };
+  }
+
+  // 2. Deduplication check (send_once)
+  const eventId = `${leadId || phone}_${eventName}_${ctx.to_stage_id || 'manual'}_${Date.now()}`;
+  const dedupeKey = `${leadId || phone}_${eventName}_${ctx.to_stage_id || 'any'}`;
+
+  if (sendOnce && leadId) {
+    const { data: existing } = await supabase
+      .from("meta_capi_events")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("status", "success")
+      .like("event_id", `${leadId}_${eventName}_%`)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      console.log(`[automation-worker] Meta event deduplicated: ${eventName} for lead ${leadId}`);
+      return { status: "done", output: { action_type: "send_meta_event", deduplicated: true, event_name: eventName } };
+    }
+  }
+
+  // 3. Create pending record
+  const { data: capiRecord, error: insertErr } = await supabase
+    .from("meta_capi_events")
+    .insert({
+      organization_id: orgId,
+      lead_id: leadId,
+      deal_id: leadId,
+      phone,
+      event_name: eventName,
+      event_id: dedupeKey,
+      event_time: new Date().toISOString(),
+      status: "pending",
+      trace_id: traceId,
+      attempts: 0,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr) {
+    // Dedupe conflict
+    if (insertErr.code === "23505") {
+      return { status: "done", output: { action_type: "send_meta_event", deduplicated: true, event_name: eventName } };
+    }
+    throw new Error(`Failed to create meta_capi_events record: ${insertErr.message}`);
+  }
+
+  // 4. Build payload
+  const userData: Record<string, any> = {};
+  if (phone) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+    userData.ph = [await hashSHA256(normalizedPhone)];
+  }
+  if (email) {
+    userData.em = [await hashSHA256(email.toLowerCase().trim())];
+  }
+
+  const customData: Record<string, any> = {
+    currency,
+    pipeline_id: ctx.pipeline_id || null,
+    stage_id: ctx.to_stage_id || null,
+    stage_name: ctx.to_stage_name || null,
+    lead_source: ctx.lead_source || ctx.source || null,
+    seller_id: ctx.seller_id || null,
+    deal_id: leadId,
+  };
+  if (value) customData.value = value;
+
+  const eventTime = Math.floor(Date.now() / 1000);
+  const payload: any = {
+    data: [{
+      event_name: eventName,
+      event_time: eventTime,
+      event_id: dedupeKey,
+      action_source: "system_generated",
+      user_data: userData,
+      custom_data: customData,
+    }],
+  };
+
+  if (includeTestCode && metaConfig.meta_test_event_code) {
+    payload.test_event_code = metaConfig.meta_test_event_code;
+  } else if (metaConfig.test_mode) {
+    payload.test_event_code = "TEST12345";
+  }
+
+  // 5. Send to Meta
+  const MAX_META_ATTEMPTS = 3;
+  let lastError = "";
+  let success = false;
+  let responseJson: any = null;
+
+  for (let attempt = 1; attempt <= MAX_META_ATTEMPTS; attempt++) {
+    try {
+      const pixelId = metaConfig.pixel_id;
+      const token = metaConfig.access_token;
+      const metaUrl = `https://graph.facebook.com/v18.0/${pixelId}/events?access_token=${token}`;
+
+      const metaResponse = await fetch(metaUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      responseJson = await metaResponse.json();
+
+      if (metaResponse.ok) {
+        success = true;
+        break;
+      } else {
+        lastError = JSON.stringify(responseJson);
+        console.warn(`[automation-worker] Meta API attempt ${attempt} failed:`, lastError);
+      }
+    } catch (err: any) {
+      lastError = err.message;
+      console.warn(`[automation-worker] Meta API attempt ${attempt} error:`, lastError);
+    }
+
+    // Update attempts
+    await supabase
+      .from("meta_capi_events")
+      .update({ attempts: attempt, fail_reason: lastError })
+      .eq("id", capiRecord.id);
+
+    if (attempt < MAX_META_ATTEMPTS) {
+      // Wait before retry (exponential backoff)
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+  }
+
+  // 6. Update final status
+  await supabase
+    .from("meta_capi_events")
+    .update({
+      status: success ? "success" : "failed",
+      response_json: responseJson,
+      payload_json: payload,
+      fail_reason: success ? null : lastError,
+      attempts: MAX_META_ATTEMPTS,
+    })
+    .eq("id", capiRecord.id);
+
+  if (!success) {
+    console.error(`[automation-worker] Meta CAPI event failed after ${MAX_META_ATTEMPTS} attempts:`, lastError);
+  } else {
+    console.log(`[automation-worker] Meta CAPI event sent successfully: ${eventName}`);
+  }
+
+  return {
+    status: "done",
+    output: {
+      action_type: "send_meta_event",
+      event_name: eventName,
+      success,
+      attempts: MAX_META_ATTEMPTS,
+      capi_record_id: capiRecord.id,
+      meta_response: success ? responseJson : undefined,
+      error: success ? undefined : lastError,
+    },
+  };
 }

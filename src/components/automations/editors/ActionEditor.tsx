@@ -25,6 +25,7 @@ const actionTypes = [
   { value: "send_email", label: "Enviar e-mail" },
   { value: "update_lead", label: "Atualizar lead" },
   { value: "create_deal", label: "Criar negócio" },
+  { value: "send_meta_event", label: "📊 Enviar para Meta (CAPI)" },
   { value: "end_automation", label: "Encerrar automação" },
 ];
 
@@ -335,6 +336,80 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
               placeholder="Texto do e-mail"
               value={params.body || ""}
               onChange={(e) => updateParams("body", e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      {config.actionType === "send_meta_event" && (
+        <div className="space-y-4 border border-border rounded-lg p-3 bg-muted/30">
+          <p className="text-[11px] text-muted-foreground font-poppins">
+            Envia um evento de conversão para a Meta Conversions API (CAPI).
+            Configure o Pixel/Dataset ID e Access Token em Configurações → Meta Ads.
+          </p>
+
+          <div>
+            <Label className="font-poppins text-sm">Nome do Evento</Label>
+            <Select
+              value={params.event_name || "Lead"}
+              onValueChange={(v) => updateParams("event_name", v)}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Lead">Lead</SelectItem>
+                <SelectItem value="QualifiedLead">QualifiedLead</SelectItem>
+                <SelectItem value="Purchase">Purchase</SelectItem>
+                <SelectItem value="Lead_Veio_Loja">Lead_Veio_Loja</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Enviar apenas uma vez</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Não reenviar se já existir evento de sucesso para este lead + evento
+              </p>
+            </div>
+            <Switch
+              checked={params.send_once ?? true}
+              onCheckedChange={(v) => updateParams("send_once", v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-poppins text-sm">Incluir código de teste</Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Usa o test_event_code configurado no Meta Ads
+              </p>
+            </div>
+            <Switch
+              checked={params.include_test_event_code ?? false}
+              onCheckedChange={(v) => updateParams("include_test_event_code", v)}
+            />
+          </div>
+
+          <div>
+            <Label className="font-poppins text-sm">Valor (opcional)</Label>
+            <Input
+              type="number"
+              className="mt-1.5 w-40"
+              placeholder="0.00"
+              value={params.value || ""}
+              onChange={(e) => updateParams("value", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label className="font-poppins text-sm">Moeda</Label>
+            <Input
+              className="mt-1.5 w-32"
+              placeholder="BRL"
+              value={params.currency || "BRL"}
+              onChange={(e) => updateParams("currency", e.target.value)}
             />
           </div>
         </div>

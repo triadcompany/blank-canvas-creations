@@ -196,6 +196,12 @@ serve(async (req) => {
             triggerUpdates.allow_ai_triggers = triggerConfig.allowAiTriggers ?? false;
             triggerUpdates.allow_human_triggers = triggerConfig.allowHumanTriggers ?? true;
             triggerUpdates.throttle_seconds = triggerConfig.throttleSeconds ?? 0;
+          } else if (triggerConfig.triggerType === "deal_stage_changed") {
+            triggerUpdates.trigger_type = "deal_stage_changed";
+            triggerUpdates.trigger_event_name = "deal.stage_changed";
+            triggerUpdates.allow_ai_triggers = false;
+            triggerUpdates.allow_human_triggers = true;
+            triggerUpdates.throttle_seconds = 0;
           } else {
             triggerUpdates.trigger_type = triggerConfig.triggerType || "manual";
             triggerUpdates.trigger_event_name = null;

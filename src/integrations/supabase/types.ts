@@ -3610,6 +3610,113 @@ export type Database = {
           },
         ]
       }
+      meta_capi_events: {
+        Row: {
+          attempts: number
+          created_at: string
+          deal_id: string | null
+          event_id: string
+          event_name: string
+          event_time: string
+          fail_reason: string | null
+          id: string
+          lead_id: string | null
+          organization_id: string
+          payload_json: Json | null
+          phone: string | null
+          response_json: Json | null
+          status: string
+          trace_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          deal_id?: string | null
+          event_id: string
+          event_name: string
+          event_time?: string
+          fail_reason?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id: string
+          payload_json?: Json | null
+          phone?: string | null
+          response_json?: Json | null
+          status?: string
+          trace_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          deal_id?: string | null
+          event_id?: string
+          event_name?: string
+          event_time?: string
+          fail_reason?: string | null
+          id?: string
+          lead_id?: string | null
+          organization_id?: string
+          payload_json?: Json | null
+          phone?: string | null
+          response_json?: Json | null
+          status?: string
+          trace_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_events_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_events_log: {
         Row: {
           created_at: string | null
@@ -3674,6 +3781,7 @@ export type Database = {
           created_by: string
           id: string
           is_active: boolean | null
+          meta_test_event_code: string | null
           organization_id: string
           pixel_id: string
           test_mode: boolean | null
@@ -3689,6 +3797,7 @@ export type Database = {
           created_by: string
           id?: string
           is_active?: boolean | null
+          meta_test_event_code?: string | null
           organization_id: string
           pixel_id: string
           test_mode?: boolean | null
@@ -3704,6 +3813,7 @@ export type Database = {
           created_by?: string
           id?: string
           is_active?: boolean | null
+          meta_test_event_code?: string | null
           organization_id?: string
           pixel_id?: string
           test_mode?: boolean | null
