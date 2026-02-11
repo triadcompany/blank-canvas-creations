@@ -26,9 +26,11 @@ import {
   MessageSquare,
   CreditCard,
   Inbox,
+  Zap,
 } from "lucide-react";
 import { WhatsAppLeadNotifications } from "@/components/settings/WhatsAppLeadNotifications";
 import { KeywordAutomationSettings } from "@/components/settings/KeywordAutomationSettings";
+import { KeywordRulesManagement } from "@/components/settings/KeywordRulesManagement";
 import { EvolutionIntegration } from "@/components/settings/EvolutionIntegration";
 import { InboxRoutingSettings } from "@/components/settings/InboxRoutingSettings";
 import BillingSettings from "@/components/settings/BillingSettings";
@@ -95,6 +97,7 @@ export function Settings() {
     { id: "usuarios", label: "Usuários", icon: Users },
     { id: "pipeline", label: "Pipeline", icon: GitBranch },
     { id: "keyword-automation", label: "Automação Palavra-chave", icon: Bell },
+    { id: "keyword-rules", label: "Captura Automática", icon: Zap },
     { id: "whatsapp-evolution", label: "WhatsApp (Evolution)", icon: MessageSquare },
     { id: "inbox-routing", label: "Inbox (Distribuição)", icon: Inbox },
     { id: "whatsapp-notifications", label: "Notificações WhatsApp", icon: Bell },
@@ -413,6 +416,8 @@ export function Settings() {
         return renderPipelineSection();
       case "keyword-automation":
         return <KeywordAutomationSettings />;
+      case "keyword-rules":
+        return <KeywordRulesManagement />;
       case "whatsapp-evolution":
         return <EvolutionIntegration />;
       case "inbox-routing":

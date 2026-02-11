@@ -616,8 +616,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       // ── Publish inbound_first_message event to Event Bus (first-touch check) ──
       await publishFirstMessageEvent(supabase, orgId, normalizedPhone, pushName, text || displayBody, conversationId, "whatsapp");
 
-      // Legacy: keyword "anuncio" detected — direct lead creation fallback
-      if (!leadId && containsAdMarker(text || "")) {
+      // Keyword rules: check all first-message keyword rules (includes legacy "anuncio" fallback)
+      if (!leadId) {
         await handleAdKeywordLead(supabase, orgId, normalizedPhone, pushName, externalMessageId, conversationId);
       }
     } else {
@@ -795,7 +795,7 @@ function containsAdMarker(text: string): boolean {
   return normalized.includes("anuncio");
 }
 
-// ── Helper: Handle ad keyword lead with first-touch dedup + automation check ──
+// ── Helper: Handle ad keyword lead with first-touch dedup + keyword rules ──
 async function handleAdKeywordLead(
   supabase: any,
   orgId: string,
@@ -805,32 +805,7 @@ async function handleAdKeywordLead(
   conversationId: string | null,
 ) {
   try {
-    // 0) Check if there's an active automation of type inbound_message_keyword for this org
-    const { data: kwAutomation } = await supabase
-      .from("automations")
-      .select("id, is_active, trigger_event_name")
-      .eq("organization_id", orgId)
-      .eq("trigger_type", "inbound_message_keyword")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    // Also check legacy organization_automation_settings
-    const { data: settings } = await supabase
-      .from("organization_automation_settings")
-      .select("meta_ads_keyword_enabled, meta_ads_pipeline_id, meta_ads_stage_id")
-      .eq("organization_id", orgId)
-      .maybeSingle();
-
-    const automationEnabled = kwAutomation?.is_active === true;
-    const legacyEnabled = settings?.meta_ads_keyword_enabled !== false; // default true
-
-    if (!automationEnabled && !legacyEnabled) {
-      console.log(`[evolution-webhook] Keyword automation disabled for org ${orgId} (automation=${!!kwAutomation}, legacy=${legacyEnabled})`);
-      return;
-    }
-
-    // 1) First-touch dedup
+    // 0) First-touch dedup
     const { data: existing } = await supabase
       .from("whatsapp_first_touch")
       .select("id")
@@ -843,7 +818,77 @@ async function handleAdKeywordLead(
       return;
     }
 
-    // Insert first-touch
+    // 1) Fetch keyword rules from automation_keyword_rules table (priority desc)
+    const { data: keywordRules } = await supabase
+      .from("automation_keyword_rules")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .order("priority", { ascending: false });
+
+    // 2) Also check legacy systems (automation flow + organization_automation_settings)
+    const { data: kwAutomation } = await supabase
+      .from("automations")
+      .select("id, is_active, trigger_event_name")
+      .eq("organization_id", orgId)
+      .eq("trigger_type", "inbound_message_keyword")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    const { data: settings } = await supabase
+      .from("organization_automation_settings")
+      .select("meta_ads_keyword_enabled, meta_ads_pipeline_id, meta_ads_stage_id")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    const legacyEnabled = settings?.meta_ads_keyword_enabled !== false;
+
+    // 3) Get the message text from the last message in conversation
+    let messageText = "";
+    if (conversationId) {
+      const { data: lastMsg } = await supabase
+        .from("messages")
+        .select("body")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      messageText = lastMsg?.body || "";
+    }
+
+    const normalizedText = messageText.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // 4) Try matching keyword rules first
+    let matchedRule: any = null;
+    if (keywordRules && keywordRules.length > 0) {
+      for (const rule of keywordRules) {
+        if (!rule.create_lead) continue;
+        const kw = (rule.keyword || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        let matched = false;
+        switch (rule.match_type) {
+          case "equals": matched = normalizedText === kw; break;
+          case "starts_with": matched = normalizedText.startsWith(kw); break;
+          case "contains": default: matched = normalizedText.includes(kw); break;
+        }
+        if (matched) { matchedRule = rule; break; }
+      }
+    }
+
+    // 5) If no keyword rule matched, fall back to legacy "anuncio" check
+    if (!matchedRule) {
+      const hasAnuncio = normalizedText.includes("anuncio");
+      if (!hasAnuncio) {
+        console.log(`[evolution-webhook] No keyword rule matched and no 'anuncio' detected for ${phone}`);
+        return;
+      }
+      if (!kwAutomation?.is_active && !legacyEnabled) {
+        console.log(`[evolution-webhook] Legacy keyword automation disabled for org ${orgId}`);
+        return;
+      }
+    }
+
+    // 6) Insert first-touch
     const { error: ftErr } = await supabase.from("whatsapp_first_touch").insert({
       organization_id: orgId,
       phone,
@@ -854,12 +899,18 @@ async function handleAdKeywordLead(
       return;
     }
 
-    // 2) Resolve pipeline + stage — prefer automation flow config, then legacy settings
+    // 7) Resolve pipeline + stage from matched rule, automation flow, or legacy settings
     let pipelineId: string | null = null;
     let stageId: string | null = null;
+    let leadSource = "Meta Ads";
 
-    // Try reading from the automation flow's create_lead action node
-    if (kwAutomation) {
+    if (matchedRule) {
+      pipelineId = matchedRule.pipeline_id;
+      stageId = matchedRule.stage_id;
+      leadSource = matchedRule.lead_source || "Meta Ads";
+      console.log(`[evolution-webhook] Matched keyword rule: "${matchedRule.name}" (keyword="${matchedRule.keyword}", match_type=${matchedRule.match_type})`);
+    } else if (kwAutomation) {
+      // Try reading from automation flow
       const { data: flow } = await supabase
         .from("automation_flows")
         .select("nodes")
@@ -923,13 +974,15 @@ async function handleAdKeywordLead(
       }
     }
 
-    // 3) Create lead
+    // 8) Create lead
     const leadData: Record<string, unknown> = {
       organization_id: orgId,
       name: pushName || "Lead WhatsApp",
       phone,
-      source: "Meta Ads",
-      observations: "WhatsApp keyword: anuncio",
+      source: leadSource,
+      observations: matchedRule
+        ? `Keyword rule: ${matchedRule.name} (${matchedRule.keyword})`
+        : "WhatsApp keyword: anuncio",
     };
     if (stageId) leadData.stage_id = stageId;
 
@@ -942,7 +995,8 @@ async function handleAdKeywordLead(
     if (adLeadErr) {
       console.error(`[evolution-webhook] Ad lead creation failed:`, adLeadErr);
     } else {
-      console.log(`[evolution-webhook] ✅ Ad lead auto-created: phone=${phone} lead=${newLead?.id} pipeline=${pipelineId} stage=${stageId} automationId=${kwAutomation?.id || 'legacy'}`);
+      const ruleInfo = matchedRule ? `rule="${matchedRule.name}"` : (kwAutomation?.id ? `automationId=${kwAutomation.id}` : "legacy");
+      console.log(`[evolution-webhook] ✅ Ad lead auto-created: phone=${phone} lead=${newLead?.id} pipeline=${pipelineId} stage=${stageId} source=${leadSource} ${ruleInfo}`);
 
       // Link conversation to lead
       if (conversationId && newLead?.id) {
@@ -952,8 +1006,24 @@ async function handleAdKeywordLead(
           .eq("id", conversationId);
       }
 
-      // Log to automation_logs if automation exists
-      if (kwAutomation) {
+      // Log execution
+      if (matchedRule) {
+        await supabase.from("automation_logs").insert({
+          organization_id: orgId,
+          level: "info",
+          message: `Lead criado por regra de palavra-chave: ${matchedRule.name}`,
+          data: {
+            phone,
+            lead_id: newLead?.id,
+            pipeline_id: pipelineId,
+            stage_id: stageId,
+            rule_id: matchedRule.id,
+            keyword: matchedRule.keyword,
+            match_type: matchedRule.match_type,
+            lead_source: leadSource,
+          },
+        });
+      } else if (kwAutomation) {
         await supabase.from("automation_logs").insert({
           organization_id: orgId,
           automation_id: kwAutomation.id,
