@@ -19,6 +19,9 @@ import {
   ExternalLink,
   Plus,
   Sparkles,
+  Bot,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -198,6 +201,7 @@ function DateSeparator({ date }: { date: string }) {
 function MessageBubble({ message }: { message: InboxMessage }) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
+  const isAiGenerated = message.ai_generated === true;
 
   return (
     <div className={cn('flex mb-1.5', isOutbound ? 'justify-end' : 'justify-start')}>
@@ -205,11 +209,22 @@ function MessageBubble({ message }: { message: InboxMessage }) {
         className={cn(
           'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm',
           isOutbound
-            ? 'bg-primary text-primary-foreground rounded-br-md'
+            ? isAiGenerated
+              ? 'bg-primary/80 text-primary-foreground rounded-br-md border border-primary/30'
+              : 'bg-primary text-primary-foreground rounded-br-md'
             : 'bg-card border border-border/50 rounded-bl-md',
           isOptimistic && 'opacity-70'
         )}
       >
+        {isAiGenerated && (
+          <div className={cn(
+            'flex items-center gap-1 mb-1 text-[10px] font-medium',
+            isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
+          )}>
+            <Bot className="h-3 w-3" />
+            <span>IA</span>
+          </div>
+        )}
         <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
         <div
           className={cn(
@@ -315,6 +330,7 @@ export default function InboxPage() {
     canSendMessage,
     createLeadFromConversation,
     toggleAiMode,
+    resumeAi,
     refreshThreads,
     newMessageFlag,
   } = useInbox();
@@ -539,16 +555,47 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* AI mode toggle */}
-              <Button
-                variant={selectedThread.ai_mode === 'assisted' ? 'default' : 'outline'}
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={() => toggleAiMode(selectedThread.id, selectedThread.ai_mode === 'assisted' ? 'off' : 'assisted')}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                IA {selectedThread.ai_mode === 'assisted' ? 'On' : 'Off'}
-              </Button>
+              {/* AI mode toggle (OFF → ASSISTED → AUTO → OFF) */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={selectedThread.ai_mode !== 'off' ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn(
+                      "h-7 text-xs gap-1",
+                      selectedThread.ai_mode === 'auto' && 'bg-green-600 hover:bg-green-700 text-white'
+                    )}
+                  >
+                    {selectedThread.ai_mode === 'auto' ? (
+                      <Bot className="h-3.5 w-3.5" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {selectedThread.ai_mode === 'auto' ? 'AUTO' : selectedThread.ai_mode === 'assisted' ? 'Assistente' : 'IA Off'}
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-44 p-1" align="end">
+                  <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Modo da IA</div>
+                  {[
+                    { mode: 'off', label: 'Desligada', icon: '⏸' },
+                    { mode: 'assisted', label: 'Assistente', icon: '💡' },
+                    { mode: 'auto', label: 'Autônoma', icon: '🤖' },
+                  ].map(opt => (
+                    <button
+                      key={opt.mode}
+                      className={cn(
+                        'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
+                        selectedThread.ai_mode === opt.mode && 'bg-accent font-medium'
+                      )}
+                      onClick={() => toggleAiMode(selectedThread.id, opt.mode)}
+                    >
+                      <span>{opt.icon}</span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
 
               {/* Lead action */}
               {selectedThread.lead_id ? (
@@ -637,6 +684,39 @@ export default function InboxPage() {
                 )}
               </div>
             </div>
+
+            {/* AI Auto Banner */}
+            {selectedThread.ai_mode === 'auto' && (
+              <div className={cn(
+                'px-4 py-2 flex items-center justify-between text-xs border-b',
+                selectedThread.ai_state === 'human_active'
+                  ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                  : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+              )}>
+                <div className="flex items-center gap-1.5">
+                  {selectedThread.ai_state === 'human_active' ? (
+                    <>
+                      <Pause className="h-3.5 w-3.5" />
+                      <span className="font-medium">Humano assumiu — IA pausada</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="h-3.5 w-3.5" />
+                      <span className="font-medium">IA Autônoma ativa</span>
+                    </>
+                  )}
+                </div>
+                {selectedThread.ai_state === 'human_active' ? (
+                  <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => resumeAi(selectedThread.id)}>
+                    <Play className="h-3 w-3" /> Retomar IA
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => toggleAiMode(selectedThread.id, 'off')}>
+                    <Pause className="h-3 w-3" /> Pausar
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Messages */}
             <ScrollArea className="flex-1 px-4 py-2 relative" ref={scrollAreaRef} onScrollCapture={handleScroll}>
