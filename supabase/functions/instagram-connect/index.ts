@@ -134,9 +134,8 @@ async function handleAction(
       const scope = [
         'instagram_basic',
         'instagram_manage_messages',
-        'pages_manage_metadata',
-        'pages_read_engagement',
         'pages_show_list',
+        'pages_read_engagement',
       ].join(',');
 
       const state = btoa(JSON.stringify({ userId, organizationId }));
