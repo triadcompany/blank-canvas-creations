@@ -38,6 +38,10 @@ export interface InboxMessage {
   created_at: string;
   ai_generated?: boolean;
   ai_interaction_id?: string | null;
+  message_type?: string;
+  media_url?: string | null;
+  mime_type?: string | null;
+  duration_ms?: number | null;
 }
 
 export interface OrgMember {

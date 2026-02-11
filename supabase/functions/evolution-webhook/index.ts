@@ -252,17 +252,27 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
     if (!phone) continue;
 
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || null;
-    const mediaType = msg.message?.imageMessage ? "imagem"
-      : msg.message?.videoMessage ? "vídeo"
-      : msg.message?.audioMessage ? "áudio"
-      : msg.message?.documentMessage ? "documento"
-      : msg.message?.stickerMessage ? "sticker"
+    const isAudio = !!msg.message?.audioMessage;
+    const isImage = !!msg.message?.imageMessage;
+    const isVideo = !!msg.message?.videoMessage;
+    const isDocument = !!msg.message?.documentMessage;
+    const isSticker = !!msg.message?.stickerMessage;
+    const mediaType = isImage ? "imagem"
+      : isVideo ? "vídeo"
+      : isAudio ? "áudio"
+      : isDocument ? "documento"
+      : isSticker ? "sticker"
       : null;
+    // Map to message_type column values
+    const messageType = isAudio ? "audio" : isImage ? "image" : isVideo ? "video" : isDocument ? "document" : "text";
     // Extract caption from media messages
     const mediaCaption = msg.message?.imageMessage?.caption
       || msg.message?.videoMessage?.caption
       || msg.message?.documentMessage?.caption
       || null;
+    // Extract audio metadata
+    const audioDurationMs = isAudio ? (msg.message?.audioMessage?.seconds || 0) * 1000 : null;
+    const audioMimetype = isAudio ? (msg.message?.audioMessage?.mimetype || "audio/ogg") : null;
     const displayBody = text || (mediaType
       ? (mediaCaption ? `📎 (${mediaType}) ${mediaCaption}` : `📎 (${mediaType})`)
       : null);
@@ -355,12 +365,22 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         .maybeSingle();
 
       if (!existingMsg) {
+        // Download and upload media for audio messages
+        let mediaUrl: string | null = null;
+        if (isAudio && !isFromMe) {
+          mediaUrl = await downloadAndUploadMedia(supabase, instanceName, externalMessageId, orgId, conversationId!);
+        }
+
         await supabase.from("messages").insert({
           organization_id: orgId,
           conversation_id: conversationId,
           direction,
           body: displayBody,
           external_message_id: externalMessageId,
+          message_type: messageType,
+          media_url: mediaUrl,
+          mime_type: audioMimetype,
+          duration_ms: audioDurationMs,
         });
       }
     } else if (conversationId) {
@@ -732,6 +752,77 @@ async function logWebhookEvent(supabase: any, data: {
     });
   } catch (err) {
     console.error("[evolution-webhook] Failed to log webhook event:", err);
+  }
+}
+
+// ── Helper: Download media from Evolution and upload to Supabase Storage ──
+async function downloadAndUploadMedia(
+  supabase: any,
+  instanceName: string,
+  messageId: string,
+  orgId: string,
+  conversationId: string,
+): Promise<string | null> {
+  const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+  const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+  if (!evolutionBaseUrl || !evolutionApiKey || !messageId) return null;
+
+  try {
+    // Download media from Evolution using base64 endpoint
+    const mediaRes = await fetch(
+      `${evolutionBaseUrl}/chat/getBase64FromMediaMessage/${instanceName}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({ message: { key: { id: messageId } } }),
+      }
+    );
+
+    if (!mediaRes.ok) {
+      console.error("[evolution-webhook] Media download failed:", mediaRes.status);
+      return null;
+    }
+
+    const mediaData = await mediaRes.json();
+    const base64 = mediaData?.base64 || null;
+    const mimetype = mediaData?.mimetype || "audio/ogg";
+
+    if (!base64) {
+      console.error("[evolution-webhook] No base64 in media response");
+      return null;
+    }
+
+    // Convert base64 to Uint8Array
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // Determine file extension
+    const ext = mimetype.includes("ogg") ? "ogg" : mimetype.includes("mp4") ? "mp4" : mimetype.includes("mpeg") ? "mp3" : "ogg";
+    const filePath = `${orgId}/${conversationId}/${messageId}.${ext}`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from("chat-media")
+      .upload(filePath, bytes, {
+        contentType: mimetype,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[evolution-webhook] Storage upload error:", uploadError);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(filePath);
+    console.log(`[evolution-webhook] Audio uploaded: ${urlData?.publicUrl}`);
+    return urlData?.publicUrl || null;
+  } catch (err) {
+    console.error("[evolution-webhook] Media download/upload error:", err);
+    return null;
   }
 }
 

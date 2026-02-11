@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.ai-auto-reply]
 verify_jwt = false
+
+[functions.whatsapp-send-audio]
+verify_jwt = false

@@ -3377,8 +3377,12 @@ export type Database = {
           conversation_id: string
           created_at: string
           direction: string
+          duration_ms: number | null
           external_message_id: string | null
           id: string
+          media_url: string | null
+          message_type: string
+          mime_type: string | null
           organization_id: string
         }
         Insert: {
@@ -3388,8 +3392,12 @@ export type Database = {
           conversation_id: string
           created_at?: string
           direction: string
+          duration_ms?: number | null
           external_message_id?: string | null
           id?: string
+          media_url?: string | null
+          message_type?: string
+          mime_type?: string | null
           organization_id: string
         }
         Update: {
@@ -3399,8 +3407,12 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           direction?: string
+          duration_ms?: number | null
           external_message_id?: string | null
           id?: string
+          media_url?: string | null
+          message_type?: string
+          mime_type?: string | null
           organization_id?: string
         }
         Relationships: [
