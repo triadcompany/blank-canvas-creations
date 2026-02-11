@@ -382,7 +382,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (convCheck?.ai_mode === "auto" && convCheck?.ai_state !== "human_active") {
         // ════════════════════════════════════════════
-        //  ENQUEUE — simple, no blockers
+        //  ENQUEUE — simple, no blockers + set ai_pending
         // ════════════════════════════════════════════
         const idempKey = `${orgId}:${conversationId}:${externalMessageId || Date.now()}`;
         const { error: enqueueErr } = await supabase.from("ai_auto_reply_jobs").insert({
@@ -394,15 +394,17 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         });
 
         if (enqueueErr) {
-          // Idempotency duplicate is OK
           if (enqueueErr.code === "23505") {
             console.log(`[evolution-webhook] Job already exists (idempotency): ${idempKey}`);
           } else {
             console.error(`[evolution-webhook] Enqueue error:`, enqueueErr);
           }
         } else {
-          console.log(`[evolution-webhook] ✅ Job enqueued: conv=${conversationId} key=${idempKey}`);
-          // Invoke worker immediately
+          // Set ai_pending IMMEDIATELY for UI feedback
+          await supabase.from("conversations")
+            .update({ ai_pending: true, ai_pending_started_at: new Date().toISOString() })
+            .eq("id", conversationId);
+          console.log(`[evolution-webhook] ✅ Job enqueued + ai_pending=true: conv=${conversationId}`);
           invokeAutoReplyWorker();
         }
       } else if (convCheck) {

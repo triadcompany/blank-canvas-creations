@@ -24,6 +24,8 @@ export interface InboxThread {
   ai_state: string | null;
   last_ai_reply_at: string | null;
   ai_reply_count_since_last_lead: number;
+  ai_pending: boolean;
+  ai_pending_started_at: string | null;
 }
 
 export interface InboxMessage {
@@ -264,6 +266,9 @@ export function useInbox() {
                 contact_name: updated.contact_name ?? t.contact_name,
                 lead_id: updated.lead_id ?? t.lead_id,
                 ai_mode: updated.ai_mode ?? t.ai_mode,
+                ai_state: updated.ai_state !== undefined ? updated.ai_state : t.ai_state,
+                ai_pending: updated.ai_pending !== undefined ? updated.ai_pending : t.ai_pending,
+                ai_pending_started_at: updated.ai_pending_started_at !== undefined ? updated.ai_pending_started_at : t.ai_pending_started_at,
               };
             });
             return newList.sort((a, b) => {
@@ -398,7 +403,7 @@ export function useInbox() {
       if (selectedConv?.ai_mode === 'auto') {
         await supabase
           .from('conversations')
-          .update({ ai_state: 'human_active' } as any)
+          .update({ ai_state: 'human_active', ai_pending: false, ai_pending_started_at: null } as any)
           .eq('id', selectedThreadId)
           .eq('organization_id', orgId);
 

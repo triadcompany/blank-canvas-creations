@@ -68,6 +68,11 @@ serve(async (req) => {
           })
           .eq("id", job.id);
 
+        // Always clear ai_pending when job finishes
+        await supabase.from("conversations")
+          .update({ ai_pending: false, ai_pending_started_at: null })
+          .eq("id", job.conversation_id);
+
         if (result.status === "completed") processed++;
         else failed++;
       } catch (err) {
@@ -75,6 +80,10 @@ serve(async (req) => {
         await supabase.from("ai_auto_reply_jobs")
           .update({ status: "failed", error: String(err), processed_at: new Date().toISOString() })
           .eq("id", job.id);
+        // Clear ai_pending on failure too
+        await supabase.from("conversations")
+          .update({ ai_pending: false, ai_pending_started_at: null })
+          .eq("id", job.conversation_id);
         failed++;
       }
     }
