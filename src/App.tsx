@@ -27,6 +27,7 @@ import Automacoes from "./pages/Automacoes";
 import Onboarding from "./pages/Onboarding";
 import InboxPage from "./pages/Inbox";
 import TreinarAgente from "./pages/TreinarAgente";
+import AdminDebugAutomations from "./pages/AdminDebugAutomations";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -145,6 +146,13 @@ const App = () => {
               <ProtectedRoute>
                 <CRMLayout>
                   <TreinarAgente />
+                </CRMLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/debug/automations" element={
+              <ProtectedRoute>
+                <CRMLayout>
+                  <AdminDebugAutomations />
                 </CRMLayout>
               </ProtectedRoute>
             } />

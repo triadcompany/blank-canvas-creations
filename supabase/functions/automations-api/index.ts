@@ -667,6 +667,89 @@ serve(async (req) => {
         });
       }
 
+      // ─── DEBUG: INBOUND LOGS ───
+      case "debug_inbound": {
+        const { organization_id, limit: rawLimit } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+        const limit = Math.min(Number(rawLimit) || 50, 100);
+
+        // Get inbound-related executions (received, event_published statuses)
+        const { data, error } = await supabase
+          .from("automation_executions")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, items: data || [] });
+      }
+
+      // ─── DEBUG: EVENT BUS ───
+      case "debug_event_bus": {
+        const { organization_id, limit: rawLimit } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+        const limit = Math.min(Number(rawLimit) || 50, 100);
+
+        const { data, error } = await supabase
+          .from("automation_events")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, items: data || [] });
+      }
+
+      // ─── DEBUG: EXECUTIONS (with filters) ───
+      case "debug_executions": {
+        const { organization_id, phone, status: fStatus, automation_id, limit: rawLimit } = params;
+        if (!organization_id) return respond({ ok: false, message: "organization_id required" }, 400);
+        const limit = Math.min(Number(rawLimit) || 50, 100);
+
+        let query = supabase
+          .from("automation_executions")
+          .select("*")
+          .eq("organization_id", organization_id)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (phone) query = query.ilike("phone", `%${phone}%`);
+        if (fStatus) query = query.eq("status", fStatus);
+        if (automation_id) query = query.eq("automation_id", automation_id);
+
+        const { data, error } = await query;
+        if (error) return respond({ ok: false, message: error.message }, 500);
+        return respond({ ok: true, items: data || [] });
+      }
+
+      // ─── DEBUG: REPROCESS EVENT ───
+      case "reprocess_event": {
+        const { event_id, organization_id } = params;
+        if (!event_id) return respond({ ok: false, message: "event_id required" }, 400);
+
+        const { error } = await supabase
+          .from("automation_events")
+          .update({ status: "pending", processed_at: null, error: null })
+          .eq("id", event_id);
+
+        if (error) return respond({ ok: false, message: error.message }, 500);
+
+        // Trigger dispatcher
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/event-dispatcher`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({}),
+          });
+        } catch { /* ignore */ }
+
+        return respond({ ok: true, message: "Evento reprocessado" });
+      }
+
       default:
         return respond({ ok: false, message: `Unknown action: ${action}` }, 400);
     }
