@@ -426,6 +426,10 @@ export default function InboxPage() {
   const [resetFirstTouchOpen, setResetFirstTouchOpen] = useState(false);
   const [resetAlsoDeleteLead, setResetAlsoDeleteLead] = useState(false);
   const [resettingFirstTouch, setResettingFirstTouch] = useState(false);
+  const [firstTouchResetDone, setFirstTouchResetDone] = useState(false);
+  const [ftStatusOpen, setFtStatusOpen] = useState(false);
+  const [ftStatusData, setFtStatusData] = useState<any>(null);
+  const [ftStatusLoading, setFtStatusLoading] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -519,12 +523,14 @@ export default function InboxPage() {
     if (!selectedThread || !profile?.organization_id) return;
     setResettingFirstTouch(true);
     try {
-      const { error: ftError } = await supabase
-        .from('whatsapp_first_touch' as any)
-        .delete()
-        .eq('organization_id', profile.organization_id)
-        .eq('phone', selectedThread.contact_phone);
-      if (ftError) throw ftError;
+      const res = await supabase.functions.invoke('reset-first-touch', {
+        method: 'POST',
+        body: { phone: selectedThread.contact_phone, channel: 'whatsapp' },
+      });
+
+      if (res.error) throw new Error(res.error.message || 'Erro ao resetar');
+      const data = res.data as any;
+      if (!data?.ok) throw new Error(data?.error || 'Erro desconhecido');
 
       if (resetAlsoDeleteLead && selectedThread.lead_id) {
         await supabase
@@ -540,7 +546,13 @@ export default function InboxPage() {
           .eq('organization_id', profile.organization_id);
       }
 
-      toast.success('Primeira interação resetada com sucesso.');
+      if (data.deleted_count > 0) {
+        toast.success(`Reset feito. ${data.deleted_count} registro(s) removido(s). A próxima mensagem pode disparar a automação.`);
+        setFirstTouchResetDone(true);
+        setTimeout(() => setFirstTouchResetDone(false), 15000);
+      } else {
+        toast.warning('Nada para resetar. O first-touch já foi removido ou o telefone não corresponde.');
+      }
       refreshThreads();
     } catch (err: any) {
       console.error('Error resetting first touch:', err);
@@ -549,6 +561,41 @@ export default function InboxPage() {
       setResettingFirstTouch(false);
       setResetFirstTouchOpen(false);
       setResetAlsoDeleteLead(false);
+    }
+  };
+
+  const handleCheckFirstTouchStatus = async () => {
+    if (!selectedThread) return;
+    setFtStatusLoading(true);
+    setFtStatusData(null);
+    setFtStatusOpen(true);
+    try {
+      const res = await supabase.functions.invoke('reset-first-touch', {
+        method: 'GET',
+        headers: {},
+        body: undefined,
+      });
+      // GET with query params not supported via invoke — use fetch directly
+    } catch {}
+
+    // Use fetch directly for GET
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/reset-first-touch?phone=${encodeURIComponent(selectedThread.contact_phone)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session?.access_token || ''}`,
+            apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
+          },
+        }
+      );
+      const data = await resp.json();
+      setFtStatusData(data);
+    } catch (err: any) {
+      setFtStatusData({ ok: false, error: err.message });
+    } finally {
+      setFtStatusLoading(false);
     }
   };
 
@@ -828,21 +875,43 @@ export default function InboxPage() {
 
                 {/* Reset First Touch (admin only) */}
                 {isAdmin && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
-                          onClick={() => setResetFirstTouchOpen(true)}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Resetar First Touch</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <div className="flex items-center gap-0.5">
+                    {firstTouchResetDone && (
+                      <Badge variant="outline" className="h-5 text-[9px] font-medium border-emerald-500 text-emerald-600 dark:text-emerald-400 animate-pulse">
+                        First-touch resetado — pronto para testar
+                      </Badge>
+                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={handleCheckFirstTouchStatus}
+                          >
+                            <Search className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Ver status first-touch</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                            onClick={() => setResetFirstTouchOpen(true)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Resetar First Touch</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 )}
               </div>
             </div>
@@ -1025,8 +1094,7 @@ export default function InboxPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Resetar Primeira Interação</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso permitirá que a próxima mensagem com a palavra-chave "anuncio" deste contato crie um novo lead automaticamente.
-              O histórico de mensagens será mantido.
+              Isso vai permitir que a automação de primeira mensagem dispare novamente para este contato. O histórico de mensagens será mantido.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -1054,6 +1122,67 @@ export default function InboxPage() {
               {resettingFirstTouch ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : null}
+              Resetar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* First Touch Status Dialog */}
+      <AlertDialog open={ftStatusOpen} onOpenChange={setFtStatusOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Status First-Touch</AlertDialogTitle>
+            <AlertDialogDescription>
+              Telefone: <code className="bg-muted px-1 py-0.5 rounded text-xs">{selectedThread?.contact_phone}</code>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="py-2">
+            {ftStatusLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Consultando...
+              </div>
+            ) : ftStatusData ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Existe first-touch?</span>
+                  <Badge variant={ftStatusData.exists ? 'default' : 'secondary'}>
+                    {ftStatusData.exists ? 'SIM' : 'NÃO'}
+                  </Badge>
+                </div>
+                {ftStatusData.rows && ftStatusData.rows.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium">Registros encontrados:</p>
+                    <div className="bg-muted/50 rounded p-2 space-y-1 max-h-32 overflow-auto">
+                      {ftStatusData.rows.map((row: any, i: number) => (
+                        <div key={i} className="text-[11px] font-mono text-foreground/80">
+                          <span className="text-muted-foreground">ID:</span> {row.id?.substring(0, 8)}… | 
+                          <span className="text-muted-foreground"> Criado:</span> {row.created_at ? new Date(row.created_at).toLocaleString('pt-BR') : '—'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {ftStatusData.error && (
+                  <p className="text-xs text-destructive">Erro: {ftStatusData.error}</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Fechar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setFtStatusOpen(false);
+                setResetFirstTouchOpen(true);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!ftStatusData?.exists}
+            >
+              <RotateCcw className="h-3.5 w-3.5 mr-1" />
               Resetar
             </AlertDialogAction>
           </AlertDialogFooter>
