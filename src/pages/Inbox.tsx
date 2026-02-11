@@ -737,6 +737,7 @@ export default function InboxPage() {
                     <>
                       <Bot className="h-3.5 w-3.5" />
                       <span className="font-medium">IA Autônoma ativa</span>
+                      <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800/50 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold">FAST</span>
                       {lastBlockedJob && (
                         <TooltipProvider>
                           <Tooltip>
