@@ -612,17 +612,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         await wakePausedRuns(supabase, orgId, leadId, now);
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       } else if (containsAdMarker(text || "")) {
-        const { error: adLeadErr } = await supabase.from("leads").insert({
-          organization_id: orgId,
-          name: pushName || "Lead WhatsApp",
-          phone: normalizedPhone,
-          source: "Meta Ads",
-        });
-        if (adLeadErr) {
-          console.error(`[evolution-webhook] Ad lead creation failed:`, adLeadErr);
-        } else {
-          console.log(`[evolution-webhook] Ad lead auto-created for ${normalizedPhone}`);
-        }
+        // ── Keyword "anuncio" detected — check first-touch dedup + org settings ──
+        await handleAdKeywordLead(supabase, orgId, normalizedPhone, pushName, externalMessageId, conversationId);
       }
     } else {
       // ── Outbound from WhatsApp ──
@@ -714,6 +705,132 @@ function containsAdMarker(text: string): boolean {
   if (!text) return false;
   const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   return normalized.includes("anuncio");
+}
+
+// ── Helper: Handle ad keyword lead with first-touch dedup + org settings ──
+async function handleAdKeywordLead(
+  supabase: any,
+  orgId: string,
+  phone: string,
+  pushName: string,
+  messageId: string | null,
+  conversationId: string | null,
+) {
+  try {
+    // 1) First-touch dedup
+    const { data: existing } = await supabase
+      .from("whatsapp_first_touch")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[evolution-webhook] First-touch already exists for ${phone} — skipping lead creation`);
+      return;
+    }
+
+    // Insert first-touch
+    const { error: ftErr } = await supabase.from("whatsapp_first_touch").insert({
+      organization_id: orgId,
+      phone,
+      first_message_id: messageId,
+    });
+    if (ftErr && ftErr.code === "23505") {
+      console.log(`[evolution-webhook] First-touch race condition for ${phone} — skipping`);
+      return;
+    }
+
+    // 2) Check if keyword automation is enabled
+    const { data: settings } = await supabase
+      .from("organization_automation_settings")
+      .select("meta_ads_keyword_enabled, meta_ads_pipeline_id, meta_ads_stage_id")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    if (settings?.meta_ads_keyword_enabled === false) {
+      console.log(`[evolution-webhook] Keyword automation disabled for org ${orgId}`);
+      return;
+    }
+
+    // 3) Resolve pipeline + stage
+    let pipelineId: string | null = settings?.meta_ads_pipeline_id || null;
+    let stageId: string | null = settings?.meta_ads_stage_id || null;
+
+    if (!pipelineId) {
+      // Get default pipeline
+      const { data: defPipeline } = await supabase
+        .from("pipelines")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("is_default", true)
+        .eq("is_active", true)
+        .maybeSingle();
+      pipelineId = defPipeline?.id || null;
+
+      if (!pipelineId) {
+        // Fallback: first active pipeline
+        const { data: anyPipeline } = await supabase
+          .from("pipelines")
+          .select("id")
+          .eq("organization_id", orgId)
+          .eq("is_active", true)
+          .order("created_at")
+          .limit(1)
+          .maybeSingle();
+        pipelineId = anyPipeline?.id || null;
+      }
+    }
+
+    if (pipelineId && !stageId) {
+      // Find "Novo Lead" stage or first stage
+      const { data: stagesData } = await supabase
+        .from("pipeline_stages")
+        .select("id, name, position")
+        .eq("pipeline_id", pipelineId)
+        .eq("is_active", true)
+        .order("position");
+
+      if (stagesData && stagesData.length > 0) {
+        const novoLead = stagesData.find((s: any) =>
+          s.name.toLowerCase().replace(/[^a-z]/g, "").includes("novo")
+        );
+        stageId = novoLead?.id || stagesData[0].id;
+      }
+    }
+
+    // 4) Create lead
+    const leadData: Record<string, unknown> = {
+      organization_id: orgId,
+      name: pushName || "Lead WhatsApp",
+      phone,
+      source: "Meta Ads",
+      observations: "WhatsApp keyword: anuncio",
+    };
+    if (stageId) leadData.stage_id = stageId;
+
+    const { data: newLead, error: adLeadErr } = await supabase
+      .from("leads")
+      .insert(leadData)
+      .select("id")
+      .single();
+
+    if (adLeadErr) {
+      console.error(`[evolution-webhook] Ad lead creation failed:`, adLeadErr);
+    } else {
+      console.log(`[evolution-webhook] ✅ Ad lead auto-created: phone=${phone} lead=${newLead?.id} pipeline=${pipelineId} stage=${stageId}`);
+
+      // Link conversation to lead
+      if (conversationId && newLead?.id) {
+        await supabase
+          .from("conversations")
+          .update({ lead_id: newLead.id })
+          .eq("id", conversationId);
+      }
+    }
+  } catch (err) {
+    console.error(`[evolution-webhook] handleAdKeywordLead error:`, err);
+  }
 }
 
 // ── Helper: respond ──
