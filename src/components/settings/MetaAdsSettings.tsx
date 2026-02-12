@@ -29,8 +29,8 @@ export function MetaAdsSettings() {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Configure sua conexão com a Meta Conversions API (CAPI). O mapeamento de eventos e logs de execução
-          estão disponíveis em <strong>Automações → Meta Ads (CAPI)</strong>.
+          Esta tela configura apenas a <strong>conexão</strong> com a Meta.
+          Os envios de eventos são definidos nas <strong>Automações</strong>.
         </AlertDescription>
       </Alert>
 
