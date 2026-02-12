@@ -1401,6 +1401,65 @@ export type Database = {
           },
         ]
       }
+      conversation_events: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          organization_id: string
+          performed_by: string | null
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          organization_id: string
+          performed_by?: string | null
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_events_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_events_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_intelligence: {
         Row: {
           confidence: number
@@ -1477,10 +1536,14 @@ export type Database = {
           last_ai_reply_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
+          last_status_change_at: string | null
           lead_id: string | null
+          locked_at: string | null
+          locked_by: string | null
           organization_id: string
           profile_picture_updated_at: string | null
           profile_picture_url: string | null
+          status: string
           unread_count: number
         }
         Insert: {
@@ -1501,10 +1564,14 @@ export type Database = {
           last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          last_status_change_at?: string | null
           lead_id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           organization_id: string
           profile_picture_updated_at?: string | null
           profile_picture_url?: string | null
+          status?: string
           unread_count?: number
         }
         Update: {
@@ -1525,10 +1592,14 @@ export type Database = {
           last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          last_status_change_at?: string | null
           lead_id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           organization_id?: string
           profile_picture_updated_at?: string | null
           profile_picture_url?: string | null
+          status?: string
           unread_count?: number
         }
         Relationships: [
@@ -1551,6 +1622,20 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
             referencedColumns: ["id"]
           },
           {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useInbox, InboxThread, InboxMessage } from '@/hooks/useInbox';
+import { useInbox, InboxThread, InboxMessage, ConversationStatus } from '@/hooks/useInbox';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +27,13 @@ import {
   AlertCircle,
   RotateCcw,
   Trash2,
+  Lock,
+  Unlock,
+  CheckCircle,
+  Clock,
+  Circle,
+  XCircle,
+  HandMetal,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -128,6 +135,25 @@ function formatDateSeparator(dateStr: string): string {
   return format(date, "dd 'de' MMMM", { locale: ptBR });
 }
 
+// ── Status helpers ──
+
+const STATUS_CONFIG: Record<ConversationStatus, { label: string; icon: React.ReactNode; color: string }> = {
+  open: { label: 'Aberta', icon: <Circle className="h-2 w-2 fill-emerald-500 text-emerald-500" />, color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20' },
+  in_progress: { label: 'Em atendimento', icon: <HandMetal className="h-2.5 w-2.5 text-blue-500" />, color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20' },
+  waiting_customer: { label: 'Aguardando', icon: <Clock className="h-2.5 w-2.5 text-amber-500" />, color: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' },
+  closed: { label: 'Finalizada', icon: <CheckCircle className="h-2.5 w-2.5 text-muted-foreground" />, color: 'bg-muted text-muted-foreground border-border' },
+};
+
+function StatusBadge({ status }: { status: ConversationStatus }) {
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.open;
+  return (
+    <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border', config.color)}>
+      {config.icon}
+      {config.label}
+    </span>
+  );
+}
+
 // ── Thread List Item ──
 
 function ThreadItem({
@@ -193,7 +219,13 @@ function ThreadItem({
             )}
           </div>
 
-          <div className="flex items-center gap-1 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <StatusBadge status={thread.status} />
+            {thread.locked_by && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-600 dark:text-amber-400">
+                <Lock className="h-2.5 w-2.5" />
+              </span>
+            )}
             {thread.lead_id ? (
               <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-semibold">
                 Lead {thread.lead_stage_name ? `• ${thread.lead_stage_name}` : ''}
@@ -412,11 +444,16 @@ export default function InboxPage() {
     sendMessage,
     assignThread,
     canSendMessage,
+    getLockedByName,
     createLeadFromConversation,
     toggleAiMode,
     resumeAi,
     refreshThreads,
     newMessageFlag,
+    updateStatus,
+    assumeConversation,
+    releaseConversation,
+    closeConversation,
   } = useInbox();
 
   const navigate = useNavigate();
@@ -594,6 +631,10 @@ export default function InboxPage() {
     { key: 'all', label: 'Todas', adminOnly: true },
     { key: 'mine', label: 'Minhas' },
     { key: 'unassigned', label: 'Não atribuídas', adminOnly: true },
+    { key: 'open', label: 'Abertas' },
+    { key: 'in_progress', label: 'Em atendimento' },
+    { key: 'waiting_customer', label: 'Aguardando' },
+    { key: 'closed', label: 'Finalizadas' },
   ];
 
   const selectedContact = selectedThread ? getContactDisplay(selectedThread) : null;
@@ -801,18 +842,81 @@ export default function InboxPage() {
                 </Button>
               )}
 
-              {/* Assignment actions */}
+              {/* Assignment & Status actions */}
               <div className="flex items-center gap-1">
+                {/* Assume button - visible when not assigned to current user */}
                 {selectedThread.assigned_to !== myProfileId && (
                   <Button
-                    variant="ghost"
+                    variant="default"
                     size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleAssign(myProfileId || null)}
+                    className="h-7 text-xs gap-1"
+                    onClick={() => assumeConversation(selectedThread.id)}
                   >
-                    <UserPlus className="h-3.5 w-3.5 mr-1" />
+                    <HandMetal className="h-3.5 w-3.5" />
                     Assumir
                   </Button>
+                )}
+
+                {/* Status badge */}
+                <StatusBadge status={selectedThread.status} />
+
+                {/* Lock indicator */}
+                {(() => {
+                  const lockedName = getLockedByName(selectedThread);
+                  if (!lockedName) return null;
+                  return (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                            <Lock className="h-3 w-3" />
+                            {lockedName}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Esta conversa está sendo atendida por {lockedName}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })()}
+
+                {/* Close / Release buttons */}
+                {selectedThread.status !== 'closed' && (selectedThread.assigned_to === myProfileId || isAdmin) && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1 text-muted-foreground"
+                          onClick={() => closeConversation(selectedThread.id)}
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          Finalizar
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Finalizar conversa</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                {/* Admin: force release */}
+                {isAdmin && selectedThread.locked_by && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1 text-muted-foreground"
+                          onClick={() => releaseConversation(selectedThread.id)}
+                        >
+                          <Unlock className="h-3.5 w-3.5" />
+                          Liberar
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Liberar conversa (admin)</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
 
                 {isAdmin && (
@@ -1058,9 +1162,24 @@ export default function InboxPage() {
                 </div>
               ) : (
                 <div className="text-center py-2">
-                  <p className="text-xs text-muted-foreground">
-                    Esta conversa não está atribuída a você. Clique em <strong>Assumir</strong> para responder.
-                  </p>
+                  {(() => {
+                    const lockedName = getLockedByName(selectedThread);
+                    if (lockedName) {
+                      return (
+                        <div className="flex items-center justify-center gap-2">
+                          <Lock className="h-4 w-4 text-amber-500" />
+                          <p className="text-xs text-muted-foreground">
+                            Esta conversa está sendo atendida por <strong>{lockedName}</strong>
+                          </p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Esta conversa não está atribuída a você. Clique em <strong>Assumir</strong> para responder.
+                      </p>
+                    );
+                  })()}
                 </div>
               )}
             </div>
