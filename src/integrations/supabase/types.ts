@@ -3610,6 +3610,63 @@ export type Database = {
           },
         ]
       }
+      meta_capi_dedup: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_dedup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_dedup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_dedup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_dedup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_capi_dedup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meta_capi_events: {
         Row: {
           attempts: number
@@ -6753,6 +6810,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cleanup_meta_capi_dedup: { Args: never; Returns: undefined }
       cleanup_old_automation_events: { Args: never; Returns: undefined }
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
