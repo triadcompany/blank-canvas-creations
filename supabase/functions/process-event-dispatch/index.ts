@@ -32,54 +32,16 @@ serve(async (req) => {
   const errors: string[] = [];
 
   try {
-    // Fetch pending jobs ready to process
-    const { data: jobs, error: fetchErr } = await supabase
-      .from("event_dispatch_queue")
-      .select("*")
-      .eq("status", "pending")
-      .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString())
-      .order("created_at", { ascending: true })
-      .limit(20);
+    // Supabase cron runs at 1-minute granularity; we simulate ~10s cadence by processing up to 6 batches.
+    for (let i = 0; i < 6; i++) {
+      const { processedCount, errorCount, hadWork } = await processBatch(supabase, processed, errors);
+      if (!hadWork) break;
 
-    if (fetchErr) {
-      console.error("[process-event-dispatch] Fetch error:", fetchErr);
-      return new Response(JSON.stringify({ ok: false, error: fetchErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+      // If there is more work, wait 10s and try again (keeps within typical edge runtime limits)
+      if (i < 5) await new Promise((r) => setTimeout(r, 10_000));
 
-    if (!jobs || jobs.length === 0) {
-      return new Response(JSON.stringify({ ok: true, processed: 0 }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`[process-event-dispatch] Processing ${jobs.length} jobs`);
-
-    for (const job of jobs) {
-      try {
-        // Mark as processing
-        await supabase
-          .from("event_dispatch_queue")
-          .update({ status: "processing" })
-          .eq("id", job.id);
-
-        // Route by channel
-        if (job.channel === "meta_capi") {
-          await processMetaCapi(supabase, job);
-        } else {
-          // Future channels: google_offline, tiktok, webhook, etc.
-          console.warn(`[process-event-dispatch] Unknown channel: ${job.channel}`);
-          await markError(supabase, job, `Unknown channel: ${job.channel}`);
-        }
-
-        processed.push(job.id);
-      } catch (err: any) {
-        console.error(`[process-event-dispatch] Job ${job.id} error:`, err);
-        await markRetryOrError(supabase, job, err.message || "Unknown error");
-        errors.push(job.id);
-      }
+      // Avoid infinite loops if errors keep happening
+      if (processedCount === 0 && errorCount === 0) break;
     }
   } catch (err: any) {
     console.error("[process-event-dispatch] Unhandled error:", err);
@@ -94,6 +56,58 @@ serve(async (req) => {
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 });
+
+
+async function processBatch(
+  supabase: any,
+  processed: string[],
+  errors: string[]
+): Promise<{ processedCount: number; errorCount: number; hadWork: boolean }> {
+  // Fetch pending jobs ready to process
+  const { data: jobs, error: fetchErr } = await supabase
+    .from("event_dispatch_queue")
+    .select("*")
+    .eq("status", "pending")
+    .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString())
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (fetchErr) {
+    throw new Error(fetchErr.message);
+  }
+
+  if (!jobs || jobs.length === 0) {
+    return { processedCount: 0, errorCount: 0, hadWork: false };
+  }
+
+  console.log(`[process-event-dispatch] Processing batch: ${jobs.length} jobs`);
+
+  let processedCount = 0;
+  let errorCount = 0;
+
+  for (const job of jobs) {
+    try {
+      await supabase.from("event_dispatch_queue").update({ status: "processing" }).eq("id", job.id);
+
+      if (job.channel === "meta_capi") {
+        await processMetaCapi(supabase, job);
+      } else {
+        console.warn(`[process-event-dispatch] Unknown channel: ${job.channel}`);
+        await markError(supabase, job, `Unknown channel: ${job.channel}`);
+      }
+
+      processed.push(job.id);
+      processedCount++;
+    } catch (err: any) {
+      console.error(`[process-event-dispatch] Job ${job.id} error:`, err);
+      await markRetryOrError(supabase, job, err.message || "Unknown error");
+      errors.push(job.id);
+      errorCount++;
+    }
+  }
+
+  return { processedCount, errorCount, hadWork: true };
+}
 
 // ── Meta CAPI processor ──
 async function processMetaCapi(supabase: any, job: any) {

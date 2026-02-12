@@ -82,7 +82,7 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { action, profile_id, organization_id, payload } = body as {
-      action: "save" | "test" | "status";
+      action: "save" | "test" | "status" | "queue_logs";
       profile_id?: string;
       organization_id?: string;
       payload?: Record<string, unknown>;
@@ -93,6 +93,8 @@ serve(async (req) => {
         ? "[META_CAPI_SETTINGS_SAVE]"
         : action === "test"
         ? "[META_CAPI_TEST]"
+        : action === "queue_logs"
+        ? "[META_CAPI_QUEUE_LOGS]"
         : "[META_CAPI_STATUS]";
 
     console.log(`${prefix} action=${action}, org=${organization_id}, profile=${profile_id}`);
@@ -155,6 +157,43 @@ serve(async (req) => {
         code: "ORG_HEAL_FAILED",
         message: `Não foi possível criar/verificar a organização: ${healResult.error}`,
       }, 500);
+    }
+
+    // ═══════ QUEUE LOGS (Admin) ═══════
+    if (action === "queue_logs") {
+      if (!isAdmin) {
+        return json({ ok: false, code: "NOT_ADMIN", message: "Apenas administradores podem ver os logs" }, 403);
+      }
+
+      const status = (payload?.status as string) || "all";
+      const eventName = (payload?.event_name as string) || "all";
+      const period = (payload?.period as string) || "7d";
+
+      let q = supabase
+        .from("event_dispatch_queue")
+        .select("*")
+        .eq("organization_id", organization_id)
+        .eq("channel", "meta_capi")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (status !== "all") q = q.eq("status", status);
+      if (eventName !== "all") q = q.eq("event_name", eventName);
+
+      const now = new Date();
+      if (period === "7d") {
+        q = q.gte("created_at", new Date(now.getTime() - 7 * 86400000).toISOString());
+      } else if (period === "30d") {
+        q = q.gte("created_at", new Date(now.getTime() - 30 * 86400000).toISOString());
+      }
+
+      const { data: items, error: qErr } = await q;
+      if (qErr) {
+        console.error(`${prefix} queue read error:`, qErr);
+        return json({ ok: false, code: "DB_ERROR", message: qErr.message }, 500);
+      }
+
+      return json({ ok: true, items: items || [] });
     }
 
     // ═══════ STATUS ═══════
