@@ -20,6 +20,21 @@ async function hashSHA256(value: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Removes diacritics/accents from a string (e.g. "José" → "jose")
+ */
+function removeAccents(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Normalizes a phone number: digits only, ensures BR prefix (55)
+ */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -134,38 +149,100 @@ async function processMetaCapi(supabase: any, job: any) {
     return;
   }
 
-  // 2. Build Meta payload from stored payload
+  // 2. DEDUPLICATION CHECK: Skip if already successfully sent with same event_hash
+  const { data: alreadySent } = await supabase
+    .from("meta_capi_events")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("lead_id", payload.lead_id || null)
+    .eq("event_name", payload.event_name || job.event_name)
+    .eq("status", "success")
+    .limit(1);
+
+  if (alreadySent && alreadySent.length > 0) {
+    console.log(`[process-event-dispatch] DEDUPLICATED: ${payload.event_name} already sent for lead ${payload.lead_id}`);
+    await supabase
+      .from("event_dispatch_queue")
+      .update({
+        status: "success",
+        sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        attempts: job.attempts + 1,
+        payload: { ...payload, _deduplicated: true, _reason: "Already successfully sent" },
+      })
+      .eq("id", job.id);
+    return;
+  }
+
+  // 3. Resolve enrichment data (pipeline name, seller name) from DB if not in payload
+  let pipelineName = payload.pipeline_name || null;
+  let stageName = payload.stage_name || null;
+  let sellerName = payload.seller_name || null;
+
+  if (!pipelineName && payload.pipeline_id) {
+    const { data: pipeline } = await supabase
+      .from("pipelines")
+      .select("name")
+      .eq("id", payload.pipeline_id)
+      .maybeSingle();
+    pipelineName = pipeline?.name || null;
+  }
+
+  if (!stageName && payload.stage_id) {
+    const { data: stage } = await supabase
+      .from("pipeline_stages")
+      .select("name")
+      .eq("id", payload.stage_id)
+      .maybeSingle();
+    stageName = stage?.name || null;
+  }
+
+  if (!sellerName && payload.seller_id) {
+    const { data: seller } = await supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", payload.seller_id)
+      .maybeSingle();
+    sellerName = seller?.name || null;
+  }
+
+  // 4. Build Meta payload
   const eventName = payload.event_name || job.event_name;
   const eventTime = payload.event_time || Math.floor(Date.now() / 1000);
-  const eventId = job.event_hash;
+  // Use stored event_id (UUID) for stable retry dedup; fallback to event_hash
+  const eventId = payload.event_id || job.event_hash;
 
-  // Build user_data with hashing
+  // 5. Build user_data with proper normalization + SHA256 hashing
   const userData: Record<string, any> = {};
   if (payload.phone) {
-    const cleanPhone = payload.phone.replace(/\D/g, "");
-    const normalizedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const normalizedPhone = normalizePhone(payload.phone);
     userData.ph = [await hashSHA256(normalizedPhone)];
   }
   if (payload.email) {
     userData.em = [await hashSHA256(payload.email.toLowerCase().trim())];
   }
   if (payload.name) {
-    const parts = payload.name.trim().split(" ");
-    userData.fn = [await hashSHA256(parts[0].toLowerCase())];
-    if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1].toLowerCase())];
+    const cleanName = removeAccents(payload.name.trim().toLowerCase());
+    const parts = cleanName.split(/\s+/);
+    userData.fn = [await hashSHA256(parts[0])];
+    if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1])];
   }
   if (payload.lead_id) {
     userData.external_id = [await hashSHA256(payload.lead_id)];
   }
 
+  // 6. Build enriched custom_data
   const customData: Record<string, any> = {
     currency: payload.currency || "BRL",
+    value: payload.value || 0,
     lead_id: payload.lead_id || null,
+    pipeline: pipelineName || null,
     pipeline_id: payload.pipeline_id || null,
+    stage: stageName || null,
     stage_id: payload.stage_id || null,
-    stage_name: payload.stage_name || null,
+    seller: sellerName || null,
+    source: payload.lead_source || null,
   };
-  if (payload.value) customData.value = payload.value;
 
   const eventSourceUrl = settings.domain || "https://autolead.lovable.app";
 
@@ -188,7 +265,9 @@ async function processMetaCapi(supabase: any, job: any) {
     metaPayload.test_event_code = settings.test_event_code;
   }
 
-  // 3. Send to Meta Graph API
+  console.log(`[process-event-dispatch] Sending ${eventName} to Meta (event_id=${eventId}, lead=${payload.lead_id}, pipeline=${pipelineName}, stage=${stageName})`);
+
+  // 7. Send to Meta Graph API
   const metaUrl = `https://graph.facebook.com/v20.0/${settings.pixel_id}/events?access_token=${settings.access_token}`;
 
   const res = await fetch(metaUrl, {
@@ -199,8 +278,12 @@ async function processMetaCapi(supabase: any, job: any) {
 
   const responseJson = await res.json();
 
+  // Mask access_token from stored payloads
+  const safeMetaPayload = { ...metaPayload };
+  delete safeMetaPayload.test_event_code; // don't store test code
+
   if (res.ok) {
-    // Success!
+    // 8a. Success — update queue and audit log
     await supabase
       .from("event_dispatch_queue")
       .update({
@@ -210,14 +293,14 @@ async function processMetaCapi(supabase: any, job: any) {
         attempts: job.attempts + 1,
         payload: {
           ...payload,
-          _meta_request: metaPayload,
+          _meta_request: safeMetaPayload,
           _meta_response: responseJson,
           _http_status: res.status,
         },
       })
       .eq("id", job.id);
 
-    // Audit log to meta_capi_events (best-effort)
+    // Audit log to meta_capi_events
     try {
       await supabase.from("meta_capi_events").insert({
         organization_id: orgId,
@@ -226,7 +309,7 @@ async function processMetaCapi(supabase: any, job: any) {
         stage_id: payload.stage_id || null,
         event_name: eventName,
         status: "success",
-        payload_json: metaPayload,
+        payload_json: safeMetaPayload,
         response_json: responseJson,
         source: "automation",
       });
@@ -234,11 +317,11 @@ async function processMetaCapi(supabase: any, job: any) {
       console.warn("[process-event-dispatch] Failed to write audit log (non-critical):", logErr);
     }
 
-    console.log(`[process-event-dispatch] ✅ ${eventName} sent for lead ${payload.lead_id}`);
+    console.log(`[process-event-dispatch] ✅ ${eventName} sent for lead ${payload.lead_id} (event_id=${eventId})`);
   } else {
-    // Meta returned an error
+    // 8b. Meta returned an error
     const errorMsg = `META_HTTP_${res.status}: ${JSON.stringify(responseJson?.error || responseJson)}`;
-    await markRetryOrError(supabase, job, errorMsg, metaPayload, responseJson, res.status);
+    await markRetryOrError(supabase, job, errorMsg, safeMetaPayload, responseJson, res.status);
   }
 }
 
