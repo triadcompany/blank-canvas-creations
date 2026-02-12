@@ -1948,9 +1948,12 @@ export type Database = {
           next_retry_at: string | null
           organization_id: string
           payload: Json
+          pipeline_id: string | null
           run_id: string | null
           sent_at: string | null
+          stage_id: string | null
           status: string
+          updated_at: string
         }
         Insert: {
           attempts?: number
@@ -1966,9 +1969,12 @@ export type Database = {
           next_retry_at?: string | null
           organization_id: string
           payload?: Json
+          pipeline_id?: string | null
           run_id?: string | null
           sent_at?: string | null
+          stage_id?: string | null
           status?: string
+          updated_at?: string
         }
         Update: {
           attempts?: number
@@ -1984,9 +1990,12 @@ export type Database = {
           next_retry_at?: string | null
           organization_id?: string
           payload?: Json
+          pipeline_id?: string | null
           run_id?: string | null
           sent_at?: string | null
+          stage_id?: string | null
           status?: string
+          updated_at?: string
         }
         Relationships: []
       }
