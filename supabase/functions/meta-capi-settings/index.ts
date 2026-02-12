@@ -159,7 +159,7 @@ serve(async (req) => {
       }, 500);
     }
 
-    // ═══════ QUEUE LOGS (Admin) ═══════
+    // ═══════ QUEUE LOGS (Admin) — reads from meta_capi_events ═══════
     if (action === "queue_logs") {
       if (!isAdmin) {
         return json({ ok: false, code: "NOT_ADMIN", message: "Apenas administradores podem ver os logs" }, 403);
@@ -170,12 +170,11 @@ serve(async (req) => {
       const period = (payload?.period as string) || "7d";
 
       let q = supabase
-        .from("event_dispatch_queue")
+        .from("meta_capi_events")
         .select("*")
         .eq("organization_id", organization_id)
-        .eq("channel", "meta_capi")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (status !== "all") q = q.eq("status", status);
       if (eventName !== "all") q = q.eq("event_name", eventName);

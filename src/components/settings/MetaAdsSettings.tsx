@@ -35,35 +35,18 @@ interface CapiSettings {
   domain: string | null;
 }
 
-interface QueueItem {
+interface CapiEvent {
   id: string;
   organization_id: string;
   lead_id: string | null;
-  event_name: string;
-  channel: string;
-  payload: any;
-  status: string;
-  attempts: number;
-  max_attempts: number;
-  last_error: string | null;
-  next_retry_at: string | null;
-  sent_at: string | null;
-  event_hash: string;
-  created_at: string;
-}
-
-interface CapiLog {
-  id: string;
-  lead_id: string | null;
   pipeline_id: string | null;
   stage_id: string | null;
-  meta_event: string;
+  event_name: string;
   status: string;
-  http_status: number | null;
-  request_json: any;
+  payload_json: any;
   response_json: any;
   fail_reason: string | null;
-  trace_id: string | null;
+  source: string | null;
   created_at: string;
 }
 
@@ -558,11 +541,11 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
 }
 
 
-// ═══════════ LOGS CARD (reads from event_dispatch_queue) ═══════════
+// ═══════════ LOGS CARD (reads from meta_capi_events) ═══════════
 function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
-  const [items, setItems] = useState<QueueItem[]>([]);
+  const [items, setItems] = useState<CapiEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<CapiEvent | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("7d");
@@ -582,12 +565,12 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
       });
 
       if (!data.ok) {
-        throw new Error(`HTTP ${httpStatus}: ${data.message || "Erro ao carregar fila"}`);
+        throw new Error(`HTTP ${httpStatus}: ${data.message || "Erro ao carregar logs"}`);
       }
 
       setItems(data.items || []);
     } catch (e: any) {
-      toast.error(e.message || "Erro ao carregar fila");
+      toast.error(e.message || "Erro ao carregar logs");
       setItems([]);
     } finally {
       setLoading(false);
@@ -602,10 +585,6 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
         return <Badge variant="outline" className="gap-1 text-xs text-emerald-600 border-emerald-200"><Check className="h-3 w-3" /> Enviado</Badge>;
       case "error":
         return <Badge variant="destructive" className="gap-1 text-xs"><X className="h-3 w-3" /> Erro</Badge>;
-      case "pending":
-        return <Badge variant="secondary" className="gap-1 text-xs">⏳ Pendente</Badge>;
-      case "processing":
-        return <Badge variant="secondary" className="gap-1 text-xs">⚙️ Processando</Badge>;
       default:
         return <Badge variant="secondary" className="gap-1 text-xs">{status}</Badge>;
     }
@@ -616,8 +595,8 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <CardTitle className="font-poppins">Fila de Eventos</CardTitle>
-            <CardDescription>Histórico de envio de eventos (com retry automático)</CardDescription>
+            <CardTitle className="font-poppins">Logs Meta CAPI</CardTitle>
+            <CardDescription>Histórico de eventos enviados para a Meta</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
@@ -628,8 +607,6 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
             <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos status</SelectItem>
-              <SelectItem value="pending">Pendente</SelectItem>
-              <SelectItem value="processing">Processando</SelectItem>
               <SelectItem value="success">Sucesso</SelectItem>
               <SelectItem value="error">Erro</SelectItem>
             </SelectContent>
@@ -665,29 +642,17 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{item.event_name}</span>
                       {getStatusBadge(item.status)}
-                      <span className="text-[10px] text-muted-foreground font-mono">{item.channel}</span>
-                      {item.attempts > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          tentativa {item.attempts}/{item.max_attempts}
-                        </span>
+                      {item.source && (
+                        <span className="text-[10px] text-muted-foreground font-mono">{item.source}</span>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {format(new Date(item.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}
-                      {item.sent_at && (
-                        <span className="ml-2 text-emerald-600">
-                          → enviado {format(new Date(item.sent_at), "HH:mm:ss", { locale: ptBR })}
-                        </span>
-                      )}
                       {item.lead_id && <span className="ml-2 font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Lead: {item.lead_id.substring(0, 8)}</span>}
+                      {item.pipeline_id && <span className="ml-2 font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Pipeline: {item.pipeline_id.substring(0, 8)}</span>}
                     </p>
-                    {item.last_error && (
-                      <p className="text-xs text-destructive mt-1 truncate">{item.last_error}</p>
-                    )}
-                    {item.next_retry_at && item.status === "pending" && item.attempts > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Próxima tentativa: {format(new Date(item.next_retry_at), "dd/MM HH:mm:ss", { locale: ptBR })}
-                      </p>
+                    {item.fail_reason && (
+                      <p className="text-xs text-destructive mt-1 truncate">{item.fail_reason}</p>
                     )}
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedItem(item)}>
@@ -708,26 +673,28 @@ function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div><span className="text-muted-foreground">Status:</span> {selectedItem && getStatusBadge(selectedItem.status)}</div>
-              <div><span className="text-muted-foreground">Canal:</span> <span className="font-mono">{selectedItem?.channel}</span></div>
-              <div><span className="text-muted-foreground">Tentativas:</span> <span className="font-mono">{selectedItem?.attempts}/{selectedItem?.max_attempts}</span></div>
+              <div><span className="text-muted-foreground">Origem:</span> <span className="font-mono">{selectedItem?.source || "—"}</span></div>
               <div><span className="text-muted-foreground">Lead ID:</span> <span className="font-mono text-xs">{selectedItem?.lead_id?.substring(0, 12) || "—"}</span></div>
+              <div><span className="text-muted-foreground">Pipeline:</span> <span className="font-mono text-xs">{selectedItem?.pipeline_id?.substring(0, 12) || "—"}</span></div>
+              <div><span className="text-muted-foreground">Etapa:</span> <span className="font-mono text-xs">{selectedItem?.stage_id?.substring(0, 12) || "—"}</span></div>
+              <div><span className="text-muted-foreground">Data:</span> <span className="font-mono text-xs">{selectedItem ? format(new Date(selectedItem.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR }) : "—"}</span></div>
             </div>
-            {selectedItem?.last_error && (
+            {selectedItem?.fail_reason && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="text-xs">{selectedItem.last_error}</AlertDescription>
+                <AlertDescription className="text-xs">{selectedItem.fail_reason}</AlertDescription>
               </Alert>
             )}
             <div>
-              <Label className="text-xs font-semibold">Event Hash</Label>
-              <pre className="text-xs bg-muted p-2 rounded mt-1 font-mono break-all">
-                {selectedItem?.event_hash || "N/A"}
+              <Label className="text-xs font-semibold">Payload enviado</Label>
+              <pre className="text-xs bg-muted p-2 rounded mt-1 max-h-48 overflow-auto">
+                {JSON.stringify(selectedItem?.payload_json, null, 2) || "N/A"}
               </pre>
             </div>
             <div>
-              <Label className="text-xs font-semibold">Payload</Label>
+              <Label className="text-xs font-semibold">Resposta Meta</Label>
               <pre className="text-xs bg-muted p-2 rounded mt-1 max-h-48 overflow-auto">
-                {JSON.stringify(selectedItem?.payload, null, 2) || "N/A"}
+                {JSON.stringify(selectedItem?.response_json, null, 2) || "N/A"}
               </pre>
             </div>
           </div>
