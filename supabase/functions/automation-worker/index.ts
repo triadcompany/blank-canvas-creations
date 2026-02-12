@@ -1221,6 +1221,21 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
   const pipelineId = ctx.pipeline_id || null;
   const stageId = ctx.to_stage_id || null;
 
+  // Fetch city/state from leads table if not in context
+  let leadCity = ctx.lead_city || ctx.cidade || "";
+  let leadState = ctx.lead_state || ctx.estado || "";
+  if (leadId && (!leadCity || !leadState)) {
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("cidade, estado")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (leadRow) {
+      if (!leadCity && leadRow.cidade) leadCity = leadRow.cidade;
+      if (!leadState && leadRow.estado) leadState = leadRow.estado;
+    }
+  }
+
   // Build dedupe_key: org:lead_or_phone:event:stage
   const entityKey = leadId || phone;
   const stageKey = sendOnce ? (stageId || "any") : "any";
@@ -1282,6 +1297,8 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
     seller_name: ctx.seller_name || null,
     seller_id: ctx.seller_id || null,
     lead_source: ctx.lead_source || ctx.source || null,
+    city: leadCity || null,
+    state: leadState || null,
     trace_id: traceId,
     dedupe_key: dedupeKey,
     event_time: Math.floor(Date.now() / 1000),
