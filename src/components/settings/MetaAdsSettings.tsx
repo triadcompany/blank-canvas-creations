@@ -76,8 +76,10 @@ const FAIL_REASON_PT: Record<string, string> = {
 };
 
 export function MetaAdsSettings() {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const orgId = profile?.organization_id;
+  const profileId = profile?.id;
+  const isAdmin = role === "admin";
 
   return (
     <div className="space-y-6">
@@ -89,7 +91,11 @@ export function MetaAdsSettings() {
         </AlertDescription>
       </Alert>
 
-      {orgId && (
+      {orgId && profileId && isAdmin && (
+        <TechStatusChecklist orgId={orgId} profileId={profileId} />
+      )}
+
+      {orgId && profileId && (
         <Tabs defaultValue="connection">
           <TabsList className="font-poppins">
             <TabsTrigger value="connection">Conexão</TabsTrigger>
@@ -98,7 +104,7 @@ export function MetaAdsSettings() {
           </TabsList>
 
           <TabsContent value="connection" className="mt-4">
-            <ConnectionCard orgId={orgId} />
+            <ConnectionCard orgId={orgId} profileId={profileId} />
           </TabsContent>
           <TabsContent value="mappings" className="mt-4">
             <MappingsCard orgId={orgId} />
@@ -112,8 +118,192 @@ export function MetaAdsSettings() {
   );
 }
 
+// ═══════════ EDGE FUNCTION HELPER ═══════════
+const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
+
+async function callMetaCapiEndpoint(body: Record<string, unknown>) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-capi-settings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return { status: res.status, data };
+}
+
+// ═══════════ ERROR DETAIL MODAL ═══════════
+function ErrorDetailModal({
+  open,
+  onClose,
+  error,
+}: {
+  open: boolean;
+  onClose: () => void;
+  error: {
+    endpoint: string;
+    httpStatus: number;
+    response: any;
+    message: string;
+    orgId?: string;
+    profileId?: string;
+  } | null;
+}) {
+  if (!error) return null;
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-poppins flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" /> Detalhes do Erro (Admin)
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div>
+            <Label className="text-xs font-semibold">Endpoint</Label>
+            <pre className="bg-muted p-2 rounded text-xs mt-1 font-mono">{error.endpoint}</pre>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs font-semibold">HTTP Status</Label>
+              <p className="font-mono">{error.httpStatus}</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Código</Label>
+              <p className="font-mono">{error.response?.code || "N/A"}</p>
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Mensagem</Label>
+            <p className="text-destructive">{error.message}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs font-semibold">Organization ID</Label>
+              <p className="font-mono text-xs break-all">{error.orgId || "N/A"}</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Profile ID</Label>
+              <p className="font-mono text-xs break-all">{error.profileId || "N/A"}</p>
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Response JSON</Label>
+            <pre className="bg-muted p-2 rounded text-xs mt-1 max-h-48 overflow-auto font-mono">
+              {JSON.stringify(error.response, null, 2)}
+            </pre>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ═══════════ TECH STATUS CHECKLIST ═══════════
+function TechStatusChecklist({ orgId, profileId }: { orgId: string; profileId: string }) {
+  const [status, setStatus] = useState<Record<string, any> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const check = async () => {
+    setLoading(true);
+    try {
+      const { status: httpStatus, data } = await callMetaCapiEndpoint({
+        action: "status",
+        profile_id: profileId,
+        organization_id: orgId,
+      });
+      if (data.ok) {
+        setStatus({ ...data.status, api_settings_ok: true, http_status: httpStatus });
+      } else {
+        setStatus({ api_settings_ok: false, error: data.message, http_status: httpStatus });
+      }
+    } catch (err: any) {
+      setStatus({ api_settings_ok: false, error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (expanded) check();
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const StatusIcon = ({ ok }: { ok: boolean }) =>
+    ok ? <Check className="h-4 w-4 text-emerald-500" /> : <X className="h-4 w-4 text-destructive" />;
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="py-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-poppins flex items-center gap-2">
+            🔧 Status Técnico (Admin)
+          </CardTitle>
+          <Button variant="ghost" size="sm" className="h-7 text-xs">
+            {expanded ? "Fechar" : "Verificar"}
+          </Button>
+        </div>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="pt-0">
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Verificando...
+            </div>
+          ) : status ? (
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={!!status.user_id} />
+                <span>Session user_id detectado</span>
+                {status.user_id && <span className="font-mono text-xs text-muted-foreground">{String(status.user_id).substring(0, 12)}...</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={!!status.organization_id} />
+                <span>organization_id detectado</span>
+                {status.organization_id && <span className="font-mono text-xs text-muted-foreground">{String(status.organization_id).substring(0, 12)}...</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={status.org_exists === true} />
+                <span>organizations row exists</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={status.is_admin === true} />
+                <span>is_admin = true</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={status.settings_exists === true} />
+                <span>meta_capi_settings row exists</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusIcon ok={status.api_settings_ok === true} />
+                <span>API /meta-capi-settings funcionando</span>
+              </div>
+              {status.error && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">{status.error}</AlertDescription>
+                </Alert>
+              )}
+              <Button variant="outline" size="sm" className="mt-2" onClick={check}>
+                <RefreshCw className="mr-2 h-3 w-3" /> Reverificar
+              </Button>
+            </div>
+          ) : null}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 // ═══════════ CONNECTION CARD ═══════════
-function ConnectionCard({ orgId }: { orgId: string }) {
+function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string }) {
   const [config, setConfig] = useState<CapiSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,6 +314,7 @@ function ConnectionCard({ orgId }: { orgId: string }) {
   const [enabled, setEnabled] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [domain, setDomain] = useState("");
+  const [errorDetail, setErrorDetail] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,49 +344,85 @@ function ConnectionCard({ orgId }: { orgId: string }) {
     }
     setSaving(true);
     try {
-      const payload = {
-        pixel_id: pixelId,
-        access_token: accessToken,
-        test_event_code: testEventCode || null,
-        enabled,
-        test_mode: testMode,
-        domain: domain || null,
-        updated_at: new Date().toISOString(),
-      };
-      if (config?.id) {
-        const { error } = await (supabase as any).from("meta_capi_settings").update(payload).eq("id", config.id);
-        if (error) throw error;
+      const { status, data } = await callMetaCapiEndpoint({
+        action: "save",
+        profile_id: profileId,
+        organization_id: orgId,
+        payload: {
+          pixel_id: pixelId,
+          access_token: accessToken,
+          test_event_code: testEventCode || null,
+          enabled,
+          test_mode: testMode,
+          domain: domain || null,
+        },
+      });
+
+      if (data.ok) {
+        toast.success("Configurações salvas!");
+        load();
       } else {
-        const { error } = await (supabase as any).from("meta_capi_settings").insert({ ...payload, organization_id: orgId });
-        if (error) throw error;
+        toast.error(`Erro ao salvar: ${data.message || "Erro desconhecido"}`);
+        setErrorDetail({
+          endpoint: "POST /functions/v1/meta-capi-settings (action=save)",
+          httpStatus: status,
+          response: data,
+          message: data.message || "Erro desconhecido",
+          orgId,
+          profileId,
+        });
       }
-      toast.success("Configurações salvas!");
-      load();
     } catch (err: any) {
-      toast.error("Erro ao salvar: " + (err.message || ""));
+      toast.error("Erro de rede ao salvar");
+      setErrorDetail({
+        endpoint: "POST /functions/v1/meta-capi-settings (action=save)",
+        httpStatus: 0,
+        response: { error: err.message },
+        message: err.message,
+        orgId,
+        profileId,
+      });
     } finally {
       setSaving(false);
     }
   };
 
   const handleTest = async () => {
-    if (!pixelId || !accessToken) {
-      toast.error("Configure Pixel ID e Access Token primeiro");
-      return;
-    }
     setTesting(true);
     try {
-      const res = await fetch(
-        `https://graph.facebook.com/v20.0/${pixelId}?access_token=${accessToken}&fields=id,name`
-      );
-      const data = await res.json();
-      if (res.ok && data.id) {
-        toast.success(`Conexão OK! Pixel: ${data.name || data.id}`);
+      const { status, data } = await callMetaCapiEndpoint({
+        action: "test",
+        profile_id: profileId,
+        organization_id: orgId,
+      });
+
+      if (data.ok) {
+        toast.success(data.message || "Conexão OK!");
       } else {
-        toast.error(`Falha: ${data.error?.message || "Erro desconhecido"}`);
+        const msg =
+          data.code === "MISSING_PERMISSION"
+            ? "Seu token não tem permissão para enviar eventos para este Pixel/Dataset. Use System User no Business Manager com acesso ao Dataset + permissões de evento."
+            : data.message || "Erro desconhecido";
+        toast.error(msg, { duration: 8000 });
+        setErrorDetail({
+          endpoint: "POST /functions/v1/meta-capi-settings (action=test)",
+          httpStatus: status,
+          response: data,
+          message: msg,
+          orgId,
+          profileId,
+        });
       }
-    } catch {
-      toast.error("Erro ao testar conexão");
+    } catch (err: any) {
+      toast.error("Erro de rede ao testar conexão");
+      setErrorDetail({
+        endpoint: "POST /functions/v1/meta-capi-settings (action=test)",
+        httpStatus: 0,
+        response: { error: err.message },
+        message: err.message,
+        orgId,
+        profileId,
+      });
     } finally {
       setTesting(false);
     }
@@ -208,7 +435,19 @@ function ConnectionCard({ orgId }: { orgId: string }) {
     }
     setEnabled(val);
     if (config?.id) {
-      await (supabase as any).from("meta_capi_settings").update({ enabled: val, updated_at: new Date().toISOString() }).eq("id", config.id);
+      await callMetaCapiEndpoint({
+        action: "save",
+        profile_id: profileId,
+        organization_id: orgId,
+        payload: {
+          pixel_id: pixelId,
+          access_token: accessToken,
+          test_event_code: testEventCode || null,
+          enabled: val,
+          test_mode: testMode,
+          domain: domain || null,
+        },
+      });
     }
   };
 
@@ -221,74 +460,82 @@ function ConnectionCard({ orgId }: { orgId: string }) {
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="font-poppins">Conexão Meta (CAPI)</CardTitle>
-            <CardDescription>Dataset ID (Pixel ID) e Access Token para envio de eventos</CardDescription>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="font-poppins">Conexão Meta (CAPI)</CardTitle>
+              <CardDescription>Dataset ID (Pixel ID) e Access Token para envio de eventos</CardDescription>
+            </div>
+            {getStatusBadge()}
           </div>
-          {getStatusBadge()}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="capi-pixel-id">Dataset ID / Pixel ID</Label>
-          <Input id="capi-pixel-id" placeholder="123456789012345" value={pixelId} onChange={(e) => setPixelId(e.target.value)} />
-          <p className="text-xs text-muted-foreground">
-            Encontre no{" "}
-            <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-              Events Manager <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="capi-token">Access Token</Label>
-          <Input id="capi-token" type="password" placeholder="EAAxxxxxxxxxxxxx..." value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="capi-test-code">Test Event Code (opcional)</Label>
-          <Input id="capi-test-code" placeholder="TEST12345" value={testEventCode} onChange={(e) => setTestEventCode(e.target.value)} />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="capi-domain">Domínio / Site (opcional)</Label>
-          <Input id="capi-domain" placeholder="https://meusite.com.br" value={domain} onChange={(e) => setDomain(e.target.value)} />
-          <p className="text-xs text-muted-foreground">Usado como event_source_url nos eventos</p>
-        </div>
-
-        <Separator />
-
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Ativar envio via CAPI</Label>
-            <p className="text-sm text-muted-foreground">Habilita envio automático de eventos</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="capi-pixel-id">Dataset ID / Pixel ID</Label>
+            <Input id="capi-pixel-id" placeholder="123456789012345" value={pixelId} onChange={(e) => setPixelId(e.target.value)} />
+            <p className="text-xs text-muted-foreground">
+              Encontre no{" "}
+              <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                Events Manager <ExternalLink className="h-3 w-3" />
+              </a>
+            </p>
           </div>
-          <Switch checked={enabled} onCheckedChange={handleToggleEnabled} />
-        </div>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Modo Teste</Label>
-            <p className="text-sm text-muted-foreground">Eventos com Test Event Code</p>
+          <div className="space-y-2">
+            <Label htmlFor="capi-token">Access Token</Label>
+            <Input id="capi-token" type="password" placeholder="EAAxxxxxxxxxxxxx..." value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
           </div>
-          <Switch checked={testMode} onCheckedChange={setTestMode} />
-        </div>
 
-        <div className="flex gap-2 pt-2">
-          <Button onClick={handleSave} disabled={saving || !pixelId || !accessToken}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Salvar
-          </Button>
-          <Button variant="outline" onClick={handleTest} disabled={testing || !pixelId || !accessToken}>
-            {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
-            Testar Conexão
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="space-y-2">
+            <Label htmlFor="capi-test-code">Test Event Code (opcional)</Label>
+            <Input id="capi-test-code" placeholder="TEST12345" value={testEventCode} onChange={(e) => setTestEventCode(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="capi-domain">Domínio / Site (opcional)</Label>
+            <Input id="capi-domain" placeholder="https://meusite.com.br" value={domain} onChange={(e) => setDomain(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Usado como event_source_url nos eventos</p>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Ativar envio via CAPI</Label>
+              <p className="text-sm text-muted-foreground">Habilita envio automático de eventos</p>
+            </div>
+            <Switch checked={enabled} onCheckedChange={handleToggleEnabled} />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Modo Teste</Label>
+              <p className="text-sm text-muted-foreground">Eventos com Test Event Code</p>
+            </div>
+            <Switch checked={testMode} onCheckedChange={setTestMode} />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button onClick={handleSave} disabled={saving || !pixelId || !accessToken}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar
+            </Button>
+            <Button variant="outline" onClick={handleTest} disabled={testing || !config}>
+              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
+              Testar Conexão
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ErrorDetailModal
+        open={!!errorDetail}
+        onClose={() => setErrorDetail(null)}
+        error={errorDetail}
+      />
+    </>
   );
 }
 
