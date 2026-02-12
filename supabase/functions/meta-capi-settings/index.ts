@@ -35,11 +35,11 @@ async function ensureOrg(
   // Fetch profile info to populate owner fields
   const { data: prof } = await supabase
     .from("profiles")
-    .select("id, full_name, email, clerk_user_id")
+    .select("id, name, email, clerk_user_id")
     .eq("id", profileId)
     .maybeSingle();
 
-  const ownerName = prof?.full_name || "Admin";
+  const ownerName = prof?.name || "Admin";
   const ownerEmail = prof?.email || null;
   const slug = `org-${organizationId.substring(0, 8)}`;
 
@@ -109,7 +109,7 @@ serve(async (req) => {
     // ── Verify profile belongs to org ──
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("id, organization_id, clerk_user_id, full_name, email")
+      .select("id, organization_id, clerk_user_id, name, email")
       .eq("id", profile_id)
       .single();
 
