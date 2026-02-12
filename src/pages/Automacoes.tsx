@@ -454,7 +454,7 @@ export default function Automacoes() {
           </TabsContent>
 
           <TabsContent value="meta-capi" className="mt-4">
-            {profile?.organization_id && <MetaCapiAutomations orgId={profile.organization_id} />}
+            <MetaCapiAutomations />
           </TabsContent>
         </Tabs>
 
