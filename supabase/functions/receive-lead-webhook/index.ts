@@ -170,29 +170,31 @@ serve(async (req) => {
       );
     }
 
-    // Now call the lead distribution RPC with the created lead ID
-    const { data: distributionResult, error: distributionError } = await supabase
-      .rpc("distribute_lead", { 
-        p_lead_id: lead.id,
-        p_organization_id: organizationId 
-      });
+    // Determine bucket based on lead source
+    const leadSourceLower = (normalizedLead.source || "").toLowerCase();
+    const isTraffic = leadSourceLower.includes("meta") || leadSourceLower.includes("ads") || leadSourceLower.includes("google") || leadSourceLower.includes("tráfego");
+    const bucket = isTraffic ? "traffic" : "non_traffic";
 
+    // Apply dual-bucket distribution
     let finalSellerId = fallbackSellerId;
+    const distributionResult = await applyDualBucketDistribution(supabase, organizationId, lead.id, bucket);
 
-    if (!distributionError && distributionResult) {
-      // Distribution function returns a jsonb with assigned_user_id
-      if (distributionResult.assigned_user_id) {
-        finalSellerId = distributionResult.assigned_user_id;
-        
-        // Update the lead with the correct seller
-        await supabase
-          .from("leads")
-          .update({ seller_id: finalSellerId })
-          .eq("id", lead.id);
-      }
-      console.log("Distribution result:", distributionResult);
-    } else if (distributionError) {
-      console.warn("Distribution error (using fallback):", distributionError);
+    if (distributionResult) {
+      finalSellerId = distributionResult;
+      // Update the lead with the correct seller
+      await supabase
+        .from("leads")
+        .update({ seller_id: finalSellerId, assigned_to: finalSellerId })
+        .eq("id", lead.id);
+
+      // Update open opportunities too
+      await supabase
+        .from("opportunities")
+        .update({ assigned_to: finalSellerId })
+        .eq("lead_id", lead.id)
+        .eq("status", "open");
+
+      console.log(`Distribution result: assigned to ${finalSellerId} (bucket=${bucket})`);
     }
 
     // Log the webhook reception
@@ -237,7 +239,7 @@ serve(async (req) => {
           seller_id: finalSellerId,
           stage_id: lead.stage_id
         },
-        distribution: distributionResult || null
+        distribution: { bucket, assigned_to: finalSellerId }
       }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -250,3 +252,82 @@ serve(async (req) => {
     );
   }
 });
+
+// ── Dual-bucket distribution helper ──
+async function applyDualBucketDistribution(
+  supabase: any,
+  orgId: string,
+  leadId: string,
+  bucket: string,
+): Promise<string | null> {
+  try {
+    // Check global routing enabled
+    const { data: globalSettings } = await supabase
+      .from("whatsapp_routing_settings")
+      .select("enabled")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    if (!globalSettings?.enabled) return null;
+
+    // Check bucket settings
+    const { data: bucketSettings } = await supabase
+      .from("whatsapp_routing_bucket_settings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("bucket", bucket)
+      .maybeSingle();
+
+    if (!bucketSettings?.enabled) return null;
+
+    let assignedUserId: string | null = null;
+
+    if (bucketSettings.mode === "fixed_user") {
+      assignedUserId = bucketSettings.fixed_user_id;
+    } else if (bucketSettings.mode === "auto") {
+      const userIds: string[] = bucketSettings.auto_assign_user_ids || [];
+      if (userIds.length === 0) return null;
+
+      const { data: routingState } = await supabase
+        .from("whatsapp_routing_state")
+        .select("id, last_assigned_user_id")
+        .eq("organization_id", orgId)
+        .eq("bucket", bucket)
+        .maybeSingle();
+
+      let nextIndex = 0;
+      if (routingState?.last_assigned_user_id) {
+        const lastIdx = userIds.indexOf(routingState.last_assigned_user_id);
+        nextIndex = (lastIdx + 1) % userIds.length;
+      }
+
+      assignedUserId = userIds[nextIndex];
+
+      if (routingState) {
+        await supabase
+          .from("whatsapp_routing_state")
+          .update({ last_assigned_user_id: assignedUserId, updated_at: new Date().toISOString() })
+          .eq("id", routingState.id);
+      } else {
+        await supabase
+          .from("whatsapp_routing_state")
+          .insert({ organization_id: orgId, bucket, last_assigned_user_id: assignedUserId });
+      }
+    }
+
+    if (!assignedUserId) return null;
+
+    // Resolve user_id → profile.id
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", assignedUserId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    return profile?.id || null;
+  } catch (err) {
+    console.error("[receive-lead-webhook] Distribution error:", err);
+    return null;
+  }
+}

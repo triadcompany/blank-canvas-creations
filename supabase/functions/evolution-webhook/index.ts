@@ -1225,7 +1225,7 @@ async function autoCreateLeadAndOpportunity(
   }
 }
 
-// ── Helper: Apply lead distribution rules ──
+// ── Helper: Apply lead distribution rules (dual-bucket with independent counters) ──
 async function applyLeadDistribution(
   supabase: any,
   orgId: string,
@@ -1234,80 +1234,150 @@ async function applyLeadDistribution(
   bucket: string,
 ) {
   try {
-    const { data: config } = await supabase
-      .from("lead_distribution_settings")
-      .select("*")
-      .eq("organization_id", orgId)
-      .maybeSingle();
+    // ── Protection rules: don't redistribute ──
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("assigned_to, status")
+      .eq("id", leadId)
+      .single();
 
-    if (!config || !config.is_auto_distribution_enabled || config.mode === "manual") {
-      console.log(`[evolution-webhook] Lead distribution: manual mode or disabled`);
+    if (lead?.assigned_to) {
+      console.log(`[distribution] Lead ${leadId} already assigned — skipping`);
+      return;
+    }
+    if (lead?.status === "Cliente") {
+      console.log(`[distribution] Lead ${leadId} is Cliente — skipping`);
       return;
     }
 
-    // Get available sellers
-    const { data: members } = await supabase
+    // Check if any linked opportunity is "Ganhou"
+    const { data: wonOpp } = await supabase
+      .from("opportunities")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("status", "won")
+      .limit(1)
+      .maybeSingle();
+
+    if (wonOpp) {
+      console.log(`[distribution] Lead ${leadId} has won opportunity — skipping`);
+      return;
+    }
+
+    // ── Fetch global routing settings ──
+    const { data: globalSettings } = await supabase
+      .from("whatsapp_routing_settings")
+      .select("enabled")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    if (!globalSettings?.enabled) {
+      console.log(`[distribution] Global routing disabled for org=${orgId}`);
+      return;
+    }
+
+    // ── Fetch bucket-specific settings ──
+    const { data: bucketSettings } = await supabase
+      .from("whatsapp_routing_bucket_settings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("bucket", bucket)
+      .maybeSingle();
+
+    if (!bucketSettings?.enabled) {
+      console.log(`[distribution] Bucket "${bucket}" disabled for org=${orgId}`);
+      return;
+    }
+
+    let assignedUserId: string | null = null;
+
+    if (bucketSettings.mode === "fixed_user") {
+      // ── Fixed user mode ──
+      assignedUserId = bucketSettings.fixed_user_id;
+      if (!assignedUserId) {
+        console.log(`[distribution] Fixed user not set for bucket="${bucket}"`);
+        return;
+      }
+    } else if (bucketSettings.mode === "auto") {
+      // ── Round-robin mode with independent counter ──
+      const userIds: string[] = bucketSettings.auto_assign_user_ids || [];
+      if (userIds.length === 0) {
+        console.log(`[distribution] No users configured for bucket="${bucket}"`);
+        return;
+      }
+
+      // Get current routing state for this bucket
+      const { data: routingState } = await supabase
+        .from("whatsapp_routing_state")
+        .select("id, last_assigned_user_id")
+        .eq("organization_id", orgId)
+        .eq("bucket", bucket)
+        .maybeSingle();
+
+      let nextIndex = 0;
+      if (routingState?.last_assigned_user_id) {
+        const lastIdx = userIds.indexOf(routingState.last_assigned_user_id);
+        nextIndex = (lastIdx + 1) % userIds.length;
+      }
+
+      assignedUserId = userIds[nextIndex];
+
+      // Update routing state
+      if (routingState) {
+        await supabase
+          .from("whatsapp_routing_state")
+          .update({ last_assigned_user_id: assignedUserId, updated_at: new Date().toISOString() })
+          .eq("id", routingState.id);
+      } else {
+        await supabase
+          .from("whatsapp_routing_state")
+          .insert({ organization_id: orgId, bucket, last_assigned_user_id: assignedUserId });
+      }
+    } else {
+      console.log(`[distribution] Unknown mode "${bucketSettings.mode}" for bucket="${bucket}"`);
+      return;
+    }
+
+    if (!assignedUserId) return;
+
+    // ── Resolve user_id → profile.id ──
+    const { data: assignedProfile } = await supabase
       .from("profiles")
       .select("id, name")
-      .eq("organization_id", orgId);
+      .eq("user_id", assignedUserId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
 
-    if (!members || members.length === 0) return;
+    const profileId = assignedProfile?.id;
+    if (!profileId) {
+      console.log(`[distribution] No profile found for user_id=${assignedUserId}`);
+      return;
+    }
 
-    // Get seller IDs from user_roles (only sellers + admins)
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("user_id, role")
-      .eq("organization_id", orgId);
+    // ── Assign lead ──
+    await supabase.from("leads").update({ assigned_to: profileId }).eq("id", leadId);
 
-    const sellerUserIds = new Set(
-      (roles || [])
-        .filter((r: any) => r.role === "seller" || r.role === "admin")
-        .map((r: any) => r.user_id)
-    );
+    // ── Assign conversation ──
+    await supabase.from("conversations").update({ assigned_to: profileId }).eq("id", conversationId);
 
-    // Map to profile IDs
-    const { data: sellerProfiles } = await supabase
-      .from("profiles")
-      .select("id, user_id")
-      .eq("organization_id", orgId);
+    // ── Assign open opportunities ──
+    await supabase.from("opportunities")
+      .update({ assigned_to: profileId })
+      .eq("lead_id", leadId)
+      .eq("status", "open");
 
-    const eligibleProfileIds = (sellerProfiles || [])
-      .filter((p: any) => sellerUserIds.has(p.user_id))
-      .map((p: any) => p.id);
-
-    if (eligibleProfileIds.length === 0) return;
-
-    // Round-robin: get last assigned index per bucket
-    const bucketKey = `last_rr_index_${bucket}`;
-    const lastIndex = config[bucketKey] || config.last_rr_index || 0;
-    const nextIndex = (lastIndex + 1) % eligibleProfileIds.length;
-    const assignedProfileId = eligibleProfileIds[nextIndex];
-
-    // Update distribution state
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    updateData[bucketKey] = nextIndex;
-    updateData.last_rr_index = nextIndex;
-    await supabase.from("lead_distribution_settings").update(updateData).eq("id", config.id);
-
-    // Assign lead
-    await supabase.from("leads").update({ assigned_to: assignedProfileId }).eq("id", leadId);
-
-    // Assign conversation
-    await supabase.from("conversations").update({ assigned_to: assignedProfileId }).eq("id", conversationId);
-
-    const assignedName = (sellerProfiles || []).find((p: any) => p.id === assignedProfileId)?.name || assignedProfileId;
-    console.log(`[evolution-webhook] ✅ Lead distributed: lead=${leadId} → ${assignedName} (bucket=${bucket}, index=${nextIndex})`);
+    console.log(`[distribution] ✅ Lead ${leadId} → ${assignedProfile?.name || profileId} (bucket=${bucket}, mode=${bucketSettings.mode})`);
 
     // Log event
     await supabase.from("conversation_events").insert({
       organization_id: orgId,
       conversation_id: conversationId,
       event_type: "auto_assigned",
-      performed_by: assignedProfileId,
-      metadata: { lead_id: leadId, bucket, distribution_mode: config.mode },
+      performed_by: profileId,
+      metadata: { lead_id: leadId, bucket, distribution_mode: bucketSettings.mode },
     }).catch(() => {});
   } catch (err) {
-    console.error(`[evolution-webhook] applyLeadDistribution error:`, err);
+    console.error(`[distribution] applyLeadDistribution error:`, err);
   }
 }
 
