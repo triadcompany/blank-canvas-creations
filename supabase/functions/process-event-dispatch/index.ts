@@ -214,19 +214,22 @@ async function processMetaCapi(supabase: any, job: any) {
       })
       .eq("id", job.id);
 
-    // Also log to meta_capi_logs for backward compat
-    await supabase.from("meta_capi_logs").insert({
-      organization_id: orgId,
-      lead_id: payload.lead_id || null,
-      pipeline_id: payload.pipeline_id || null,
-      stage_id: payload.stage_id || null,
-      meta_event: eventName,
-      status: "success",
-      http_status: res.status,
-      request_json: metaPayload,
-      response_json: responseJson,
-      trace_id: payload.trace_id || null,
-    });
+    // Audit log to meta_capi_events (best-effort)
+    try {
+      await supabase.from("meta_capi_events").insert({
+        organization_id: orgId,
+        lead_id: payload.lead_id || null,
+        pipeline_id: payload.pipeline_id || null,
+        stage_id: payload.stage_id || null,
+        event_name: eventName,
+        status: "success",
+        payload_json: metaPayload,
+        response_json: responseJson,
+        source: "automation",
+      });
+    } catch (logErr) {
+      console.warn("[process-event-dispatch] Failed to write audit log (non-critical):", logErr);
+    }
 
     console.log(`[process-event-dispatch] ✅ ${eventName} sent for lead ${payload.lead_id}`);
   } else {
@@ -263,20 +266,23 @@ async function markRetryOrError(
       })
       .eq("id", job.id);
 
-    // Log failure
-    await supabase.from("meta_capi_logs").insert({
-      organization_id: orgId,
-      lead_id: payload.lead_id || null,
-      pipeline_id: payload.pipeline_id || null,
-      stage_id: payload.stage_id || null,
-      meta_event: payload.event_name || job.event_name,
-      status: "failed",
-      http_status: httpStatus || null,
-      request_json: metaRequest || null,
-      response_json: metaResponse || null,
-      fail_reason: errorMsg,
-      trace_id: payload.trace_id || null,
-    });
+    // Audit log failure to meta_capi_events (best-effort)
+    try {
+      await supabase.from("meta_capi_events").insert({
+        organization_id: orgId,
+        lead_id: payload.lead_id || null,
+        pipeline_id: payload.pipeline_id || null,
+        stage_id: payload.stage_id || null,
+        event_name: payload.event_name || job.event_name,
+        status: "error",
+        payload_json: metaRequest || null,
+        response_json: metaResponse || null,
+        fail_reason: errorMsg,
+        source: "automation",
+      });
+    } catch (logErr) {
+      console.warn("[process-event-dispatch] Failed to write error audit log (non-critical):", logErr);
+    }
 
     console.error(`[process-event-dispatch] ❌ Job ${job.id} permanently failed after ${newAttempts} attempts`);
   } else {
