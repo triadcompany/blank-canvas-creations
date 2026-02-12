@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+export type ConversationStatus = 'open' | 'in_progress' | 'waiting_customer' | 'closed';
+
 export interface InboxThread {
   id: string;
   organization_id: string;
@@ -26,6 +28,11 @@ export interface InboxThread {
   ai_reply_count_since_last_lead: number;
   ai_pending: boolean;
   ai_pending_started_at: string | null;
+  // New fields
+  status: ConversationStatus;
+  locked_by: string | null;
+  locked_at: string | null;
+  last_status_change_at: string | null;
 }
 
 export interface InboxMessage {
@@ -49,18 +56,16 @@ export interface OrgMember {
   name: string;
 }
 
-type FilterMode = 'all' | 'mine' | 'unassigned';
+type FilterMode = 'all' | 'mine' | 'unassigned' | 'open' | 'in_progress' | 'waiting_customer' | 'closed';
 
 // Deduplicate and sort messages
 function dedupeAndSort(msgs: InboxMessage[]): InboxMessage[] {
   const map = new Map<string, InboxMessage>();
   for (const m of msgs) {
-    // Prefer non-temp messages over optimistic ones
     const existing = map.get(m.id);
     if (!existing || (existing.id.startsWith('temp-') && !m.id.startsWith('temp-'))) {
       map.set(m.id, m);
     }
-    // Also dedup by external_message_id
     if (m.external_message_id) {
       const byExt = [...map.values()].find(
         x => x.external_message_id === m.external_message_id && x.id !== m.id
@@ -87,12 +92,11 @@ export function useInbox() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
-  const [newMessageFlag, setNewMessageFlag] = useState(0); // increments on inbound message for scroll UX
+  const [newMessageFlag, setNewMessageFlag] = useState(0);
 
   const orgId = profile?.organization_id;
   const myProfileId = profile?.id;
 
-  // Refs to avoid recreating realtime channel
   const selectedThreadIdRef = useRef(selectedThreadId);
   selectedThreadIdRef.current = selectedThreadId;
   const threadsRef = useRef(threads);
@@ -130,10 +134,13 @@ export function useInbox() {
         .eq('organization_id', orgId)
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
+      // Apply filters
       if (filter === 'mine' && myProfileId) {
         query = query.eq('assigned_to', myProfileId);
       } else if (filter === 'unassigned') {
         query = query.is('assigned_to', null);
+      } else if (['open', 'in_progress', 'waiting_customer', 'closed'].includes(filter)) {
+        query = query.eq('status', filter);
       }
 
       if (search.trim()) {
@@ -148,6 +155,10 @@ export function useInbox() {
         lead_id: row.lead_id || null,
         lead_stage_name: row.lead?.stage?.name || null,
         lead: undefined,
+        status: row.status || 'open',
+        locked_by: row.locked_by || null,
+        locked_at: row.locked_at || null,
+        last_status_change_at: row.last_status_change_at || null,
       }));
       setThreads(mapped);
     } catch (err: any) {
@@ -186,7 +197,7 @@ export function useInbox() {
     }
   }, [orgId]);
 
-  // ── Realtime subscriptions (stable channel, uses refs) ──
+  // ── Realtime subscriptions ──
   useEffect(() => {
     if (!orgId) return;
 
@@ -203,16 +214,12 @@ export function useInbox() {
         (payload) => {
           const newMsg = payload.new as InboxMessage;
 
-          // If this message belongs to the currently open conversation, append it
           if (newMsg.conversation_id === selectedThreadIdRef.current) {
             setMessages(prev => {
-              // Dedup: skip if already exists by id or external_message_id
               if (prev.some(m => m.id === newMsg.id)) return prev;
               if (newMsg.external_message_id && prev.some(m => m.external_message_id === newMsg.external_message_id)) {
-                // Replace optimistic message
                 return dedupeAndSort([...prev.filter(m => m.external_message_id !== newMsg.external_message_id), newMsg]);
               }
-              // Remove any temp- message that matches body+direction (optimistic replacement)
               const withoutOptimistic = prev.filter(m => {
                 if (!m.id.startsWith('temp-')) return true;
                 return !(m.body === newMsg.body && m.direction === newMsg.direction);
@@ -225,7 +232,6 @@ export function useInbox() {
             }
           }
 
-          // Update the conversation list in-memory
           setThreads(prev => {
             const updated = prev.map(t => {
               if (t.id !== newMsg.conversation_id) return t;
@@ -238,7 +244,6 @@ export function useInbox() {
                   : t.unread_count + (newMsg.direction === 'inbound' ? 1 : 0),
               };
             });
-            // Re-sort by last_message_at desc
             return updated.sort((a, b) => {
               const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
               const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
@@ -273,6 +278,10 @@ export function useInbox() {
                 ai_state: updated.ai_state !== undefined ? updated.ai_state : t.ai_state,
                 ai_pending: updated.ai_pending !== undefined ? updated.ai_pending : t.ai_pending,
                 ai_pending_started_at: updated.ai_pending_started_at !== undefined ? updated.ai_pending_started_at : t.ai_pending_started_at,
+                status: updated.status ?? t.status,
+                locked_by: updated.locked_by !== undefined ? updated.locked_by : t.locked_by,
+                locked_at: updated.locked_at !== undefined ? updated.locked_at : t.locked_at,
+                last_status_change_at: updated.last_status_change_at !== undefined ? updated.last_status_change_at : t.last_status_change_at,
               };
             });
             return newList.sort((a, b) => {
@@ -292,7 +301,6 @@ export function useInbox() {
           filter: `organization_id=eq.${orgId}`,
         },
         () => {
-          // New conversation created — do a full refresh to get lead join data
           fetchThreads();
         }
       )
@@ -301,10 +309,9 @@ export function useInbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-    // Only depend on orgId — refs handle the rest
   }, [orgId, fetchThreads]);
 
-  // ── Fallback polling for open conversation ──
+  // ── Fallback polling ──
   useEffect(() => {
     if (!orgId || !selectedThreadId) return;
 
@@ -351,23 +358,213 @@ export function useInbox() {
     }
   }, [orgId]);
 
+  // Lock conversation when selecting it
+  const lockConversation = useCallback(async (conversationId: string) => {
+    if (!orgId || !myProfileId) return;
+    
+    const thread = threadsRef.current.find(t => t.id === conversationId);
+    if (!thread) return;
+    
+    // Only lock if not already locked by someone else
+    if (thread.locked_by && thread.locked_by !== myProfileId) return;
+    
+    try {
+      await (supabase as any)
+        .from('conversations')
+        .update({ locked_by: myProfileId, locked_at: new Date().toISOString() })
+        .eq('id', conversationId)
+        .eq('organization_id', orgId);
+
+      setThreads(prev =>
+        prev.map(t => t.id === conversationId ? { ...t, locked_by: myProfileId, locked_at: new Date().toISOString() } : t)
+      );
+    } catch (err) {
+      console.error('Error locking conversation:', err);
+    }
+  }, [orgId, myProfileId]);
+
   // Select conversation
   const selectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId);
     if (threadId) {
       fetchMessages(threadId);
       clearUnread(threadId);
+      lockConversation(threadId);
     }
-  }, [fetchMessages, clearUnread]);
+  }, [fetchMessages, clearUnread, lockConversation]);
 
   // Check if current user can send in selected conversation
   const canSendMessage = useCallback((thread: InboxThread | null): boolean => {
     if (!thread || !profile) return false;
     if (isAdmin) return true;
+    // Check lock
+    if (thread.locked_by && thread.locked_by !== myProfileId) return false;
     return thread.assigned_to === myProfileId;
   }, [isAdmin, profile, myProfileId]);
 
-  // Send message (with optimistic update)
+  // Get lock info for display
+  const getLockedByName = useCallback((thread: InboxThread | null): string | null => {
+    if (!thread?.locked_by) return null;
+    if (thread.locked_by === myProfileId) return null; // Don't show if it's the current user
+    const member = orgMembers.find(m => m.id === thread.locked_by);
+    return member?.name || 'Outro usuário';
+  }, [orgMembers, myProfileId]);
+
+  // Update conversation status
+  const updateStatus = useCallback(async (threadId: string, newStatus: ConversationStatus) => {
+    if (!orgId || !myProfileId) return;
+
+    // Optimistic update
+    setThreads(prev =>
+      prev.map(t => t.id === threadId ? { ...t, status: newStatus, last_status_change_at: new Date().toISOString() } : t)
+    );
+
+    try {
+      await (supabase as any)
+        .from('conversations')
+        .update({ status: newStatus, last_status_change_at: new Date().toISOString() })
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+
+      // Log event
+      const eventMap: Record<ConversationStatus, string> = {
+        open: 'reopened',
+        in_progress: 'assumed',
+        waiting_customer: 'waiting',
+        closed: 'closed',
+      };
+
+      await (supabase as any)
+        .from('conversation_events')
+        .insert({
+          organization_id: orgId,
+          conversation_id: threadId,
+          event_type: eventMap[newStatus],
+          performed_by: myProfileId,
+        });
+
+      const labels: Record<ConversationStatus, string> = {
+        open: 'Conversa reaberta',
+        in_progress: 'Em atendimento',
+        waiting_customer: 'Aguardando cliente',
+        closed: 'Conversa finalizada',
+      };
+      toast.success(labels[newStatus]);
+    } catch (err: any) {
+      console.error('Error updating status:', err);
+      toast.error('Erro ao atualizar status');
+      fetchThreads();
+    }
+  }, [orgId, myProfileId, fetchThreads]);
+
+  // Assume conversation (assign + set in_progress + lock)
+  const assumeConversation = useCallback(async (threadId: string) => {
+    if (!orgId || !myProfileId) return;
+
+    setThreads(prev =>
+      prev.map(t => t.id === threadId ? {
+        ...t,
+        assigned_to: myProfileId,
+        assigned_at: new Date().toISOString(),
+        status: 'in_progress' as ConversationStatus,
+        locked_by: myProfileId,
+        locked_at: new Date().toISOString(),
+        last_status_change_at: new Date().toISOString(),
+      } : t)
+    );
+
+    try {
+      await (supabase as any)
+        .from('conversations')
+        .update({
+          assigned_to: myProfileId,
+          assigned_at: new Date().toISOString(),
+          status: 'in_progress',
+          locked_by: myProfileId,
+          locked_at: new Date().toISOString(),
+          last_status_change_at: new Date().toISOString(),
+        })
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+
+      await (supabase as any)
+        .from('conversation_events')
+        .insert({
+          organization_id: orgId,
+          conversation_id: threadId,
+          event_type: 'assumed',
+          performed_by: myProfileId,
+        });
+
+      toast.success('Conversa assumida');
+    } catch (err: any) {
+      console.error('Error assuming conversation:', err);
+      toast.error('Erro ao assumir conversa');
+      fetchThreads();
+    }
+  }, [orgId, myProfileId, fetchThreads]);
+
+  // Release conversation (unlock + remove assignment)
+  const releaseConversation = useCallback(async (threadId: string) => {
+    if (!orgId || !myProfileId) return;
+
+    setThreads(prev =>
+      prev.map(t => t.id === threadId ? {
+        ...t,
+        locked_by: null,
+        locked_at: null,
+        status: 'open' as ConversationStatus,
+        last_status_change_at: new Date().toISOString(),
+      } : t)
+    );
+
+    try {
+      await (supabase as any)
+        .from('conversations')
+        .update({
+          locked_by: null,
+          locked_at: null,
+          status: 'open',
+          last_status_change_at: new Date().toISOString(),
+        })
+        .eq('id', threadId)
+        .eq('organization_id', orgId);
+
+      await (supabase as any)
+        .from('conversation_events')
+        .insert({
+          organization_id: orgId,
+          conversation_id: threadId,
+          event_type: 'released',
+          performed_by: myProfileId,
+        });
+
+      toast.success('Conversa liberada');
+    } catch (err: any) {
+      console.error('Error releasing conversation:', err);
+      toast.error('Erro ao liberar conversa');
+      fetchThreads();
+    }
+  }, [orgId, myProfileId, fetchThreads]);
+
+  // Close conversation
+  const closeConversation = useCallback(async (threadId: string) => {
+    if (!orgId || !myProfileId) return;
+    await updateStatus(threadId, 'closed');
+    
+    // Also unlock
+    await (supabase as any)
+      .from('conversations')
+      .update({ locked_by: null, locked_at: null })
+      .eq('id', threadId)
+      .eq('organization_id', orgId);
+
+    setThreads(prev =>
+      prev.map(t => t.id === threadId ? { ...t, locked_by: null, locked_at: null } : t)
+    );
+  }, [orgId, myProfileId, updateStatus]);
+
+  // Send message (with optimistic update + auto status change)
   const sendMessage = useCallback(async (text: string) => {
     if (!orgId || !selectedThreadId || !text.trim()) return;
     setSending(true);
@@ -383,7 +580,6 @@ export function useInbox() {
     };
     setMessages(prev => dedupeAndSort([...prev, optimisticMsg]));
 
-    // Update thread list immediately (optimistic)
     setThreads(prev => {
       const updated = prev.map(t => {
         if (t.id !== selectedThreadId) return t;
@@ -391,6 +587,8 @@ export function useInbox() {
           ...t,
           last_message_at: optimisticMsg.created_at,
           last_message_preview: text.trim().substring(0, 100),
+          status: 'waiting_customer' as ConversationStatus,
+          last_status_change_at: new Date().toISOString(),
         };
       });
       return updated.sort((a, b) => {
@@ -416,6 +614,13 @@ export function useInbox() {
         );
       }
 
+      // Update status to waiting_customer
+      await (supabase as any)
+        .from('conversations')
+        .update({ status: 'waiting_customer', last_status_change_at: new Date().toISOString() })
+        .eq('id', selectedThreadId)
+        .eq('organization_id', orgId);
+
       const res = await supabase.functions.invoke('whatsapp-send', {
         body: {
           organization_id: orgId,
@@ -430,8 +635,6 @@ export function useInbox() {
 
       const data = res.data as any;
       if (data?.error) throw new Error(data.error);
-
-      // Realtime will replace the optimistic message; no need for full fetch
     } catch (err: any) {
       console.error('Error sending message:', err);
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
@@ -555,11 +758,10 @@ export function useInbox() {
 
   const selectedThread = threads.find(t => t.id === selectedThreadId) || null;
 
-  // Toggle ai_mode for a conversation (off / assisted / auto)
+  // Toggle ai_mode for a conversation
   const toggleAiMode = useCallback(async (threadId: string, newMode: string) => {
     if (!orgId) return;
 
-    // Validate mode value
     const validModes = ['off', 'assisted', 'auto'];
     if (!validModes.includes(newMode)) {
       console.error('[Inbox] Invalid ai_mode value:', newMode);
@@ -567,32 +769,25 @@ export function useInbox() {
       return;
     }
 
-    // Save previous state for rollback
     const prevThread = threadsRef.current.find(t => t.id === threadId);
     const prevMode = prevThread?.ai_mode;
     const prevState = prevThread?.ai_state;
 
-    // Minimal update: only ai_mode + ai_state
     const updateData: { ai_mode: string; ai_state: string | null } = {
       ai_mode: newMode,
       ai_state: newMode === 'auto' ? 'ai_active' : null,
     };
 
-    // Optimistic update
     setThreads(prev =>
       prev.map(t => t.id === threadId ? { ...t, ...updateData } : t)
     );
 
     try {
-      console.log('[Inbox] Toggling ai_mode:', { threadId, updateData });
-
-      const { error, status } = await supabase
+      const { error } = await supabase
         .from('conversations')
         .update(updateData)
         .eq('id', threadId)
         .eq('organization_id', orgId);
-
-      console.log('[Inbox] Toggle response:', { status, error });
 
       if (error) throw error;
 
@@ -604,7 +799,6 @@ export function useInbox() {
       toast.success(modeLabels[newMode] || 'Modo alterado');
     } catch (err: any) {
       console.error('[Inbox] Error toggling ai_mode:', err);
-      // Rollback
       setThreads(prev =>
         prev.map(t => t.id === threadId ? { ...t, ai_mode: prevMode || 'off', ai_state: prevState || null } : t)
       );
@@ -613,7 +807,7 @@ export function useInbox() {
     }
   }, [orgId]);
 
-  // Resume AI (set ai_state back to ai_active)
+  // Resume AI
   const resumeAi = useCallback(async (threadId: string) => {
     if (!orgId) return;
     try {
@@ -655,9 +849,15 @@ export function useInbox() {
     sendMessage,
     assignThread,
     canSendMessage,
+    getLockedByName,
     refreshThreads: fetchThreads,
     createLeadFromConversation,
     toggleAiMode,
     resumeAi,
+    // New actions
+    updateStatus,
+    assumeConversation,
+    releaseConversation,
+    closeConversation,
   };
 }
