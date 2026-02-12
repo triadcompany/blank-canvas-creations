@@ -34,6 +34,7 @@ import {
   Circle,
   XCircle,
   HandMetal,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInboxModal';
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
@@ -739,128 +750,50 @@ export default function InboxPage() {
           <EmptyChat />
         ) : (
           <>
-            {/* Chat Header */}
-            <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-card/50">
+            {/* Chat Header — 3-column layout */}
+            <div className="px-3 py-2.5 border-b border-border flex items-center gap-4 bg-card/50">
+              {/* Mobile back button */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden h-8 w-8"
+                className="md:hidden h-8 w-8 flex-shrink-0"
                 onClick={() => selectThread('')}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
 
-              <Avatar className="h-9 w-9">
-                {selectedThread.profile_picture_url && (
-                  <AvatarImage src={selectedThread.profile_picture_url} alt={selectedContact?.name || ''} />
-                )}
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                  {getInitials(selectedContact?.name || '?')}
-                </AvatarFallback>
-              </Avatar>
-
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm truncate">
-                  {selectedContact?.name}
-                </h3>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {selectedContact?.subtitle && (
-                    <>
-                      <Phone className="h-3 w-3" />
-                      <span>{selectedContact.subtitle}</span>
-                      <span className="text-border">•</span>
-                    </>
+              {/* ── LEFT: Identification ── */}
+              <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
+                <Avatar className="h-8 w-8">
+                  {selectedThread.profile_picture_url && (
+                    <AvatarImage src={selectedThread.profile_picture_url} alt={selectedContact?.name || ''} />
                   )}
-                  <span className={assignedMemberName ? '' : 'text-destructive'}>
-                    {assignedMemberName || 'Não atribuída'}
-                  </span>
+                  <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
+                    {getInitials(selectedContact?.name || '?')}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm truncate leading-tight">{selectedContact?.name}</h3>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {selectedContact?.subtitle && (
+                      <span className="text-[11px] text-muted-foreground truncate">{selectedContact.subtitle}</span>
+                    )}
+                    {assignedMemberName ? (
+                      <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium">
+                        {assignedMemberName}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-medium border-primary/40 text-primary">
+                        Não atribuída
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* AI mode toggle (OFF → ASSISTED → AUTO → OFF) */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={selectedThread.ai_mode !== 'off' ? 'default' : 'outline'}
-                    size="sm"
-                    className={cn(
-                      "h-7 text-xs gap-1",
-                      selectedThread.ai_mode === 'auto' && 'bg-green-600 hover:bg-green-700 text-white'
-                    )}
-                  >
-                    {selectedThread.ai_mode === 'auto' ? (
-                      <Bot className="h-3.5 w-3.5" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5" />
-                    )}
-                    {selectedThread.ai_mode === 'auto' ? 'AUTO' : selectedThread.ai_mode === 'assisted' ? 'Assistente' : 'IA Off'}
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-44 p-1" align="end">
-                  <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Modo da IA</div>
-                  {[
-                    { mode: 'off', label: 'Desligada', icon: '⏸' },
-                    { mode: 'assisted', label: 'Assistente', icon: '💡' },
-                    { mode: 'auto', label: 'Autônoma', icon: '🤖' },
-                  ].map(opt => (
-                    <button
-                      key={opt.mode}
-                      className={cn(
-                        'w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent transition-colors flex items-center gap-2',
-                        selectedThread.ai_mode === opt.mode && 'bg-accent font-medium'
-                      )}
-                      onClick={() => toggleAiMode(selectedThread.id, opt.mode)}
-                    >
-                      <span>{opt.icon}</span>
-                      {opt.label}
-                    </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
-
-              {/* Lead action */}
-              {selectedThread.lead_id ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => navigate(`/oportunidades?leadId=${selectedThread.lead_id}`)}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Ver Lead
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => setCreateLeadModalOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Criar Lead
-                </Button>
-              )}
-
-              {/* Assignment & Status actions */}
-              <div className="flex items-center gap-1">
-                {/* Assume button - visible when not assigned to current user */}
-                {selectedThread.assigned_to !== myProfileId && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={() => assumeConversation(selectedThread.id)}
-                  >
-                    <HandMetal className="h-3.5 w-3.5" />
-                    Assumir
-                  </Button>
-                )}
-
-                {/* Status badge */}
+              {/* ── CENTER: Status + Responsible ── */}
+              <div className="hidden md:flex items-center gap-2 flex-1 justify-center">
                 <StatusBadge status={selectedThread.status} />
-
-                {/* Lock indicator */}
                 {(() => {
                   const lockedName = getLockedByName(selectedThread);
                   if (!lockedName) return null;
@@ -869,7 +802,7 @@ export default function InboxPage() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                            <Lock className="h-3 w-3" />
+                            <Lock className="h-2.5 w-2.5" />
                             {lockedName}
                           </span>
                         </TooltipTrigger>
@@ -878,60 +811,17 @@ export default function InboxPage() {
                     </TooltipProvider>
                   );
                 })()}
-
-                {/* Close / Release buttons */}
-                {selectedThread.status !== 'closed' && (selectedThread.assigned_to === myProfileId || isAdmin) && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1 text-muted-foreground"
-                          onClick={() => closeConversation(selectedThread.id)}
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          Finalizar
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Finalizar conversa</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-
-                {/* Admin: force release */}
-                {isAdmin && selectedThread.locked_by && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1 text-muted-foreground"
-                          onClick={() => releaseConversation(selectedThread.id)}
-                        >
-                          <Unlock className="h-3.5 w-3.5" />
-                          Liberar
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Liberar conversa (admin)</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-
                 {isAdmin && (
                   <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-                        <User className="h-3.5 w-3.5" />
+                      <Button variant="outline" size="sm" className="h-6 text-[11px] gap-1 px-2">
+                        <User className="h-3 w-3" />
                         Responsável
-                        <ChevronDown className="h-3 w-3" />
+                        <ChevronDown className="h-2.5 w-2.5" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-52 p-1" align="end">
-                      <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                        Atribuir para
-                      </div>
+                    <PopoverContent className="w-52 p-1" align="center">
+                      <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Atribuir para</div>
                       {orgMembers.map((member) => (
                         <button
                           key={member.id}
@@ -967,47 +857,126 @@ export default function InboxPage() {
                     </PopoverContent>
                   </Popover>
                 )}
+              </div>
 
-                {/* Reset First Touch (admin only) */}
-                {isAdmin && (
-                  <div className="flex items-center gap-0.5">
-                    {firstTouchResetDone && (
-                      <Badge variant="outline" className="h-5 text-[9px] font-medium border-emerald-500 text-emerald-600 dark:text-emerald-400 animate-pulse">
-                        First-touch resetado — pronto para testar
-                      </Badge>
-                    )}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                            onClick={handleCheckFirstTouchStatus}
-                          >
-                            <Search className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Ver status first-touch</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
-                            onClick={() => setResetFirstTouchOpen(true)}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Resetar First Touch</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
+              {/* ── RIGHT: Actions ── */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* Primary CTA */}
+                {selectedThread.assigned_to !== myProfileId ? (
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => assumeConversation(selectedThread.id)}
+                  >
+                    <HandMetal className="h-3 w-3" />
+                    Assumir
+                  </Button>
+                ) : null}
+
+                {/* Secondary: Finalizar */}
+                {selectedThread.status !== 'closed' && (selectedThread.assigned_to === myProfileId || isAdmin) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => closeConversation(selectedThread.id)}
+                  >
+                    <XCircle className="h-3 w-3" />
+                    Finalizar
+                  </Button>
                 )}
+
+                {/* Secondary: Liberar (admin) */}
+                {isAdmin && selectedThread.locked_by && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => releaseConversation(selectedThread.id)}
+                  >
+                    <Unlock className="h-3 w-3" />
+                    Liberar
+                  </Button>
+                )}
+
+                {/* Tertiary: More actions dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {/* Lead action */}
+                    {selectedThread.lead_id ? (
+                      <DropdownMenuItem onClick={() => navigate(`/oportunidades?leadId=${selectedThread.lead_id}`)}>
+                        <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                        Ver Lead
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => setCreateLeadModalOpen(true)}>
+                        <Plus className="h-3.5 w-3.5 mr-2" />
+                        Criar Lead
+                      </DropdownMenuItem>
+                    )}
+
+                    {/* AI mode */}
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Sparkles className="h-3.5 w-3.5 mr-2" />
+                        IA: {selectedThread.ai_mode === 'auto' ? 'Autônoma' : selectedThread.ai_mode === 'assisted' ? 'Assistente' : 'Desligada'}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {[
+                          { mode: 'off', label: 'Desligada', icon: '⏸' },
+                          { mode: 'assisted', label: 'Assistente', icon: '💡' },
+                          { mode: 'auto', label: 'Autônoma', icon: '🤖' },
+                        ].map(opt => (
+                          <DropdownMenuItem
+                            key={opt.mode}
+                            onClick={() => toggleAiMode(selectedThread.id, opt.mode)}
+                            className={cn(selectedThread.ai_mode === opt.mode && 'bg-accent font-medium')}
+                          >
+                            <span className="mr-2">{opt.icon}</span>
+                            {opt.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem onClick={refreshThreads}>
+                      <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                      Atualizar
+                    </DropdownMenuItem>
+
+                    {/* Admin: Reset first touch */}
+                    {isAdmin && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleCheckFirstTouchStatus}>
+                          <Search className="h-3.5 w-3.5 mr-2" />
+                          Status first-touch
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setResetFirstTouchOpen(true)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                          Resetar first-touch
+                        </DropdownMenuItem>
+                        {firstTouchResetDone && (
+                          <div className="px-2 py-1">
+                            <Badge variant="outline" className="h-5 text-[9px] font-medium border-emerald-500 text-emerald-600 dark:text-emerald-400">
+                              First-touch resetado ✓
+                            </Badge>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
