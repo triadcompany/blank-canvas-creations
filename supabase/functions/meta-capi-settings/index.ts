@@ -82,7 +82,7 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { action, profile_id, organization_id, payload } = body as {
-      action: "save" | "test" | "status" | "queue_logs";
+      action: "save" | "test" | "status" | "queue_logs" | "queue_action" | "run_worker";
       profile_id?: string;
       organization_id?: string;
       payload?: Record<string, unknown>;
@@ -95,6 +95,10 @@ serve(async (req) => {
         ? "[META_CAPI_TEST]"
         : action === "queue_logs"
         ? "[META_CAPI_QUEUE_LOGS]"
+        : action === "queue_action"
+        ? "[META_CAPI_QUEUE_ACTION]"
+        : action === "run_worker"
+        ? "[META_CAPI_RUN_WORKER]"
         : "[META_CAPI_STATUS]";
 
     console.log(`${prefix} action=${action}, org=${organization_id}, profile=${profile_id}`);
@@ -159,7 +163,7 @@ serve(async (req) => {
       }, 500);
     }
 
-    // ═══════ QUEUE LOGS (Admin) — reads from meta_capi_events ═══════
+    // ═══════ QUEUE LOGS (Admin) — reads from event_dispatch_queue ═══════
     if (action === "queue_logs") {
       if (!isAdmin) {
         return json({ ok: false, code: "NOT_ADMIN", message: "Apenas administradores podem ver os logs" }, 403);
@@ -170,11 +174,12 @@ serve(async (req) => {
       const period = (payload?.period as string) || "7d";
 
       let q = supabase
-        .from("meta_capi_events")
+        .from("event_dispatch_queue")
         .select("*")
         .eq("organization_id", organization_id)
+        .eq("channel", "meta_capi")
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (status !== "all") q = q.eq("status", status);
       if (eventName !== "all") q = q.eq("event_name", eventName);
@@ -193,6 +198,82 @@ serve(async (req) => {
       }
 
       return json({ ok: true, items: items || [] });
+    }
+
+    // ═══════ QUEUE ACTION (reprocess, reset, mark_dead) ═══════
+    if (action === "queue_action") {
+      if (!isAdmin) {
+        return json({ ok: false, code: "NOT_ADMIN", message: "Apenas administradores" }, 403);
+      }
+
+      const queueId = payload?.queue_id as string;
+      const actionType = payload?.action_type as string;
+
+      if (!queueId || !actionType) {
+        return json({ ok: false, code: "MISSING_PARAMS", message: "queue_id e action_type obrigatórios" }, 400);
+      }
+
+      // Verify item belongs to org
+      const { data: item } = await supabase
+        .from("event_dispatch_queue")
+        .select("id, organization_id")
+        .eq("id", queueId)
+        .eq("organization_id", organization_id)
+        .maybeSingle();
+
+      if (!item) {
+        return json({ ok: false, code: "NOT_FOUND", message: "Item não encontrado" }, 404);
+      }
+
+      let updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+      switch (actionType) {
+        case "reprocess":
+          updateData = { ...updateData, status: "pending", next_retry_at: new Date().toISOString() };
+          break;
+        case "reset":
+          updateData = { ...updateData, status: "pending", attempts: 0, next_retry_at: new Date().toISOString(), last_error: null };
+          break;
+        case "mark_dead":
+          updateData = { ...updateData, status: "dead", last_error: "Marcado como morto manualmente" };
+          break;
+        default:
+          return json({ ok: false, code: "INVALID_ACTION_TYPE", message: `Tipo '${actionType}' inválido` }, 400);
+      }
+
+      const { error: updErr } = await supabase
+        .from("event_dispatch_queue")
+        .update(updateData)
+        .eq("id", queueId);
+
+      if (updErr) {
+        return json({ ok: false, code: "DB_ERROR", message: updErr.message }, 500);
+      }
+
+      return json({ ok: true, message: `Ação '${actionType}' executada` });
+    }
+
+    // ═══════ RUN WORKER ═══════
+    if (action === "run_worker") {
+      if (!isAdmin) {
+        return json({ ok: false, code: "NOT_ADMIN", message: "Apenas administradores" }, 403);
+      }
+
+      try {
+        const workerUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/process-event-dispatch`;
+        const res = await fetch(workerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        return json({ ok: true, worker_result: data });
+      } catch (err: any) {
+        return json({ ok: false, code: "WORKER_ERROR", message: err.message }, 500);
+      }
     }
 
     // ═══════ STATUS ═══════

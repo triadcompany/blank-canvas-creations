@@ -1218,30 +1218,51 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
   const email = ctx.email || ctx.lead_email || "";
   const traceId = ctx.trace_id || null;
   const leadName = ctx.lead_name || ctx.contact_name || "";
+  const pipelineId = ctx.pipeline_id || null;
+  const stageId = ctx.to_stage_id || null;
 
-  // Generate deterministic hash for deduplication
-  // hash = leadId + eventName + stage + date_trunc('minute')
-  const minuteKey = new Date().toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
-  const hashInput = `${leadId || phone}_${eventName}_${ctx.to_stage_id || 'manual'}_${minuteKey}`;
-  const eventHash = await hashSHA256(hashInput);
+  // Build dedupe_key: org:lead_or_phone:event:stage
+  const entityKey = leadId || phone;
+  const stageKey = sendOnce ? (stageId || "any") : "any";
+  const dedupeKey = `${orgId}:${entityKey}:${eventName}:${stageKey}`;
+  const eventHash = await hashSHA256(dedupeKey);
 
-  // Check idempotency: does this event already exist in queue?
+  // Check idempotency
   const { data: existing } = await supabase
     .from("event_dispatch_queue")
     .select("id, status")
     .eq("event_hash", eventHash)
-    .in("status", ["pending", "processing", "success"])
+    .in("status", ["pending", "processing", "success", "failed"])
     .limit(1);
 
   if (existing && existing.length > 0) {
-    console.log(`[automation-worker] Event deduplicated (hash=${eventHash.slice(0,12)}): ${eventName} for lead ${leadId}`);
+    console.log(`[automation-worker] SKIPPED_DUPLICATE (hash=${eventHash.slice(0,12)}): ${eventName} for ${entityKey}`);
+
+    // Update execution trace with dedup info
+    if (traceId) {
+      await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
+        action_type: "send_meta_event",
+        event_name: eventName,
+        dedupe_key: dedupeKey,
+        queue_status_initial: "skipped_duplicate",
+        existing_queue_id: existing[0].id,
+        existing_queue_status: existing[0].status,
+      });
+    }
+
     return {
       status: "done",
-      output: { action_type: "send_meta_event", deduplicated: true, event_name: eventName, event_hash: eventHash },
+      output: {
+        action_type: "send_meta_event",
+        deduplicated: true,
+        event_name: eventName,
+        dedupe_key: dedupeKey,
+        queue_status_initial: "skipped_duplicate",
+      },
     };
   }
 
-  // Enqueue the event (DO NOT send to Meta here)
+  // Enqueue the event
   const queuePayload = {
     event_name: eventName,
     lead_id: leadId,
@@ -1250,16 +1271,17 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
     name: leadName,
     value,
     currency,
-    pipeline_id: ctx.pipeline_id || null,
-    stage_id: ctx.to_stage_id || null,
+    pipeline_id: pipelineId,
+    stage_id: stageId,
     stage_name: ctx.to_stage_name || null,
     lead_source: ctx.lead_source || ctx.source || null,
     seller_id: ctx.seller_id || null,
     trace_id: traceId,
+    dedupe_key: dedupeKey,
     event_time: Math.floor(Date.now() / 1000),
   };
 
-  const { error: insertErr } = await supabase.from("event_dispatch_queue").insert({
+  const { data: inserted, error: insertErr } = await supabase.from("event_dispatch_queue").insert({
     organization_id: orgId,
     lead_id: leadId,
     event_name: eventName,
@@ -1269,21 +1291,43 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
     event_hash: eventHash,
     automation_id: job.automation_id,
     run_id: job.run_id,
-  });
+    pipeline_id: pipelineId,
+    stage_id: stageId,
+  }).select("id").single();
 
   if (insertErr) {
     // Unique constraint violation = dedup
     if (insertErr.code === "23505") {
-      console.log(`[automation-worker] Event deduplicated on insert (hash=${eventHash.slice(0,12)})`);
+      console.log(`[automation-worker] SKIPPED_DUPLICATE on insert (hash=${eventHash.slice(0,12)})`);
+      if (traceId) {
+        await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
+          action_type: "send_meta_event",
+          event_name: eventName,
+          dedupe_key: dedupeKey,
+          queue_status_initial: "skipped_duplicate",
+        });
+      }
       return {
         status: "done",
-        output: { action_type: "send_meta_event", deduplicated: true, event_name: eventName },
+        output: { action_type: "send_meta_event", deduplicated: true, event_name: eventName, dedupe_key: dedupeKey },
       };
     }
     throw new Error(`Failed to enqueue event: ${insertErr.message}`);
   }
 
-  console.log(`[automation-worker] ✅ Event enqueued: ${eventName} for lead ${leadId} (hash=${eventHash.slice(0,12)})`);
+  const queueId = inserted?.id || null;
+  console.log(`[automation-worker] ✅ Event enqueued: ${eventName} for ${entityKey} (queue_id=${queueId})`);
+
+  // Update execution trace
+  if (traceId) {
+    await updateExecutionFromWorker(supabase, orgId, traceId, "success", null, {
+      action_type: "send_meta_event",
+      event_name: eventName,
+      dedupe_key: dedupeKey,
+      queue_id: queueId,
+      queue_status_initial: "pending",
+    });
+  }
 
   return {
     status: "done",
@@ -1291,7 +1335,9 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
       action_type: "send_meta_event",
       event_name: eventName,
       enqueued: true,
-      event_hash: eventHash,
+      queue_id: queueId,
+      dedupe_key: dedupeKey,
+      queue_status_initial: "pending",
       lead_id: leadId,
     },
   };

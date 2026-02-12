@@ -7,8 +7,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Retry delays in seconds: 60, 300, 900, 3600, 21600
-const RETRY_DELAYS = [60, 300, 900, 3600, 21600];
+// Exponential backoff: 2^attempts minutes (2m, 4m, 8m, 16m, 32m)
+function getBackoffMs(attempts: number): number {
+  return Math.pow(2, attempts) * 60_000;
+}
 
 async function hashSHA256(value: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -63,14 +65,14 @@ async function processBatch(
   processed: string[],
   errors: string[]
 ): Promise<{ processedCount: number; errorCount: number; hadWork: boolean }> {
-  // Fetch pending jobs ready to process
+  // Fetch pending/failed jobs ready to process
   const { data: jobs, error: fetchErr } = await supabase
     .from("event_dispatch_queue")
     .select("*")
-    .eq("status", "pending")
+    .in("status", ["pending", "failed"])
     .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString())
     .order("created_at", { ascending: true })
-    .limit(20);
+    .limit(50);
 
   if (fetchErr) {
     throw new Error(fetchErr.message);
@@ -204,6 +206,7 @@ async function processMetaCapi(supabase: any, job: any) {
       .update({
         status: "success",
         sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         attempts: job.attempts + 1,
         payload: {
           ...payload,
@@ -253,13 +256,14 @@ async function markRetryOrError(
   const payload = job.payload || {};
 
   if (newAttempts >= job.max_attempts) {
-    // Final error
+    // Final dead state
     await supabase
       .from("event_dispatch_queue")
       .update({
-        status: "error",
+        status: "dead",
         attempts: newAttempts,
         last_error: errorMsg,
+        updated_at: new Date().toISOString(),
         payload: metaRequest
           ? { ...payload, _meta_request: metaRequest, _meta_response: metaResponse, _http_status: httpStatus }
           : payload,
@@ -284,24 +288,25 @@ async function markRetryOrError(
       console.warn("[process-event-dispatch] Failed to write error audit log (non-critical):", logErr);
     }
 
-    console.error(`[process-event-dispatch] ❌ Job ${job.id} permanently failed after ${newAttempts} attempts`);
+    console.error(`[process-event-dispatch] ❌ Job ${job.id} permanently DEAD after ${newAttempts} attempts`);
   } else {
-    // Schedule retry with exponential backoff
-    const delaySeconds = RETRY_DELAYS[Math.min(newAttempts - 1, RETRY_DELAYS.length - 1)];
-    const nextRetry = new Date(Date.now() + delaySeconds * 1000).toISOString();
+    // Schedule retry with exponential backoff: 2^n minutes
+    const backoffMs = getBackoffMs(newAttempts);
+    const nextRetry = new Date(Date.now() + backoffMs).toISOString();
 
     await supabase
       .from("event_dispatch_queue")
       .update({
-        status: "pending",
+        status: "failed",
         attempts: newAttempts,
         last_error: errorMsg,
         next_retry_at: nextRetry,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
 
     console.warn(
-      `[process-event-dispatch] ⏳ Job ${job.id} retry #${newAttempts} scheduled for ${nextRetry} (${delaySeconds}s delay)`
+      `[process-event-dispatch] ⏳ Job ${job.id} retry #${newAttempts} scheduled for ${nextRetry} (${Math.round(backoffMs/60000)}m backoff)`
     );
   }
 }
@@ -311,11 +316,12 @@ async function markError(supabase: any, job: any, errorMsg: string) {
   await supabase
     .from("event_dispatch_queue")
     .update({
-      status: "error",
+      status: "dead",
       attempts: job.attempts + 1,
       last_error: errorMsg,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", job.id);
 
-  console.error(`[process-event-dispatch] ❌ Job ${job.id} error (no retry): ${errorMsg}`);
+  console.error(`[process-event-dispatch] ❌ Job ${job.id} DEAD (no retry): ${errorMsg}`);
 }
