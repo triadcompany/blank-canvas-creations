@@ -35,6 +35,39 @@ function normalizePhone(raw: string): string {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
+/**
+ * Map of Brazilian state full names (normalized, no accents) to UF codes.
+ */
+const BR_STATE_MAP: Record<string, string> = {
+  acre: "ac", alagoas: "al", amapa: "ap", amazonas: "am",
+  bahia: "ba", ceara: "ce", "distrito federal": "df",
+  "espirito santo": "es", goias: "go", maranhao: "ma",
+  "mato grosso": "mt", "mato grosso do sul": "ms",
+  "minas gerais": "mg", para: "pa", paraiba: "pb",
+  parana: "pr", pernambuco: "pe", piaui: "pi",
+  "rio de janeiro": "rj", "rio grande do norte": "rn",
+  "rio grande do sul": "rs", rondonia: "ro", roraima: "rr",
+  "santa catarina": "sc", "sao paulo": "sp", sergipe: "se", tocantins: "to",
+};
+
+/**
+ * Normalizes a Brazilian state to its 2-letter UF code (lowercase).
+ * Accepts either UF ("SC") or full name ("Santa Catarina").
+ */
+function normalizeState(raw: string): string {
+  const cleaned = removeAccents(raw.trim().toLowerCase());
+  // If already a 2-letter UF
+  if (cleaned.length === 2) return cleaned;
+  return BR_STATE_MAP[cleaned] || cleaned;
+}
+
+/**
+ * Normalizes a city name: lowercase, no accents, trimmed.
+ */
+function normalizeCity(raw: string): string {
+  return removeAccents(raw.trim().toLowerCase());
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -231,6 +264,24 @@ async function processMetaCapi(supabase: any, job: any) {
     userData.external_id = [await hashSHA256(payload.lead_id)];
   }
 
+  // Location fields for improved match quality
+  const debugLocation: Record<string, string> = {};
+  if (payload.city) {
+    const normalizedCity = normalizeCity(payload.city);
+    debugLocation.city = normalizedCity;
+    userData.ct = [await hashSHA256(normalizedCity)];
+  }
+  if (payload.state) {
+    const normalizedState = normalizeState(payload.state);
+    debugLocation.state = normalizedState;
+    userData.st = [await hashSHA256(normalizedState)];
+  }
+  // Always send country as "br" for Brazilian leads
+  if (payload.city || payload.state || payload.phone) {
+    userData.country = [await hashSHA256("br")];
+    debugLocation.country = "br";
+  }
+
   // 6. Build enriched custom_data
   const customData: Record<string, any> = {
     currency: payload.currency || "BRL",
@@ -278,8 +329,8 @@ async function processMetaCapi(supabase: any, job: any) {
 
   const responseJson = await res.json();
 
-  // Mask access_token from stored payloads
-  const safeMetaPayload = { ...metaPayload };
+  // Mask access_token from stored payloads; add debug_location for audit
+  const safeMetaPayload = { ...metaPayload, debug_location: Object.keys(debugLocation).length > 0 ? debugLocation : undefined };
   delete safeMetaPayload.test_event_code; // don't store test code
 
   if (res.ok) {
