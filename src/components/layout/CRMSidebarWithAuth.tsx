@@ -69,6 +69,11 @@ const menuItems = [
     icon: BarChart3,
   },
   {
+    title: "Relatório Supremo",
+    url: "/relatorio-supremo",
+    icon: Crown,
+  },
+  {
     title: "Inbox",
     url: "/inbox",
     icon: Inbox,
