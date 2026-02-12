@@ -14,6 +14,61 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
+/** Ensure the organization exists in saas_organizations (auto-heal). */
+async function ensureOrg(
+  supabase: any,
+  organizationId: string,
+  profileId: string,
+  prefix: string
+): Promise<{ ok: boolean; error?: string }> {
+  // Check saas_organizations first
+  const { data: saasOrg } = await supabase
+    .from("saas_organizations")
+    .select("id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (saasOrg) return { ok: true };
+
+  console.log(`${prefix} saas_organizations row missing for ${organizationId}, auto-healing...`);
+
+  // Fetch profile info to populate owner fields
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, clerk_user_id")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  const ownerName = prof?.full_name || "Admin";
+  const ownerEmail = prof?.email || null;
+  const slug = `org-${organizationId.substring(0, 8)}`;
+
+  const { error: insertErr } = await supabase.from("saas_organizations").insert({
+    id: organizationId,
+    owner_id: profileId,
+    name: `Org ${organizationId.substring(0, 8)}`,
+    slug,
+    owner_name: ownerName,
+    owner_email: ownerEmail,
+  });
+
+  if (insertErr) {
+    // Could be a race condition / duplicate – check again
+    const { data: recheck } = await supabase
+      .from("saas_organizations")
+      .select("id")
+      .eq("id", organizationId)
+      .maybeSingle();
+    if (recheck) return { ok: true };
+
+    console.error(`${prefix} Failed to auto-heal saas_organizations:`, insertErr);
+    return { ok: false, error: insertErr.message };
+  }
+
+  console.log(`${prefix} Auto-healed saas_organizations for ${organizationId}`);
+  return { ok: true };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,10 +106,10 @@ serve(async (req) => {
       );
     }
 
-    // ── Verify profile belongs to org & is admin ──
+    // ── Verify profile belongs to org ──
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("id, organization_id, clerk_user_id")
+      .select("id, organization_id, clerk_user_id, full_name, email")
       .eq("id", profile_id)
       .single();
 
@@ -68,7 +123,7 @@ serve(async (req) => {
       return json({ ok: false, code: "ORG_MISMATCH", message: "Organização não corresponde ao perfil" }, 403);
     }
 
-    // Check admin role
+    // Check admin role (lenient for Clerk-only setups)
     const { data: roleRow } = await supabase
       .from("user_roles")
       .select("role")
@@ -76,47 +131,30 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Also check by profile linkage patterns used in this project
     let isAdmin = roleRow?.role === "admin";
     if (!isAdmin) {
-      // Try looking up by any user_id field
-      const { data: roleRow2 } = await supabase
+      const { data: roleRows } = await supabase
         .from("user_roles")
         .select("role")
         .eq("organization_id", organization_id)
         .limit(10);
-      // If there are roles for this org and none match, we still allow if only one profile exists
-      if (roleRow2 && roleRow2.length > 0) {
-        isAdmin = roleRow2.some((r: any) => r.role === "admin");
+      if (roleRows && roleRows.length > 0) {
+        isAdmin = roleRows.some((r: any) => r.role === "admin");
       } else {
-        // No roles found – likely Clerk-only setup, allow
-        isAdmin = true;
+        isAdmin = true; // No roles table entries – Clerk-only, allow
       }
     }
 
     console.log(`${prefix} is_admin=${isAdmin}`);
 
-    // ── Verify organization exists ──
-    const { data: org, error: orgErr } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("id", organization_id)
-      .maybeSingle();
-
-    // Using saas_organizations view fallback
-    let orgExists = !!org;
-    if (!orgExists) {
-      const { data: saasOrg } = await supabase
-        .from("saas_organizations")
-        .select("id")
-        .eq("id", organization_id)
-        .maybeSingle();
-      orgExists = !!saasOrg;
-    }
-
-    if (!orgExists) {
-      console.error(`${prefix} Organization not found: ${organization_id}`, orgErr);
-      return json({ ok: false, code: "ORG_NOT_FOUND", message: `Organização ${organization_id} não encontrada no banco` }, 404);
+    // ── Auto-heal: ensure org exists in saas_organizations ──
+    const healResult = await ensureOrg(supabase, organization_id, profile_id, prefix);
+    if (!healResult.ok) {
+      return json({
+        ok: false,
+        code: "ORG_HEAL_FAILED",
+        message: `Não foi possível criar/verificar a organização: ${healResult.error}`,
+      }, 500);
     }
 
     // ═══════ STATUS ═══════
@@ -132,7 +170,7 @@ serve(async (req) => {
         status: {
           user_id: profile_id,
           organization_id,
-          org_exists: orgExists,
+          org_exists: true, // ensureOrg guarantees this
           is_admin: isAdmin,
           settings_exists: !!settings,
           settings_id: settings?.id ?? null,
@@ -217,7 +255,7 @@ serve(async (req) => {
         console.error(`${prefix} Settings not found:`, fetchErr);
         return json({
           ok: false,
-          code: "MISSING_SETTINGS",
+          code: "NOT_SAVED",
           message: "Configurações Meta CAPI não encontradas. Salve primeiro.",
         }, 400);
       }
@@ -232,25 +270,47 @@ serve(async (req) => {
 
       console.log(`${prefix} Testing pixel=${settings.pixel_id}, test_mode=${settings.test_mode}`);
 
-      // Test 1: Validate pixel exists
+      // Send a real test event to Meta Graph API
       try {
-        const pixelRes = await fetch(
-          `https://graph.facebook.com/v19.0/${settings.pixel_id}?access_token=${settings.access_token}&fields=id,name`
-        );
-        const pixelData = await pixelRes.json();
+        const eventTime = Math.floor(Date.now() / 1000);
+        const testPayload: any = {
+          data: [
+            {
+              event_name: "Lead",
+              event_time: eventTime,
+              action_source: "system_generated",
+              user_data: { client_ip_address: "0.0.0.0" },
+            },
+          ],
+        };
 
-        if (!pixelRes.ok || !pixelData.id) {
-          const metaErr = pixelData.error || {};
+        if (settings.test_mode && settings.test_event_code) {
+          testPayload.test_event_code = settings.test_event_code;
+        }
+
+        const metaRes = await fetch(
+          `https://graph.facebook.com/v19.0/${settings.pixel_id}/events?access_token=${settings.access_token}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(testPayload),
+          }
+        );
+
+        const metaData = await metaRes.json();
+
+        if (!metaRes.ok) {
+          const metaErr = metaData.error || {};
           let code = "META_UNKNOWN";
           let message = metaErr.message || "Erro desconhecido da Meta";
 
           if (metaErr.code === 190) {
             code = "INVALID_TOKEN";
             message = "Access Token inválido ou expirado. Gere um novo token no Business Manager.";
-          } else if (metaErr.code === 100 || (metaErr.message || "").includes("permission")) {
+          } else if (metaErr.code === 100 || (metaErr.message || "").toLowerCase().includes("permission")) {
             code = "MISSING_PERMISSION";
             message =
-              "Seu token não tem permissão para acessar este Pixel/Dataset. " +
+              "Seu token não tem permissão para enviar eventos para este Pixel/Dataset. " +
               "Use um System User no Business Manager com acesso ao Dataset + permissões de evento.";
           } else if (metaErr.type === "OAuthException" && metaErr.code === 803) {
             code = "INVALID_DATASET";
@@ -258,20 +318,14 @@ serve(async (req) => {
           }
 
           console.error(`${prefix} Meta API error:`, { code, metaErr });
-          return json({
-            ok: false,
-            code,
-            message,
-            meta_error: metaErr,
-          }, 400);
+          return json({ ok: false, code, message, meta_error: metaErr }, 400);
         }
 
-        console.log(`${prefix} Connection OK! Pixel: ${pixelData.name || pixelData.id}`);
+        console.log(`${prefix} Test event sent OK!`, metaData);
         return json({
           ok: true,
-          message: `Conexão OK! Pixel: ${pixelData.name || pixelData.id}`,
-          pixel_name: pixelData.name,
-          pixel_id: pixelData.id,
+          message: `Evento de teste enviado com sucesso! Events received: ${metaData.events_received ?? "?"}`,
+          meta_response: metaData,
         });
       } catch (netErr: any) {
         console.error(`${prefix} Network error:`, netErr);

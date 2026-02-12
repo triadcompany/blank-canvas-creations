@@ -315,6 +315,7 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
   const [testMode, setTestMode] = useState(false);
   const [domain, setDomain] = useState("");
   const [errorDetail, setErrorDetail] = useState<any>(null);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -360,6 +361,7 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
 
       if (data.ok) {
         toast.success("Configurações salvas!");
+        setSettingsSaved(true);
         load();
       } else {
         toast.error(`Erro ao salvar: ${data.message || "Erro desconhecido"}`);
@@ -387,7 +389,16 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
     }
   };
 
+  // Track if settings exist (saved at least once)
+  useEffect(() => {
+    setSettingsSaved(!!config?.id);
+  }, [config]);
+
   const handleTest = async () => {
+    if (!settingsSaved) {
+      toast.warning("Salve as configurações antes de testar a conexão.");
+      return;
+    }
     setTesting(true);
     try {
       const { status, data } = await callMetaCapiEndpoint({
@@ -522,10 +533,17 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar
             </Button>
-            <Button variant="outline" onClick={handleTest} disabled={testing || !config}>
-              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
-              Testar Conexão
-            </Button>
+            <div className="relative group">
+              <Button variant="outline" onClick={handleTest} disabled={testing || !settingsSaved || !pixelId || !accessToken}>
+                {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
+                Testar Conexão
+              </Button>
+              {!settingsSaved && (
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border">
+                  Salve as configurações antes de testar
+                </span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
