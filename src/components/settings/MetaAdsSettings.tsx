@@ -110,7 +110,7 @@ export function MetaAdsSettings() {
             <ConnectionCard orgId={orgId} profileId={profileId} />
           </TabsContent>
           <TabsContent value="logs" className="mt-4">
-            <LogsCard orgId={orgId} />
+            <LogsCard orgId={orgId} profileId={profileId} />
           </TabsContent>
         </Tabs>
       )}
@@ -559,7 +559,7 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
 
 
 // ═══════════ LOGS CARD (reads from event_dispatch_queue) ═══════════
-function LogsCard({ orgId }: { orgId: string }) {
+function LogsCard({ orgId, profileId }: { orgId: string; profileId: string }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
@@ -569,27 +569,30 @@ function LogsCard({ orgId }: { orgId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = (supabase as any)
-      .from("event_dispatch_queue")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    try {
+      const { status: httpStatus, data } = await callMetaCapiEndpoint({
+        action: "queue_logs",
+        profile_id: profileId,
+        organization_id: orgId,
+        payload: {
+          status: statusFilter,
+          event_name: eventFilter,
+          period: periodFilter,
+        },
+      });
 
-    if (statusFilter !== "all") query = query.eq("status", statusFilter);
-    if (eventFilter !== "all") query = query.eq("event_name", eventFilter);
+      if (!data.ok) {
+        throw new Error(`HTTP ${httpStatus}: ${data.message || "Erro ao carregar fila"}`);
+      }
 
-    const now = new Date();
-    if (periodFilter === "7d") {
-      query = query.gte("created_at", new Date(now.getTime() - 7 * 86400000).toISOString());
-    } else if (periodFilter === "30d") {
-      query = query.gte("created_at", new Date(now.getTime() - 30 * 86400000).toISOString());
+      setItems(data.items || []);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao carregar fila");
+      setItems([]);
+    } finally {
+      setLoading(false);
     }
-
-    const { data } = await query;
-    setItems(data || []);
-    setLoading(false);
-  }, [orgId, statusFilter, eventFilter, periodFilter]);
+  }, [orgId, profileId, statusFilter, eventFilter, periodFilter]);
 
   useEffect(() => { load(); }, [load]);
 
