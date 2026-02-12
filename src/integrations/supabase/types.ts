@@ -1933,6 +1933,63 @@ export type Database = {
           },
         ]
       }
+      event_dispatch_queue: {
+        Row: {
+          attempts: number
+          automation_id: string | null
+          channel: string
+          created_at: string
+          event_hash: string
+          event_name: string
+          id: string
+          last_error: string | null
+          lead_id: string | null
+          max_attempts: number
+          next_retry_at: string | null
+          organization_id: string
+          payload: Json
+          run_id: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          automation_id?: string | null
+          channel?: string
+          created_at?: string
+          event_hash: string
+          event_name: string
+          id?: string
+          last_error?: string | null
+          lead_id?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          organization_id: string
+          payload?: Json
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          automation_id?: string | null
+          channel?: string
+          created_at?: string
+          event_hash?: string
+          event_name?: string
+          id?: string
+          last_error?: string | null
+          lead_id?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          organization_id?: string
+          payload?: Json
+          run_id?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       evolution_webhook_logs: {
         Row: {
           auth_status: string | null
