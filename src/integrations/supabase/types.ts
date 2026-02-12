@@ -3899,31 +3899,37 @@ export type Database = {
         Row: {
           access_token: string
           created_at: string
+          domain: string | null
           enabled: boolean
           id: string
           organization_id: string
           pixel_id: string
           test_event_code: string | null
+          test_mode: boolean
           updated_at: string
         }
         Insert: {
           access_token: string
           created_at?: string
+          domain?: string | null
           enabled?: boolean
           id?: string
           organization_id: string
           pixel_id: string
           test_event_code?: string | null
+          test_mode?: boolean
           updated_at?: string
         }
         Update: {
           access_token?: string
           created_at?: string
+          domain?: string | null
           enabled?: boolean
           id?: string
           organization_id?: string
           pixel_id?: string
           test_event_code?: string | null
+          test_mode?: boolean
           updated_at?: string
         }
         Relationships: [
