@@ -1262,9 +1262,13 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
     };
   }
 
+  // Generate a stable event_id (UUID) that will be reused on retries for Meta dedup
+  const eventId = crypto.randomUUID();
+
   // Enqueue the event
   const queuePayload = {
     event_name: eventName,
+    event_id: eventId,
     lead_id: leadId,
     phone,
     email,
@@ -1274,8 +1278,10 @@ async function processActionSendMetaEvent(supabase: any, config: any, job: any):
     pipeline_id: pipelineId,
     stage_id: stageId,
     stage_name: ctx.to_stage_name || null,
-    lead_source: ctx.lead_source || ctx.source || null,
+    pipeline_name: ctx.pipeline_name || null,
+    seller_name: ctx.seller_name || null,
     seller_id: ctx.seller_id || null,
+    lead_source: ctx.lead_source || ctx.source || null,
     trace_id: traceId,
     dedupe_key: dedupeKey,
     event_time: Math.floor(Date.now() / 1000),
