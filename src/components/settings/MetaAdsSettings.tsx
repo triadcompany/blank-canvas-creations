@@ -35,6 +35,23 @@ interface CapiSettings {
   domain: string | null;
 }
 
+interface QueueItem {
+  id: string;
+  organization_id: string;
+  lead_id: string | null;
+  event_name: string;
+  channel: string;
+  payload: any;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  next_retry_at: string | null;
+  sent_at: string | null;
+  event_hash: string;
+  created_at: string;
+}
+
 interface CapiLog {
   id: string;
   lead_id: string | null;
@@ -541,11 +558,11 @@ function ConnectionCard({ orgId, profileId }: { orgId: string; profileId: string
 }
 
 
-// ═══════════ LOGS CARD ═══════════
+// ═══════════ LOGS CARD (reads from event_dispatch_queue) ═══════════
 function LogsCard({ orgId }: { orgId: string }) {
-  const [logs, setLogs] = useState<CapiLog[]>([]);
+  const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedLog, setSelectedLog] = useState<CapiLog | null>(null);
+  const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("7d");
@@ -553,14 +570,14 @@ function LogsCard({ orgId }: { orgId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     let query = (supabase as any)
-      .from("meta_capi_logs")
+      .from("event_dispatch_queue")
       .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(50);
 
     if (statusFilter !== "all") query = query.eq("status", statusFilter);
-    if (eventFilter !== "all") query = query.eq("meta_event", eventFilter);
+    if (eventFilter !== "all") query = query.eq("event_name", eventFilter);
 
     const now = new Date();
     if (periodFilter === "7d") {
@@ -570,19 +587,25 @@ function LogsCard({ orgId }: { orgId: string }) {
     }
 
     const { data } = await query;
-    setLogs(data || []);
+    setItems(data || []);
     setLoading(false);
   }, [orgId, statusFilter, eventFilter, periodFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  const translateFailReason = (reason: string | null) => {
-    if (!reason) return null;
-    // Check for exact match first
-    if (FAIL_REASON_PT[reason]) return FAIL_REASON_PT[reason];
-    // Check for prefix match (e.g. META_HTTP_400)
-    if (reason.startsWith("META_HTTP_")) return "Meta rejeitou o evento (ver detalhes)";
-    return reason;
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "success":
+        return <Badge variant="outline" className="gap-1 text-xs text-emerald-600 border-emerald-200"><Check className="h-3 w-3" /> Enviado</Badge>;
+      case "error":
+        return <Badge variant="destructive" className="gap-1 text-xs"><X className="h-3 w-3" /> Erro</Badge>;
+      case "pending":
+        return <Badge variant="secondary" className="gap-1 text-xs">⏳ Pendente</Badge>;
+      case "processing":
+        return <Badge variant="secondary" className="gap-1 text-xs">⚙️ Processando</Badge>;
+      default:
+        return <Badge variant="secondary" className="gap-1 text-xs">{status}</Badge>;
+    }
   };
 
   return (
@@ -590,8 +613,8 @@ function LogsCard({ orgId }: { orgId: string }) {
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <CardTitle className="font-poppins">Logs Meta CAPI</CardTitle>
-            <CardDescription>Histórico de envio de eventos</CardDescription>
+            <CardTitle className="font-poppins">Fila de Eventos</CardTitle>
+            <CardDescription>Histórico de envio de eventos (com retry automático)</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
@@ -602,9 +625,10 @@ function LogsCard({ orgId }: { orgId: string }) {
             <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos status</SelectItem>
+              <SelectItem value="pending">Pendente</SelectItem>
+              <SelectItem value="processing">Processando</SelectItem>
               <SelectItem value="success">Sucesso</SelectItem>
-              <SelectItem value="failed">Falha</SelectItem>
-              <SelectItem value="skipped">Pulado</SelectItem>
+              <SelectItem value="error">Erro</SelectItem>
             </SelectContent>
           </Select>
           <Select value={eventFilter} onValueChange={setEventFilter}>
@@ -627,35 +651,43 @@ function LogsCard({ orgId }: { orgId: string }) {
       <CardContent>
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-        ) : logs.length === 0 ? (
+        ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">Nenhum evento encontrado.</p>
         ) : (
           <ScrollArea className="h-[500px]">
             <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg">
+              {items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{log.meta_event}</span>
-                      {log.status === "success" ? (
-                        <Badge variant="outline" className="gap-1 text-xs text-emerald-600 border-emerald-200"><Check className="h-3 w-3" /> Enviado</Badge>
-                      ) : log.status === "failed" ? (
-                        <Badge variant="destructive" className="gap-1 text-xs"><X className="h-3 w-3" /> Erro</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="gap-1 text-xs text-amber-600 border-amber-200">Pulado</Badge>
+                      <span className="font-medium text-sm">{item.event_name}</span>
+                      {getStatusBadge(item.status)}
+                      <span className="text-[10px] text-muted-foreground font-mono">{item.channel}</span>
+                      {item.attempts > 0 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          tentativa {item.attempts}/{item.max_attempts}
+                        </span>
                       )}
-                      {log.http_status && <span className="text-[10px] text-muted-foreground font-mono">HTTP {log.http_status}</span>}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(log.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}
-                      {log.lead_id && <span className="ml-2 font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Lead: {log.lead_id.substring(0, 8)}</span>}
-                      {log.trace_id && <span className="ml-2 font-mono text-[10px] bg-muted px-1 py-0.5 rounded">{log.trace_id.substring(0, 12)}</span>}
+                      {format(new Date(item.created_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })}
+                      {item.sent_at && (
+                        <span className="ml-2 text-emerald-600">
+                          → enviado {format(new Date(item.sent_at), "HH:mm:ss", { locale: ptBR })}
+                        </span>
+                      )}
+                      {item.lead_id && <span className="ml-2 font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Lead: {item.lead_id.substring(0, 8)}</span>}
                     </p>
-                    {log.fail_reason && (
-                      <p className="text-xs text-destructive mt-1 truncate">{translateFailReason(log.fail_reason)}</p>
+                    {item.last_error && (
+                      <p className="text-xs text-destructive mt-1 truncate">{item.last_error}</p>
+                    )}
+                    {item.next_retry_at && item.status === "pending" && item.attempts > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Próxima tentativa: {format(new Date(item.next_retry_at), "dd/MM HH:mm:ss", { locale: ptBR })}
+                      </p>
                     )}
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedLog(log)}>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedItem(item)}>
                     <Eye className="h-3 w-3" />
                   </Button>
                 </div>
@@ -665,34 +697,34 @@ function LogsCard({ orgId }: { orgId: string }) {
         )}
       </CardContent>
 
-      <Dialog open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
+      <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-poppins">Detalhes: {selectedLog?.meta_event}</DialogTitle>
+            <DialogTitle className="font-poppins">Detalhes: {selectedItem?.event_name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><span className="text-muted-foreground">Status:</span> <Badge variant={selectedLog?.status === "success" ? "outline" : "destructive"} className="ml-1 text-xs">{selectedLog?.status}</Badge></div>
-              <div><span className="text-muted-foreground">HTTP:</span> <span className="font-mono">{selectedLog?.http_status || "—"}</span></div>
-              <div><span className="text-muted-foreground">Lead ID:</span> <span className="font-mono text-xs">{selectedLog?.lead_id?.substring(0, 12) || "—"}</span></div>
-              <div><span className="text-muted-foreground">Trace:</span> <span className="font-mono text-xs">{selectedLog?.trace_id?.substring(0, 12) || "—"}</span></div>
+              <div><span className="text-muted-foreground">Status:</span> {selectedItem && getStatusBadge(selectedItem.status)}</div>
+              <div><span className="text-muted-foreground">Canal:</span> <span className="font-mono">{selectedItem?.channel}</span></div>
+              <div><span className="text-muted-foreground">Tentativas:</span> <span className="font-mono">{selectedItem?.attempts}/{selectedItem?.max_attempts}</span></div>
+              <div><span className="text-muted-foreground">Lead ID:</span> <span className="font-mono text-xs">{selectedItem?.lead_id?.substring(0, 12) || "—"}</span></div>
             </div>
-            {selectedLog?.fail_reason && (
+            {selectedItem?.last_error && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="text-xs">{translateFailReason(selectedLog.fail_reason)}</AlertDescription>
+                <AlertDescription className="text-xs">{selectedItem.last_error}</AlertDescription>
               </Alert>
             )}
             <div>
-              <Label className="text-xs font-semibold">Request Payload</Label>
-              <pre className="text-xs bg-muted p-2 rounded mt-1 max-h-40 overflow-auto">
-                {JSON.stringify(selectedLog?.request_json, null, 2) || "N/A"}
+              <Label className="text-xs font-semibold">Event Hash</Label>
+              <pre className="text-xs bg-muted p-2 rounded mt-1 font-mono break-all">
+                {selectedItem?.event_hash || "N/A"}
               </pre>
             </div>
             <div>
-              <Label className="text-xs font-semibold">Response</Label>
-              <pre className="text-xs bg-muted p-2 rounded mt-1 max-h-40 overflow-auto">
-                {JSON.stringify(selectedLog?.response_json, null, 2) || "N/A"}
+              <Label className="text-xs font-semibold">Payload</Label>
+              <pre className="text-xs bg-muted p-2 rounded mt-1 max-h-48 overflow-auto">
+                {JSON.stringify(selectedItem?.payload, null, 2) || "N/A"}
               </pre>
             </div>
           </div>
