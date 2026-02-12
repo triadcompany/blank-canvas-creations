@@ -1030,6 +1030,81 @@ export type Database = {
           },
         ]
       }
+      capi_event_definitions: {
+        Row: {
+          active: boolean
+          created_at: string
+          default_currency: string
+          id: string
+          meta_event_name: string
+          name: string
+          organization_id: string
+          send_location: boolean
+          send_user_data: boolean
+          send_value: boolean
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          default_currency?: string
+          id?: string
+          meta_event_name: string
+          name: string
+          organization_id: string
+          send_location?: boolean
+          send_user_data?: boolean
+          send_value?: boolean
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          default_currency?: string
+          id?: string
+          meta_event_name?: string
+          name?: string
+          organization_id?: string
+          send_location?: boolean
+          send_user_data?: boolean
+          send_value?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "capi_event_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "capi_event_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "capi_event_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "capi_event_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "capi_event_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "saas_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           ativo: boolean | null

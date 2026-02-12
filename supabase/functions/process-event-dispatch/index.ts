@@ -164,6 +164,25 @@ async function processMetaCapi(supabase: any, job: any) {
   const orgId = job.organization_id;
   const payload = job.payload || {};
 
+  // 0. If event_definition_id is present, load definition and merge config
+  if (payload.event_definition_id) {
+    const { data: eventDef } = await supabase
+      .from("capi_event_definitions")
+      .select("*")
+      .eq("id", payload.event_definition_id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (eventDef) {
+      // Override event_name from definition
+      payload.event_name = eventDef.meta_event_name;
+      if (!payload.currency) payload.currency = eventDef.default_currency || "BRL";
+      // Store flags for conditional payload building
+      payload._def_send_value = eventDef.send_value;
+      payload._def_send_user_data = eventDef.send_user_data;
+      payload._def_send_location = eventDef.send_location;
+    }
+  }
+
   // 1. Load meta_capi_settings for this org
   const { data: settings } = await supabase
     .from("meta_capi_settings")
@@ -246,46 +265,54 @@ async function processMetaCapi(supabase: any, job: any) {
   const eventId = payload.event_id || job.event_hash;
 
   // 5. Build user_data with proper normalization + SHA256 hashing
+  const sendUserData = payload._def_send_user_data !== false; // default true
+  const sendLocation = payload._def_send_location !== false; // default true
   const userData: Record<string, any> = {};
-  if (payload.phone) {
-    const normalizedPhone = normalizePhone(payload.phone);
-    userData.ph = [await hashSHA256(normalizedPhone)];
-  }
-  if (payload.email) {
-    userData.em = [await hashSHA256(payload.email.toLowerCase().trim())];
-  }
-  if (payload.name) {
-    const cleanName = removeAccents(payload.name.trim().toLowerCase());
-    const parts = cleanName.split(/\s+/);
-    userData.fn = [await hashSHA256(parts[0])];
-    if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1])];
-  }
-  if (payload.lead_id) {
-    userData.external_id = [await hashSHA256(payload.lead_id)];
+
+  if (sendUserData) {
+    if (payload.phone) {
+      const normalizedPhone = normalizePhone(payload.phone);
+      userData.ph = [await hashSHA256(normalizedPhone)];
+    }
+    if (payload.email) {
+      userData.em = [await hashSHA256(payload.email.toLowerCase().trim())];
+    }
+    if (payload.name) {
+      const cleanName = removeAccents(payload.name.trim().toLowerCase());
+      const parts = cleanName.split(/\s+/);
+      userData.fn = [await hashSHA256(parts[0])];
+      if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1])];
+    }
+    if (payload.lead_id) {
+      userData.external_id = [await hashSHA256(payload.lead_id)];
+    }
   }
 
   // Location fields for improved match quality
   const debugLocation: Record<string, string> = {};
-  if (payload.city) {
-    const normalizedCity = normalizeCity(payload.city);
-    debugLocation.city = normalizedCity;
-    userData.ct = [await hashSHA256(normalizedCity)];
-  }
-  if (payload.state) {
-    const normalizedState = normalizeState(payload.state);
-    debugLocation.state = normalizedState;
-    userData.st = [await hashSHA256(normalizedState)];
-  }
-  // Always send country as "br" for Brazilian leads
-  if (payload.city || payload.state || payload.phone) {
-    userData.country = [await hashSHA256("br")];
-    debugLocation.country = "br";
+  if (sendLocation) {
+    if (payload.city) {
+      const normalizedCity = normalizeCity(payload.city);
+      debugLocation.city = normalizedCity;
+      userData.ct = [await hashSHA256(normalizedCity)];
+    }
+    if (payload.state) {
+      const normalizedState = normalizeState(payload.state);
+      debugLocation.state = normalizedState;
+      userData.st = [await hashSHA256(normalizedState)];
+    }
+    // Always send country as "br" for Brazilian leads
+    if (payload.city || payload.state || payload.phone) {
+      userData.country = [await hashSHA256("br")];
+      debugLocation.country = "br";
+    }
   }
 
   // 6. Build enriched custom_data
+  const sendValue = payload._def_send_value !== false; // default true
   const customData: Record<string, any> = {
     currency: payload.currency || "BRL",
-    value: payload.value || 0,
+    value: sendValue ? (payload.value || 0) : undefined,
     lead_id: payload.lead_id || null,
     pipeline: pipelineName || null,
     pipeline_id: payload.pipeline_id || null,

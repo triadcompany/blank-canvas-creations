@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { CreateEventDefinitionModal } from "./CreateEventDefinitionModal";
 
 interface ActionEditorProps {
   config: any;
@@ -62,20 +63,24 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
   const [stages, setStages] = useState<Stage[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const [eventDefs, setEventDefs] = useState<{ id: string; name: string; meta_event_name: string }[]>([]);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
 
   // Fetch pipelines, sources and members once
   useEffect(() => {
     if (!orgId) return;
 
     const fetchData = async () => {
-      const [pRes, sRes, mRes] = await Promise.all([
+      const [pRes, sRes, mRes, eRes] = await Promise.all([
         supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
         supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("sort_order").order("name"),
         supabase.from("profiles").select("id, name").eq("organization_id", orgId).order("name"),
+        supabase.from("capi_event_definitions" as any).select("id, name, meta_event_name").eq("organization_id", orgId).eq("active", true).order("name"),
       ]);
       if (pRes.data) setPipelines(pRes.data as Pipeline[]);
       if (sRes.data) setSources(sRes.data as LeadSource[]);
       if (mRes.data) setMembers(mRes.data as { id: string; name: string }[]);
+      if (eRes.data) setEventDefs(eRes.data as any[]);
     };
     fetchData();
   }, [orgId]);
@@ -351,8 +356,35 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
           <div>
             <Label className="font-poppins text-sm">Nome do Evento</Label>
             <Select
-              value={params.event_name || "Lead"}
-              onValueChange={(v) => updateParams("event_name", v)}
+              value={params.event_definition_id || params.event_name || "Lead"}
+              onValueChange={(v) => {
+                if (v === "__create__") {
+                  setShowCreateEvent(true);
+                  return;
+                }
+                // Check if it's a definition ID
+                const def = eventDefs.find((d) => d.id === v);
+                if (def) {
+                  onChange({
+                    ...config,
+                    params: {
+                      ...params,
+                      event_definition_id: def.id,
+                      event_name: def.meta_event_name,
+                    },
+                  });
+                } else {
+                  // Legacy hardcoded value
+                  onChange({
+                    ...config,
+                    params: {
+                      ...params,
+                      event_definition_id: undefined,
+                      event_name: v,
+                    },
+                  });
+                }
+              }}
             >
               <SelectTrigger className="mt-1.5">
                 <SelectValue />
@@ -362,9 +394,38 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
                 <SelectItem value="QualifiedLead">QualifiedLead</SelectItem>
                 <SelectItem value="Purchase">Purchase</SelectItem>
                 <SelectItem value="Lead_Veio_Loja">Lead_Veio_Loja</SelectItem>
+                {eventDefs.map((def) => (
+                  <SelectItem key={def.id} value={def.id}>
+                    {def.name} ({def.meta_event_name})
+                  </SelectItem>
+                ))}
+                <SelectItem value="__create__">
+                  <span className="flex items-center gap-1 text-primary">
+                    + Criar novo evento
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {showCreateEvent && orgId && (
+            <CreateEventDefinitionModal
+              open={showCreateEvent}
+              onClose={() => setShowCreateEvent(false)}
+              organizationId={orgId}
+              onCreated={(def) => {
+                setEventDefs((prev) => [...prev, def]);
+                onChange({
+                  ...config,
+                  params: {
+                    ...params,
+                    event_definition_id: def.id,
+                    event_name: def.meta_event_name,
+                  },
+                });
+              }}
+            />
+          )}
 
           <div className="flex items-center justify-between">
             <div>
