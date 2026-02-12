@@ -22,6 +22,7 @@ import { AutomationFlowEditor } from "@/components/automations/AutomationFlowEdi
 import { AutomationRunsPanel } from "@/components/automations/AutomationRunsPanel";
 import { AutomationExecutionsPanel } from "@/components/automations/AutomationExecutionsPanel";
 import { AutomationStatsCards } from "@/components/automations/AutomationStatsCards";
+import { MetaCapiAutomations } from "@/components/automations/MetaCapiAutomations";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Node, Edge } from "@xyflow/react";
@@ -359,6 +360,7 @@ export default function Automacoes() {
           <TabsList className="font-poppins">
             <TabsTrigger value="automations">Automações</TabsTrigger>
             <TabsTrigger value="executions">Execuções</TabsTrigger>
+            <TabsTrigger value="meta-capi">Meta Ads (CAPI)</TabsTrigger>
           </TabsList>
 
           <TabsContent value="automations" className="mt-4 space-y-4">
@@ -449,6 +451,10 @@ export default function Automacoes() {
 
           <TabsContent value="executions" className="mt-4">
             <AutomationExecutionsPanel organizationId={profile?.organization_id} />
+          </TabsContent>
+
+          <TabsContent value="meta-capi" className="mt-4">
+            {profile?.organization_id && <MetaCapiAutomations orgId={profile.organization_id} />}
           </TabsContent>
         </Tabs>
 
