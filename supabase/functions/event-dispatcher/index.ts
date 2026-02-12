@@ -479,7 +479,14 @@ async function processEvent(supabase: any, event: any) {
     .update({ status: "processed", processed_at: new Date().toISOString() })
     .eq("id", event.id);
 
-  // Meta CAPI: removed — CAPI events are now sent exclusively via automation actions
+  // ── Meta CAPI: auto-fire on deal.stage_changed using meta_capi_mappings ──
+  if (eventName === "deal.stage_changed") {
+    try {
+      await processMetaCapi(supabase, orgId, event.payload || {}, traceId);
+    } catch (err) {
+      console.error(`[event-dispatcher] Meta CAPI error:`, err);
+    }
+  }
 
   // Invoke automation-worker to process the new jobs
   if (executedCount > 0) {
@@ -567,11 +574,209 @@ async function upsertExecution(
   }
 }
 
-// ── SHA-256 helper (kept for potential future use) ──
+// ── SHA-256 helper ──
 async function hashSHA256(value: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(value);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// META CAPI: Send events to Meta Conversions API
+// Uses meta_capi_settings + meta_capi_mappings + meta_capi_dedup + meta_capi_logs
+// ═══════════════════════════════════════════════════════════
+async function processMetaCapi(
+  supabase: any,
+  orgId: string,
+  payload: any,
+  traceId: string,
+) {
+  const pipelineId = payload.pipeline_id || "";
+  const toStageId = payload.to_stage_id || "";
+  const leadId = payload.lead_id || "";
+  const phone = payload.phone || "";
+  const email = payload.email || payload.lead_email || "";
+  const leadName = payload.lead_name || "";
+  const leadValue = payload.lead_value || null;
+
+  if (!toStageId) return;
+
+  // 1. Check meta_capi_settings
+  const { data: settings } = await supabase
+    .from("meta_capi_settings")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("enabled", true)
+    .maybeSingle();
+
+  if (!settings) {
+    // Log as skipped - DISABLED
+    await supabase.from("meta_capi_logs").insert({
+      organization_id: orgId,
+      lead_id: leadId || null,
+      pipeline_id: pipelineId || null,
+      stage_id: toStageId,
+      meta_event: "none",
+      status: "skipped",
+      fail_reason: "DISABLED",
+      trace_id: traceId || null,
+    });
+    console.log("[meta-capi] CAPI disabled for org", orgId);
+    return;
+  }
+
+  // 2. Find matching mappings
+  const { data: mappings } = await supabase
+    .from("meta_capi_mappings")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("stage_id", toStageId)
+    .eq("enabled", true)
+    .order("priority", { ascending: false });
+
+  let allMappings = mappings || [];
+  if (pipelineId) {
+    allMappings = allMappings.filter((m: any) => !m.pipeline_id || m.pipeline_id === pipelineId);
+  }
+
+  if (allMappings.length === 0) {
+    await supabase.from("meta_capi_logs").insert({
+      organization_id: orgId,
+      lead_id: leadId || null,
+      pipeline_id: pipelineId || null,
+      stage_id: toStageId,
+      meta_event: "none",
+      status: "skipped",
+      fail_reason: "NO_MAPPING",
+      trace_id: traceId || null,
+    });
+    console.log(`[meta-capi] No mappings for stage ${toStageId}`);
+    return;
+  }
+
+  for (const mapping of allMappings) {
+    const eventName = mapping.meta_event;
+    // 3. Deterministic event_id for deduplication
+    const eventId = `lead:${leadId}|to:${toStageId}|event:${eventName}`;
+
+    // 4. Dedup check via meta_capi_dedup table
+    const { error: dedupErr } = await supabase
+      .from("meta_capi_dedup")
+      .insert({ organization_id: orgId, event_id: eventId });
+
+    if (dedupErr && dedupErr.code === "23505") {
+      await supabase.from("meta_capi_logs").insert({
+        organization_id: orgId,
+        lead_id: leadId || null,
+        pipeline_id: pipelineId || null,
+        stage_id: toStageId,
+        meta_event: eventName,
+        status: "skipped",
+        fail_reason: "DUPLICATE_EVENT_ID",
+        trace_id: traceId || null,
+      });
+      console.log(`[meta-capi] Deduplicated: ${eventId}`);
+      continue;
+    }
+
+    // 5. Build user_data (hashed, only existing fields)
+    const userData: Record<string, any> = {};
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+      userData.ph = [await hashSHA256(normalizedPhone)];
+    }
+    if (email) {
+      userData.em = [await hashSHA256(email.toLowerCase().trim())];
+    }
+    if (leadName) {
+      const parts = leadName.trim().split(' ');
+      userData.fn = [await hashSHA256(parts[0].toLowerCase())];
+      if (parts.length > 1) userData.ln = [await hashSHA256(parts[parts.length - 1].toLowerCase())];
+    }
+    if (leadId) {
+      userData.external_id = [await hashSHA256(leadId)];
+    }
+
+    // 6. Build custom_data
+    const customData: Record<string, any> = {
+      currency: "BRL",
+      lead_id: leadId || null,
+      pipeline_id: pipelineId || null,
+      stage_id: toStageId,
+    };
+    if (leadValue) customData.value = leadValue;
+
+    // 7. Build Meta payload
+    const eventTime = Math.floor(Date.now() / 1000);
+    const eventSourceUrl = settings.domain || "https://autolead.lovable.app";
+    const metaPayload: any = {
+      data: [{
+        event_name: eventName,
+        event_time: eventTime,
+        event_id: eventId,
+        event_source_url: eventSourceUrl,
+        action_source: "system_generated",
+        user_data: userData,
+        custom_data: customData,
+      }],
+    };
+
+    // Test mode: add test_event_code
+    if (settings.test_mode && settings.test_event_code) {
+      metaPayload.test_event_code = settings.test_event_code;
+    }
+
+    // 8. Send to Meta with retries (mask token in logs)
+    const MAX_ATTEMPTS = 3;
+    let success = false;
+    let lastError = "";
+    let responseJson: any = null;
+    let httpStatus: number | null = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const metaUrl = `https://graph.facebook.com/v20.0/${settings.pixel_id}/events?access_token=${settings.access_token}`;
+        const res = await fetch(metaUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(metaPayload),
+        });
+        httpStatus = res.status;
+        responseJson = await res.json();
+        if (res.ok) { success = true; break; }
+        lastError = `META_HTTP_${httpStatus}`;
+      } catch (err: any) {
+        lastError = err.message;
+      }
+      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+
+    // 9. Log to meta_capi_logs (NEVER store access_token)
+    const safePayload = { ...metaPayload };
+
+    await supabase.from("meta_capi_logs").insert({
+      organization_id: orgId,
+      lead_id: leadId || null,
+      pipeline_id: pipelineId || null,
+      stage_id: toStageId,
+      meta_event: eventName,
+      status: success ? "success" : "failed",
+      http_status: httpStatus,
+      request_json: safePayload,
+      response_json: responseJson,
+      fail_reason: success ? null : lastError,
+      trace_id: traceId || null,
+    });
+
+    await upsertExecution(supabase, orgId, traceId, "deal.stage_changed",
+      success ? "meta_capi_success" : "meta_capi_failed",
+      success ? null : lastError,
+      { meta_event_name: eventName, event_id: eventId, http_status: httpStatus }
+    );
+
+    console.log(`[meta-capi] ${eventName} → ${success ? "SUCCESS" : "FAILED"} for lead ${leadId}`);
+  }
 }
