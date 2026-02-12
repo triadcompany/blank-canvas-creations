@@ -566,24 +566,55 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           updated_at: now,
         }).eq("id", leadId);
 
+        // Link conversation to existing lead (if not already linked)
+        if (conversationId) {
+          const { data: convForLink } = await supabase
+            .from("conversations")
+            .select("lead_id")
+            .eq("id", conversationId)
+            .single();
+
+          if (!convForLink?.lead_id) {
+            await supabase.from("conversations")
+              .update({ lead_id: leadId })
+              .eq("id", conversationId);
+            console.log(`[evolution-webhook] Linked conversation ${conversationId} to existing lead ${leadId}`);
+          }
+        }
+
         await wakePausedRuns(supabase, orgId, leadId, now);
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       }
 
       // ── 6) Publish inbound_first_message event to Event Bus ──
-      // This function now also inserts the first-touch record atomically
-      // and returns whether it published, so we can skip legacy lead creation
       const eventPublished = await publishFirstMessageEvent(
         supabase, orgId, normalizedPhone, pushName,
         text || displayBody, conversationId, "whatsapp", traceId
       );
 
       // Only run legacy keyword lead creation if Event Bus did NOT fire
-      // (i.e., no active first_message automations, or first-touch already existed)
       if (!eventPublished && !leadId) {
         await handleAdKeywordLead(supabase, orgId, normalizedPhone, pushName, externalMessageId, conversationId);
       } else if (eventPublished) {
         console.log(`[evolution-webhook] Event Bus handled first-message for ${normalizedPhone} — skipping legacy handleAdKeywordLead`);
+      }
+
+      // ── 7) Auto-create lead if still no lead linked ──
+      if (!leadId && conversationId) {
+        // Re-check if lead was created by handleAdKeywordLead or event bus
+        const { data: convAfter } = await supabase
+          .from("conversations")
+          .select("lead_id")
+          .eq("id", conversationId)
+          .single();
+
+        if (!convAfter?.lead_id) {
+          leadId = await autoCreateLeadAndOpportunity(
+            supabase, orgId, normalizedPhone, pushName, text || displayBody, conversationId, instanceName
+          );
+        } else {
+          leadId = convAfter.lead_id;
+        }
       }
     } else if (isFromMe) {
       // ── Outbound from WhatsApp ──
@@ -1014,6 +1045,23 @@ async function handleAdKeywordLead(
           .from("conversations")
           .update({ lead_id: newLead.id })
           .eq("id", conversationId);
+
+        // Create opportunity in pipeline
+        if (pipelineId) {
+          await supabase.from("opportunities").insert({
+            organization_id: orgId,
+            lead_id: newLead.id,
+            pipeline_id: pipelineId,
+            stage_id: stageId,
+            source: leadSource,
+            source_detail: `Keyword: ${matchedRule?.keyword || 'anuncio'}`,
+            status: "open",
+          }).catch((e: any) => console.error("[evolution-webhook] Opportunity creation failed:", e));
+        }
+
+        // Apply distribution
+        const isTraffic = leadSource.toLowerCase().includes("meta") || leadSource.toLowerCase().includes("ads");
+        await applyLeadDistribution(supabase, orgId, newLead.id, conversationId, isTraffic ? "traffic" : "non_traffic");
       }
 
       // Log execution
@@ -1060,7 +1108,210 @@ function respond(body: Record<string, unknown>, status = 200) {
   });
 }
 
-// ── Helper: Log webhook event ──
+// ── Helper: Auto-create lead + opportunity for any inbound contact without a lead ──
+async function autoCreateLeadAndOpportunity(
+  supabase: any,
+  orgId: string,
+  phone: string,
+  pushName: string,
+  messageBody: string,
+  conversationId: string,
+  instanceName: string,
+): Promise<string | null> {
+  try {
+    // Determine source based on message content
+    const normalizedText = (messageBody || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const isFromAd = normalizedText.includes("anuncio") || normalizedText.includes("anúncio");
+    const leadSource = isFromAd ? "Meta Ads" : "WhatsApp Orgânico";
+
+    // Get default pipeline + first stage
+    let pipelineId: string | null = null;
+    let stageId: string | null = null;
+
+    const { data: defPipeline } = await supabase
+      .from("pipelines")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .maybeSingle();
+    pipelineId = defPipeline?.id || null;
+
+    if (!pipelineId) {
+      const { data: anyPipeline } = await supabase
+        .from("pipelines")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("is_active", true)
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      pipelineId = anyPipeline?.id || null;
+    }
+
+    if (pipelineId) {
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("id, name, position")
+        .eq("pipeline_id", pipelineId)
+        .eq("is_active", true)
+        .order("position");
+
+      if (stages && stages.length > 0) {
+        const novoLead = stages.find((s: any) =>
+          s.name.toLowerCase().replace(/[^a-z]/g, "").includes("novo")
+        );
+        stageId = novoLead?.id || stages[0].id;
+      }
+    }
+
+    // Create lead
+    const leadData: Record<string, unknown> = {
+      organization_id: orgId,
+      name: pushName || "Lead WhatsApp",
+      phone,
+      source: leadSource,
+      observations: `Criado automaticamente via WhatsApp (${instanceName})`,
+    };
+    if (stageId) leadData.stage_id = stageId;
+
+    const { data: newLead, error: leadErr } = await supabase
+      .from("leads")
+      .insert(leadData)
+      .select("id")
+      .single();
+
+    if (leadErr) {
+      console.error(`[evolution-webhook] Auto-create lead failed:`, leadErr);
+      return null;
+    }
+
+    const leadId = newLead?.id;
+    console.log(`[evolution-webhook] ✅ Auto-created lead: phone=${phone} lead=${leadId} source=${leadSource}`);
+
+    // Link conversation to lead
+    await supabase.from("conversations")
+      .update({ lead_id: leadId })
+      .eq("id", conversationId);
+
+    // Create opportunity in pipeline
+    if (pipelineId && leadId) {
+      const { error: oppErr } = await supabase
+        .from("opportunities")
+        .insert({
+          organization_id: orgId,
+          lead_id: leadId,
+          pipeline_id: pipelineId,
+          stage_id: stageId,
+          source: leadSource,
+          source_detail: `WhatsApp inbound (${instanceName})`,
+          status: "open",
+        });
+
+      if (oppErr) {
+        console.error(`[evolution-webhook] Auto-create opportunity failed:`, oppErr);
+      } else {
+        console.log(`[evolution-webhook] ✅ Auto-created opportunity for lead=${leadId} pipeline=${pipelineId} stage=${stageId}`);
+      }
+    }
+
+    // Apply lead distribution
+    await applyLeadDistribution(supabase, orgId, leadId, conversationId, isFromAd ? "traffic" : "non_traffic");
+
+    return leadId;
+  } catch (err) {
+    console.error(`[evolution-webhook] autoCreateLeadAndOpportunity error:`, err);
+    return null;
+  }
+}
+
+// ── Helper: Apply lead distribution rules ──
+async function applyLeadDistribution(
+  supabase: any,
+  orgId: string,
+  leadId: string,
+  conversationId: string,
+  bucket: string,
+) {
+  try {
+    const { data: config } = await supabase
+      .from("lead_distribution_settings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+
+    if (!config || !config.is_auto_distribution_enabled || config.mode === "manual") {
+      console.log(`[evolution-webhook] Lead distribution: manual mode or disabled`);
+      return;
+    }
+
+    // Get available sellers
+    const { data: members } = await supabase
+      .from("profiles")
+      .select("id, name")
+      .eq("organization_id", orgId);
+
+    if (!members || members.length === 0) return;
+
+    // Get seller IDs from user_roles (only sellers + admins)
+    const { data: roles } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .eq("organization_id", orgId);
+
+    const sellerUserIds = new Set(
+      (roles || [])
+        .filter((r: any) => r.role === "seller" || r.role === "admin")
+        .map((r: any) => r.user_id)
+    );
+
+    // Map to profile IDs
+    const { data: sellerProfiles } = await supabase
+      .from("profiles")
+      .select("id, user_id")
+      .eq("organization_id", orgId);
+
+    const eligibleProfileIds = (sellerProfiles || [])
+      .filter((p: any) => sellerUserIds.has(p.user_id))
+      .map((p: any) => p.id);
+
+    if (eligibleProfileIds.length === 0) return;
+
+    // Round-robin: get last assigned index per bucket
+    const bucketKey = `last_rr_index_${bucket}`;
+    const lastIndex = config[bucketKey] || config.last_rr_index || 0;
+    const nextIndex = (lastIndex + 1) % eligibleProfileIds.length;
+    const assignedProfileId = eligibleProfileIds[nextIndex];
+
+    // Update distribution state
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    updateData[bucketKey] = nextIndex;
+    updateData.last_rr_index = nextIndex;
+    await supabase.from("lead_distribution_settings").update(updateData).eq("id", config.id);
+
+    // Assign lead
+    await supabase.from("leads").update({ assigned_to: assignedProfileId }).eq("id", leadId);
+
+    // Assign conversation
+    await supabase.from("conversations").update({ assigned_to: assignedProfileId }).eq("id", conversationId);
+
+    const assignedName = (sellerProfiles || []).find((p: any) => p.id === assignedProfileId)?.name || assignedProfileId;
+    console.log(`[evolution-webhook] ✅ Lead distributed: lead=${leadId} → ${assignedName} (bucket=${bucket}, index=${nextIndex})`);
+
+    // Log event
+    await supabase.from("conversation_events").insert({
+      organization_id: orgId,
+      conversation_id: conversationId,
+      event_type: "auto_assigned",
+      performed_by: assignedProfileId,
+      metadata: { lead_id: leadId, bucket, distribution_mode: config.mode },
+    }).catch(() => {});
+  } catch (err) {
+    console.error(`[evolution-webhook] applyLeadDistribution error:`, err);
+  }
+}
+
+
 async function logWebhookEvent(supabase: any, data: Record<string, unknown>) {
   try {
     await supabase.from("webhook_logs").insert(data);
