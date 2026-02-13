@@ -159,8 +159,8 @@ export function Settings() {
                 <Switch
                   checked={orgSettings.inbox_enabled}
                   onCheckedChange={async (checked) => {
-                    const error = await updateInboxEnabled(checked);
-                    if (error) {
+                    const err = await updateInboxEnabled(checked);
+                    if (err) {
                       toast({ title: "Erro", description: "Não foi possível atualizar a configuração", variant: "destructive" });
                     } else {
                       toast({ title: checked ? "Inbox ativado" : "Inbox desativado", description: checked ? "O módulo de Inbox está disponível na navegação" : "O módulo de Inbox foi removido da navegação" });
