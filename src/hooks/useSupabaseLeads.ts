@@ -282,17 +282,7 @@ export function useSupabaseLeads(pipelineId?: string) {
 
     console.log('Updating lead:', leadId, 'with data:', updatedData);
 
-    // If only valor_negocio is being updated, use the secure edge function
-    if (updatedData.valor_negocio !== undefined && Object.keys(updatedData).filter(k => k !== 'valor_negocio').length === 0) {
-      const result = await updateSaleValue(leadId, updatedData.valor_negocio || 0);
-      if (!result.ok) {
-        toast({ title: "Erro", description: result.error || "Erro ao atualizar valor", variant: "destructive" });
-        return;
-      }
-      setLeads(prevLeads => prevLeads.map(lead => lead.id === leadId ? { ...lead, ...updatedData } : lead));
-      toast({ title: "Sucesso", description: "Valor atualizado com sucesso" });
-      return;
-    }
+    // valor_negocio is now handled by update_lead_rpc (no special case needed)
 
     const { error } = await supabase.rpc('update_lead_rpc', {
       p_clerk_user_id: profile.clerk_user_id,
