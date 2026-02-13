@@ -331,12 +331,32 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
       {config.actionType === "assign_owner" && (
         <div>
           <Label className="font-poppins text-sm">Responsável</Label>
-          <Input
-            className="mt-1.5"
-            placeholder="Nome ou e-mail do responsável"
-            value={params.owner || ""}
-            onChange={(e) => updateParams("owner", e.target.value)}
-          />
+          <Select
+            value={params.owner_id || "auto"}
+            onValueChange={(v) => {
+              if (v === "auto") {
+                onChange({ ...config, params: { ...params, owner_id: "", owner: "" } });
+              } else {
+                const member = members.find((m) => m.id === v);
+                onChange({ ...config, params: { ...params, owner_id: v, owner: member?.name || "" } });
+              }
+            }}
+          >
+            <SelectTrigger className="mt-1.5">
+              <SelectValue placeholder="Selecione o responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Distribuição automática</SelectItem>
+              {members.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Se escolher distribuição automática, o sistema atribui via round-robin ou fallback.
+          </p>
         </div>
       )}
 
