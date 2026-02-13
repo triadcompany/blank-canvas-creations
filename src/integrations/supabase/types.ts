@@ -95,6 +95,34 @@ export type Database = {
             foreignKeyName: "ai_agent_profiles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "ai_agent_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "ai_agent_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "ai_agent_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "ai_agent_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -220,7 +248,7 @@ export type Database = {
             foreignKeyName: "ai_interactions_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -375,13 +403,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "appointments_criado_por_fkey"
-            columns: ["criado_por"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "appointments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -413,7 +434,7 @@ export type Database = {
             foreignKeyName: "appointments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -770,7 +791,7 @@ export type Database = {
             foreignKeyName: "automation_keyword_rules_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1028,7 +1049,7 @@ export type Database = {
             foreignKeyName: "calendar_events_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1103,7 +1124,7 @@ export type Database = {
             foreignKeyName: "capi_event_definitions_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1217,7 +1238,7 @@ export type Database = {
             foreignKeyName: "clients_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1310,7 +1331,7 @@ export type Database = {
             foreignKeyName: "collaborators_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1418,7 +1439,7 @@ export type Database = {
             foreignKeyName: "consultations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -1472,6 +1493,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "conversation_events_organization_id_fkey"
@@ -1543,6 +1592,34 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_intelligence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_intelligence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_intelligence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversation_intelligence_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "conversation_intelligence_organization_id_fkey"
@@ -1678,6 +1755,34 @@ export type Database = {
             foreignKeyName: "conversations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "conversations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1722,13 +1827,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_lead_activities_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
         ]
       }
       crm_lead_notes: {
@@ -1759,13 +1857,6 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "crm_leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_lead_notes_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1839,20 +1930,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "crm_leads_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_leads_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "crm_leads_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -1884,14 +1961,7 @@ export type Database = {
             foreignKeyName: "crm_leads_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_leads_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1957,7 +2027,7 @@ export type Database = {
             foreignKeyName: "crm_stages_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2029,7 +2099,7 @@ export type Database = {
             foreignKeyName: "despesas_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2117,7 +2187,7 @@ export type Database = {
             foreignKeyName: "entradas_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -2277,50 +2347,7 @@ export type Database = {
           sync_status?: string | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "external_integrations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "external_integrations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "external_integrations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "external_integrations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "external_integrations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "external_integrations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "saas_organizations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       followup_cadences: {
         Row: {
@@ -2360,6 +2387,34 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "followup_cadences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_cadences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_cadences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_cadences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "followup_cadences_organization_id_fkey"
             columns: ["organization_id"]
@@ -2407,6 +2462,34 @@ export type Database = {
           variables?: string[] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "followup_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followup_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "followup_templates_organization_id_fkey"
             columns: ["organization_id"]
@@ -2491,6 +2574,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "followups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "followups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "followups_organization_id_fkey"
@@ -2584,7 +2695,7 @@ export type Database = {
             foreignKeyName: "instagram_connections_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2686,7 +2797,7 @@ export type Database = {
             foreignKeyName: "instagram_conversation_tags_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2805,7 +2916,7 @@ export type Database = {
             foreignKeyName: "instagram_conversations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2880,7 +2991,7 @@ export type Database = {
             foreignKeyName: "instagram_distribution_config_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2937,7 +3048,7 @@ export type Database = {
             foreignKeyName: "instagram_distribution_state_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3080,7 +3191,7 @@ export type Database = {
             foreignKeyName: "instagram_metrics_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3155,7 +3266,7 @@ export type Database = {
             foreignKeyName: "instagram_quick_replies_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3295,7 +3406,7 @@ export type Database = {
             foreignKeyName: "investimentos_marketing_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3432,6 +3543,34 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_distribution_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_distribution_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_distribution_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_distribution_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "lead_distribution_settings_organization_id_fkey"
             columns: ["organization_id"]
@@ -3588,6 +3727,34 @@ export type Database = {
             foreignKeyName: "lead_sources_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "lead_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3709,6 +3876,34 @@ export type Database = {
             foreignKeyName: "leads_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3794,6 +3989,34 @@ export type Database = {
             foreignKeyName: "message_logs_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "message_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "message_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "message_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "message_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3867,6 +4090,34 @@ export type Database = {
             foreignKeyName: "messages_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3924,7 +4175,7 @@ export type Database = {
             foreignKeyName: "meta_capi_dedup_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4053,7 +4304,7 @@ export type Database = {
             foreignKeyName: "meta_capi_events_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4137,7 +4388,7 @@ export type Database = {
             foreignKeyName: "meta_capi_logs_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4209,7 +4460,7 @@ export type Database = {
             foreignKeyName: "meta_capi_mappings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4284,7 +4535,7 @@ export type Database = {
             foreignKeyName: "meta_capi_settings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4362,7 +4613,7 @@ export type Database = {
             foreignKeyName: "meta_event_mappings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4414,6 +4665,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_events_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_events_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_events_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_events_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "meta_events_log_organization_id_fkey"
@@ -4474,6 +4753,34 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "meta_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "meta_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "meta_integrations_organization_id_fkey"
             columns: ["organization_id"]
@@ -4553,7 +4860,7 @@ export type Database = {
             foreignKeyName: "n8n_credentials_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4593,6 +4900,34 @@ export type Database = {
           webhook_url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "n8n_workflows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "n8n_workflows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "n8n_workflows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "n8n_workflows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "n8n_workflows_organization_id_fkey"
             columns: ["organization_id"]
@@ -4669,14 +5004,7 @@ export type Database = {
             foreignKeyName: "notifications_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -4751,6 +5079,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opportunities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "opportunities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "opportunities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "opportunities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "opportunities_organization_id_fkey"
@@ -4863,6 +5219,34 @@ export type Database = {
             foreignKeyName: "organization_automation_settings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_automation_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -4909,6 +5293,34 @@ export type Database = {
           webhook_token?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "organization_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "organization_webhooks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "organization_webhooks_organization_id_fkey"
             columns: ["organization_id"]
@@ -5065,7 +5477,7 @@ export type Database = {
             foreignKeyName: "pagamentos_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -5160,7 +5572,7 @@ export type Database = {
             foreignKeyName: "patients_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -5247,6 +5659,34 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "pipelines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "pipelines_organization_id_fkey"
             columns: ["organization_id"]
@@ -5383,14 +5823,7 @@ export type Database = {
             foreignKeyName: "professionals_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "professionals_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -5433,6 +5866,34 @@ export type Database = {
           whatsapp_e164?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "profiles_organization_id_fkey"
             columns: ["organization_id"]
@@ -5505,73 +5966,38 @@ export type Database = {
             foreignKeyName: "prospects_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "prospects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "prospects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "prospects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "prospects_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
-      }
-      saas_organizations: {
-        Row: {
-          address: string | null
-          cnpj: string | null
-          created_at: string | null
-          email: string | null
-          id: string
-          is_active: boolean | null
-          logo_url: string | null
-          name: string
-          owner_email: string | null
-          owner_id: string
-          owner_name: string | null
-          phone: string | null
-          plan_limits: Json | null
-          plan_type: string | null
-          settings: Json | null
-          slug: string
-          trial_ends_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          address?: string | null
-          cnpj?: string | null
-          created_at?: string | null
-          email?: string | null
-          id?: string
-          is_active?: boolean | null
-          logo_url?: string | null
-          name: string
-          owner_email?: string | null
-          owner_id: string
-          owner_name?: string | null
-          phone?: string | null
-          plan_limits?: Json | null
-          plan_type?: string | null
-          settings?: Json | null
-          slug: string
-          trial_ends_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          address?: string | null
-          cnpj?: string | null
-          created_at?: string | null
-          email?: string | null
-          id?: string
-          is_active?: boolean | null
-          logo_url?: string | null
-          name?: string
-          owner_email?: string | null
-          owner_id?: string
-          owner_name?: string | null
-          phone?: string | null
-          plan_limits?: Json | null
-          plan_type?: string | null
-          settings?: Json | null
-          slug?: string
-          trial_ends_at?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       saidas: {
         Row: {
@@ -5685,7 +6111,7 @@ export type Database = {
             foreignKeyName: "servicos_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -5772,7 +6198,7 @@ export type Database = {
             foreignKeyName: "social_integrations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -5916,6 +6342,34 @@ export type Database = {
             foreignKeyName: "tasks_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -5980,6 +6434,34 @@ export type Database = {
             foreignKeyName: "user_invitations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "user_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "user_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "user_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "user_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -6018,104 +6500,35 @@ export type Database = {
             foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      users: {
-        Row: {
-          ativo: boolean | null
-          avatar_url: string | null
-          created_at: string | null
-          crm: string | null
-          email: string
-          especialidade: string | null
-          id: string
-          invited_by: string | null
-          is_owner: boolean | null
-          last_login_at: string | null
-          nome: string
-          organization_id: string | null
-          role: string | null
-          telefone: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          ativo?: boolean | null
-          avatar_url?: string | null
-          created_at?: string | null
-          crm?: string | null
-          email: string
-          especialidade?: string | null
-          id?: string
-          invited_by?: string | null
-          is_owner?: boolean | null
-          last_login_at?: string | null
-          nome: string
-          organization_id?: string | null
-          role?: string | null
-          telefone?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          ativo?: boolean | null
-          avatar_url?: string | null
-          created_at?: string | null
-          crm?: string | null
-          email?: string
-          especialidade?: string | null
-          id?: string
-          invited_by?: string | null
-          is_owner?: boolean | null
-          last_login_at?: string | null
-          nome?: string
-          organization_id?: string | null
-          role?: string | null
-          telefone?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "users_invited_by_fkey"
-            columns: ["invited_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "users_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
             referencedRelation: "crm_funnel"
             referencedColumns: ["organization_id"]
           },
           {
-            foreignKeyName: "users_organization_id_fkey"
+            foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "dashboard_stats"
             referencedColumns: ["organization_id"]
           },
           {
-            foreignKeyName: "users_organization_id_fkey"
+            foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "financial_dashboard"
             referencedColumns: ["organization_id"]
           },
           {
-            foreignKeyName: "users_organization_id_fkey"
+            foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "financial_summary"
             referencedColumns: ["organization_id"]
           },
           {
-            foreignKeyName: "users_organization_id_fkey"
+            foreignKeyName: "user_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6212,6 +6625,34 @@ export type Database = {
           year?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "vehicles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "vehicles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "vehicles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "vehicles_organization_id_fkey"
             columns: ["organization_id"]
@@ -6315,7 +6756,7 @@ export type Database = {
             foreignKeyName: "webhook_configurations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6438,7 +6879,7 @@ export type Database = {
             foreignKeyName: "webhook_events_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -6529,7 +6970,7 @@ export type Database = {
             foreignKeyName: "webhook_logs_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -6573,6 +7014,34 @@ export type Database = {
             foreignKeyName: "whatsapp_config_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -6604,6 +7073,34 @@ export type Database = {
           phone?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "whatsapp_first_touch_organization_id_fkey"
             columns: ["organization_id"]
@@ -6682,6 +7179,34 @@ export type Database = {
             foreignKeyName: "whatsapp_integrations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -6740,6 +7265,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
           },
           {
             foreignKeyName: "whatsapp_messages_organization_id_fkey"
@@ -6950,7 +7503,7 @@ export type Database = {
             foreignKeyName: "whatsapp_threads_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "saas_organizations"
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -7088,6 +7641,34 @@ export type Database = {
           whatsapp_e164: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
           {
             foreignKeyName: "profiles_organization_id_fkey"
             columns: ["organization_id"]
