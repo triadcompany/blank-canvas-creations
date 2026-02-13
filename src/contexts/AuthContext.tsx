@@ -61,9 +61,10 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const loading = !clerkLoaded || supabaseLoading || bootstrapLoading;
 
   // Merge needsOnboarding from both hooks
-  // needsOnboarding is false if profile exists and onboarding_completed is true
+  // If user has an org (from bootstrap), they don't need onboarding regardless of profile state
+  const hasOrg = !!org;
   const profileOnboardingDone = profile && (profile as any).onboarding_completed === true;
-  const combinedNeedsOnboarding = profileOnboardingDone ? false : (needsOnboarding || bootstrapNeedsOnboarding);
+  const combinedNeedsOnboarding = hasOrg || profileOnboardingDone ? false : (needsOnboarding || bootstrapNeedsOnboarding);
 
   // signIn agora abre o modal do Clerk
   const signIn = useCallback(async (_email: string, _password: string): Promise<{ error: any }> => {

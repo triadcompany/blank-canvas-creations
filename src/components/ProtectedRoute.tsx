@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
-  const { user, profile, role, loading, error, refreshProfile, signOut, needsOnboarding } = useAuth();
+  const { user, profile, role, loading, error, refreshProfile, signOut, needsOnboarding, orgId } = useAuth();
   const location = useLocation();
   const [stuckLoading, setStuckLoading] = useState(false);
 
@@ -22,11 +22,12 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
       user: !!user,
       hasProfile: !!profile,
       needsOnboarding,
+      orgId,
       role,
       error: error?.message,
       onboardingCompleted: (profile as any)?.onboarding_completed,
     });
-  }, [loading, user, profile, needsOnboarding, role, error, location.pathname]);
+  }, [loading, user, profile, needsOnboarding, role, error, location.pathname, orgId]);
 
   // Detect stuck loading after 6 seconds
   useEffect(() => {
@@ -103,8 +104,8 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/auth" replace />;
   }
 
-  // Needs onboarding — double-check with onboarding_completed flag
-  if (needsOnboarding && !(profile as any)?.onboarding_completed) {
+  // Needs onboarding — only if no org AND no completed flag
+  if (needsOnboarding && !orgId && !(profile as any)?.onboarding_completed) {
     if (location.pathname !== '/onboarding') {
       return <Navigate to="/onboarding" replace />;
     }
