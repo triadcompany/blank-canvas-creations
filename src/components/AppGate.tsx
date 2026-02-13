@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useClerk } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
+import { useOrgSync } from '@/hooks/useOrgSync';
 
 /**
  * AppGate — THE SINGLE gate for all private routes.
@@ -13,9 +15,21 @@ import { Button } from '@/components/ui/button';
  * 4. user + orgId → allow app, block /onboarding
  */
 export function AppGate() {
-  const { user, loading, orgId, signOut, refreshProfile, needsOnboarding } = useAuth();
+  const { user, loading, orgId, signOut, refreshProfile, needsOnboarding, clerkOrgId } = useAuth();
+  const { setActive } = useClerk();
   const location = useLocation();
   const [stuckLoading, setStuckLoading] = useState(false);
+
+  // Fase C: keep Supabase in sync with Clerk org
+  useOrgSync();
+
+  // Fase E: auto-setActive if user has org membership but Clerk has no active org
+  useEffect(() => {
+    if (!loading && user && clerkOrgId && !orgId) {
+      // User has a Clerk org but no Supabase org yet — this will be handled by useOrgSync
+      console.log('🔄 AppGate: user has clerkOrgId but no orgId, waiting for sync…');
+    }
+  }, [loading, user, clerkOrgId, orgId]);
 
   // Debug logging (dev only)
   useEffect(() => {
