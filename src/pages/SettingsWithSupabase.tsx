@@ -57,14 +57,20 @@ export function Settings() {
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
   const { inviteUser, loading: inviteLoading } = useUserInvites();
-  const [selectedSection, setSelectedSection] = useState("billing");
-  const [searchParams] = useSearchParams();
-  
-  // Check for tab parameter in URL (e.g., after returning from Stripe)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSection = searchParams.get('tab') || "billing";
+  const [selectedSection, setSelectedSectionState] = useState(initialSection);
+
+  const setSelectedSection = (section: string) => {
+    setSelectedSectionState(section);
+    setSearchParams({ tab: section }, { replace: true });
+  };
+
+  // Sync from URL on mount/back-nav
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab) {
-      setSelectedSection(tab);
+    if (tab && tab !== selectedSection) {
+      setSelectedSectionState(tab);
     }
   }, [searchParams]);
   const [newUserEmail, setNewUserEmail] = useState("");
