@@ -71,7 +71,6 @@ export function NewCampaignWizard({ onClose }: Props) {
         .select('instance_name, status')
         .eq('organization_id', orgId!);
       if (error) console.error('Error fetching instances:', error);
-      console.log('[broadcasts] instances loaded:', data, 'orgId:', orgId);
       return data || [];
     },
   });
