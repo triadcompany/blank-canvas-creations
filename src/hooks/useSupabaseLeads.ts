@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { triggerN8nWebhook } from '@/services/n8nWebhook';
 import { publishAutomationEvent, AI_EVENTS } from '@/services/automationEventBus';
+import { changeLeadStatus as changeLeadStatusApi, updateSaleValue } from '@/services/secureApi';
 
 export interface Lead {
   id: string;
@@ -203,17 +204,13 @@ export function useSupabaseLeads(pipelineId?: string) {
     const oldStage = stages.find(s => s.id === currentLead?.stage_id);
     const newStage = stages.find(s => s.id === newStageId);
 
-    const { error } = await supabase
-      .from('leads')
-      .update({ 
-        stage_id: newStageId
-      })
-      .eq('id', leadId);
+    // Use edge function for server-side validation
+    const result = await changeLeadStatusApi(leadId, newStageId);
 
-    if (error) {
+    if (!result.ok) {
       toast({
         title: "Erro",
-        description: "Erro ao mover lead",
+        description: result.error || "Erro ao mover lead",
         variant: "destructive",
       });
     } else {
@@ -294,6 +291,18 @@ export function useSupabaseLeads(pipelineId?: string) {
     }
 
     console.log('Updating lead:', leadId, 'with data:', updatedData);
+
+    // If only valor_negocio is being updated, use the secure edge function
+    if (updatedData.valor_negocio !== undefined && Object.keys(updatedData).filter(k => k !== 'valor_negocio').length === 0) {
+      const result = await updateSaleValue(leadId, updatedData.valor_negocio || 0);
+      if (!result.ok) {
+        toast({ title: "Erro", description: result.error || "Erro ao atualizar valor", variant: "destructive" });
+        return;
+      }
+      setLeads(prevLeads => prevLeads.map(lead => lead.id === leadId ? { ...lead, ...updatedData } : lead));
+      toast({ title: "Sucesso", description: "Valor atualizado com sucesso" });
+      return;
+    }
 
     // Ensure organization_id is included and remove any undefined values
     const cleanUpdateData = Object.fromEntries(

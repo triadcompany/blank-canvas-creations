@@ -83,3 +83,15 @@ verify_jwt = false
 
 [functions.sync-login]
 verify_jwt = false
+
+[functions.update-sale-value]
+verify_jwt = false
+
+[functions.change-lead-status]
+verify_jwt = false
+
+[functions.save-automation]
+verify_jwt = false
+
+[functions.update-sensitive-settings]
+verify_jwt = false
