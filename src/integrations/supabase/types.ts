@@ -7849,8 +7849,29 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_conversation_messages: {
+        Args: {
+          p_clerk_user_id: string
+          p_conversation_id: string
+          p_limit?: number
+          p_org_id: string
+        }
+        Returns: Json
+      }
       get_my_org_id: { Args: never; Returns: string }
       get_my_role: { Args: never; Returns: string }
+      get_org_conversations: {
+        Args: {
+          p_clerk_user_id: string
+          p_filter?: string
+          p_is_admin?: boolean
+          p_limit?: number
+          p_org_id: string
+          p_search?: string
+          p_seller_id?: string
+        }
+        Returns: Json
+      }
       get_org_lead_sources: {
         Args: { p_org_id: string }
         Returns: {
@@ -7934,6 +7955,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      insert_conversation_event: {
+        Args: {
+          p_clerk_user_id: string
+          p_conversation_id: string
+          p_event_type: string
+          p_metadata?: Json
+          p_org_id: string
+        }
+        Returns: boolean
+      }
       is_org_admin: { Args: never; Returns: boolean }
       notify_automation_event: {
         Args: { event_data: Json; event_type: string; organization_id: string }
@@ -7998,6 +8029,15 @@ export type Database = {
           p_organization_id: string
         }
         Returns: Json
+      }
+      update_conversation: {
+        Args: {
+          p_clerk_user_id: string
+          p_conversation_id: string
+          p_org_id: string
+          p_updates: Json
+        }
+        Returns: boolean
       }
       update_lead_rpc: {
         Args: { p_clerk_user_id: string; p_data: Json; p_lead_id: string }
