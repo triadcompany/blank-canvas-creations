@@ -103,7 +103,11 @@ export function useAutomations() {
       toast({ title: "Erro", description: "Organização não encontrada. Verifique suas configurações.", variant: "destructive" });
       return null;
     }
-    const createdBy = profile?.id || profile?.clerk_user_id || 'unknown';
+    const createdBy = profile?.id;
+    if (!createdBy) {
+      toast({ title: "Erro", description: "Perfil ainda não carregado. Aguarde e tente novamente.", variant: "destructive" });
+      return null;
+    }
     const result = await apiCall("create", {
       organization_id: orgId, name, description: description || null,
       created_by: createdBy, channel: "whatsapp",
