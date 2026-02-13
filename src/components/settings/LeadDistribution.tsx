@@ -45,9 +45,9 @@ const DEFAULT_BUCKET = (bucket: 'traffic' | 'non_traffic', orgId: string): Bucke
 });
 
 const LeadDistribution: React.FC = () => {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
   const { profiles } = useSupabaseProfiles();
-  const orgId = profile?.organization_id || '';
+  const orgId = profile?.organization_id || authOrgId || '';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,7 +58,7 @@ const LeadDistribution: React.FC = () => {
   const [routingStates, setRoutingStates] = useState<RoutingState[]>([]);
 
   const fetchData = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) { setLoading(false); return; }
     setLoading(true);
     try {
       // Fetch global settings from whatsapp_routing_settings

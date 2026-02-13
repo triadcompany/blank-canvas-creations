@@ -86,16 +86,17 @@ export function EvolutionIntegration() {
   const [polling, setPolling] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId || '';
   const { toast } = useToast();
 
   const fetchIntegration = useCallback(async () => {
-    if (!profile?.organization_id) return null;
+    if (!orgId) { setLoading(false); return null; }
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: profile.organization_id }),
+        body: JSON.stringify({ organization_id: orgId }),
       });
       const result = await res.json();
       if (result.ok && result.integration) {
@@ -109,7 +110,7 @@ export function EvolutionIntegration() {
     } finally {
       setLoading(false);
     }
-  }, [profile?.organization_id]);
+  }, [orgId]);
 
   // Initial load
   useEffect(() => { fetchIntegration(); }, [fetchIntegration]);
@@ -175,7 +176,7 @@ export function EvolutionIntegration() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: profile?.organization_id, instance_name: nameToUse }),
+        body: JSON.stringify({ organization_id: orgId, instance_name: nameToUse }),
       });
 
       const data = await res.json();
@@ -193,7 +194,7 @@ export function EvolutionIntegration() {
 
       if (data.status === "connected") {
         setIntegration((prev) => ({
-          ...(prev || { id: "", organization_id: profile?.organization_id || "", provider: "evolution", instance_name: nameToUse, is_active: true, phone_number: null }),
+          ...(prev || { id: "", organization_id: orgId, provider: "evolution", instance_name: nameToUse, is_active: true, phone_number: null }),
           status: "connected",
           qr_code_data: null,
           connected_at: new Date().toISOString(),
@@ -202,7 +203,7 @@ export function EvolutionIntegration() {
         toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
       } else if (data.ok && data.qr_code_data) {
         setIntegration((prev) => ({
-          ...(prev || { id: "", organization_id: profile?.organization_id || "", provider: "evolution", is_active: true, phone_number: null, connected_at: null }),
+          ...(prev || { id: "", organization_id: orgId, provider: "evolution", is_active: true, phone_number: null, connected_at: null }),
           status: "qr_pending",
           qr_code_data: data.qr_code_data,
           instance_name: nameToUse,
@@ -236,7 +237,7 @@ export function EvolutionIntegration() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: profile?.organization_id }),
+        body: JSON.stringify({ organization_id: orgId }),
       });
 
       const data = await res.json();
@@ -296,7 +297,7 @@ export function EvolutionIntegration() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: profile?.organization_id, to_e164: testPhone.replace(/\D/g, ""), message: testMessage }),
+        body: JSON.stringify({ organization_id: orgId, to_e164: testPhone.replace(/\D/g, ""), message: testMessage }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao enviar");

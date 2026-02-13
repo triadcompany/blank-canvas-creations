@@ -63,12 +63,12 @@ export const PLAN_PRICES = {
 
 export function useSubscription() {
   const { user, isLoaded: userLoaded } = useUser();
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const organizationId = profile?.organization_id;
+  const organizationId = profile?.organization_id || authOrgId;
 
   const checkSubscription = useCallback(async () => {
     if (!user?.id || !organizationId) {
@@ -118,10 +118,10 @@ export function useSubscription() {
 
   // Check subscription on mount and when org changes
   useEffect(() => {
-    if (userLoaded && profile) {
+    if (userLoaded && (profile || organizationId)) {
       checkSubscription();
     }
-  }, [userLoaded, profile, checkSubscription]);
+  }, [userLoaded, profile, organizationId, checkSubscription]);
 
   // Refresh subscription periodically (every 60 seconds)
   useEffect(() => {
