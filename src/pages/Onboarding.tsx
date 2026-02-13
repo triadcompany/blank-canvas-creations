@@ -26,7 +26,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (!loading && orgId) {
       console.log("🚀 Onboarding guard: orgId exists, redirecting to dashboard", orgId);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [loading, orgId, navigate]);
 
@@ -191,7 +191,15 @@ export default function Onboarding() {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
 
-      // 4. Refresh auth state so guards see the new org
+      // 4. Mark onboarding as completed in the profile
+      console.log("🔄 Marking onboarding_completed...");
+      const clerkUserIdForUpdate = user.id;
+      await supabase
+        .from("profiles")
+        .update({ onboarding_completed: true })
+        .eq("clerk_user_id", clerkUserIdForUpdate);
+
+      // 5. Refresh auth state so guards see the new org + completed flag
       console.log("🔄 Refreshing auth state...");
       try {
         await retryBootstrap();
@@ -200,15 +208,15 @@ export default function Onboarding() {
         console.warn("⚠️ Refresh error (non-critical):", refreshErr);
       }
 
-      // 5. Force redirect — don't wait for state to propagate
-      console.log("🚀 Force redirecting to dashboard...");
-      navigate("/", { replace: true });
+      // 6. Force redirect to /dashboard
+      console.log("🚀 Force redirecting to /dashboard...");
+      navigate("/dashboard", { replace: true });
 
       // Fallback: if still on onboarding after 800ms, force reload
       setTimeout(() => {
         if (window.location.pathname.includes('onboarding')) {
           console.log("⚠️ Still on onboarding, forcing page reload...");
-          window.location.href = "/";
+          window.location.href = "/dashboard";
         }
       }, 800);
 
