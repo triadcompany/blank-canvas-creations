@@ -32,6 +32,7 @@ import {
   ChevronDown,
   Inbox,
   Bot,
+  Radio,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -72,6 +73,11 @@ const menuItems = [
     title: "Inbox",
     url: "/inbox",
     icon: Inbox,
+  },
+  {
+    title: "Disparos",
+    url: "/broadcasts",
+    icon: Radio,
   },
 ];
 
