@@ -48,11 +48,16 @@ interface WorkerHeartbeat {
 }
 
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
 
 async function apiCall(action: string, params: Record<string, unknown>) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
     body: JSON.stringify({ action, ...params }),
   });
   return res.json();
@@ -116,7 +121,11 @@ export function AutomationExecutionsPanel({ organizationId }: Props) {
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/automation-worker`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
         body: JSON.stringify({}),
       });
     } catch { /* ignore */ }
