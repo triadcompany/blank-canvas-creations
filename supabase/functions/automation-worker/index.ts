@@ -491,30 +491,52 @@ async function resolveSellerOrOwner(
     }
   }
 
-  // D) Fallback 2: first active seller in org
-  const { data: firstSeller } = await supabase
-    .from("profiles")
-    .select("id")
+  // D) Fallback 2: first active seller in org (via org_members + profiles)
+  const { data: sellerMembers } = await supabase
+    .from("org_members")
+    .select("clerk_user_id")
     .eq("organization_id", orgId)
     .eq("role", "seller")
-    .order("created_at")
-    .limit(1)
-    .maybeSingle();
-  if (firstSeller) {
-    return { sellerId: firstSeller.id, strategy: "fallback_first_seller" };
+    .eq("status", "active")
+    .limit(10);
+
+  if (sellerMembers && sellerMembers.length > 0) {
+    const clerkIds = sellerMembers.map((m: any) => m.clerk_user_id);
+    const { data: sellerProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("organization_id", orgId)
+      .in("clerk_user_id", clerkIds)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle();
+    if (sellerProfile) {
+      return { sellerId: sellerProfile.id, strategy: "fallback_first_seller" };
+    }
   }
 
-  // E) Fallback 3: first active admin
-  const { data: firstAdmin } = await supabase
-    .from("profiles")
-    .select("id")
+  // E) Fallback 3: first active admin (via org_members + profiles)
+  const { data: adminMembers } = await supabase
+    .from("org_members")
+    .select("clerk_user_id")
     .eq("organization_id", orgId)
     .eq("role", "admin")
-    .order("created_at")
-    .limit(1)
-    .maybeSingle();
-  if (firstAdmin) {
-    return { sellerId: firstAdmin.id, strategy: "fallback_first_admin" };
+    .eq("status", "active")
+    .limit(10);
+
+  if (adminMembers && adminMembers.length > 0) {
+    const clerkIds = adminMembers.map((m: any) => m.clerk_user_id);
+    const { data: adminProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("organization_id", orgId)
+      .in("clerk_user_id", clerkIds)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle();
+    if (adminProfile) {
+      return { sellerId: adminProfile.id, strategy: "fallback_first_admin" };
+    }
   }
 
   return { sellerId: null, strategy: "none_found" };
@@ -584,18 +606,29 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       resolvedCreatedBy = automationCreatedBy;
       createdByStrategy = "automation_creator";
     } else {
-      // Fallback: first admin in org
-      const { data: adminFallback } = await supabase
-        .from("profiles")
-        .select("id")
+      // Fallback: first admin in org (via org_members + profiles)
+      const { data: adminMembersForCreatedBy } = await supabase
+        .from("org_members")
+        .select("clerk_user_id")
         .eq("organization_id", orgId)
         .eq("role", "admin")
-        .order("created_at")
-        .limit(1)
-        .maybeSingle();
-      if (adminFallback) {
-        resolvedCreatedBy = adminFallback.id;
-        createdByStrategy = "fallback_first_admin";
+        .eq("status", "active")
+        .limit(10);
+
+      if (adminMembersForCreatedBy && adminMembersForCreatedBy.length > 0) {
+        const clerkIds = adminMembersForCreatedBy.map((m: any) => m.clerk_user_id);
+        const { data: adminFallback } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("organization_id", orgId)
+          .in("clerk_user_id", clerkIds)
+          .order("created_at")
+          .limit(1)
+          .maybeSingle();
+        if (adminFallback) {
+          resolvedCreatedBy = adminFallback.id;
+          createdByStrategy = "fallback_first_admin";
+        }
       }
     }
   }
