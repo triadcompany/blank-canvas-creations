@@ -125,14 +125,15 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     const clerkData = await clerkResponse.json();
+    console.log("📧 Clerk API response status:", clerkResponse.status, "body:", JSON.stringify(clerkData));
 
     if (!clerkResponse.ok) {
-      console.error("❌ Clerk API error:", clerkData);
-      const errorMsg = clerkData?.errors?.[0]?.message || clerkData?.message || "Erro ao enviar convite via Clerk";
+      console.error("❌ Clerk API error:", JSON.stringify(clerkData));
+      const errorMsg = clerkData?.errors?.[0]?.long_message || clerkData?.errors?.[0]?.message || clerkData?.message || "Erro ao enviar convite via Clerk";
       throw new Error(errorMsg);
     }
 
-    console.log("✅ Clerk invitation sent successfully:", clerkData.id);
+    console.log("✅ Clerk invitation sent successfully:", clerkData.id, "status:", clerkData.status);
 
     return new Response(
       JSON.stringify({
