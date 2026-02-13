@@ -100,6 +100,18 @@ export function TestLeadDistribution() {
         return;
       }
 
+      // Resolve Clerk user ID to profile user_id (UUID) if needed
+      let resolvedUserId = assignedUserId;
+      if (assignedUserId.startsWith('user_')) {
+        const matchedProfile = profiles.find(p => p.user_id === assignedUserId);
+        if (matchedProfile) {
+          resolvedUserId = matchedProfile.id;
+        } else {
+          toast.error('Perfil não encontrado para o usuário selecionado');
+          return;
+        }
+      }
+
       // Create a real test thread
       const testPhone = `test_${Date.now()}`;
       const { error: threadError } = await supabase
@@ -108,7 +120,7 @@ export function TestLeadDistribution() {
           organization_id: profile?.organization_id!,
           contact_phone_e164: testPhone,
           contact_name: `Teste Distribuição (${selectedBucket})`,
-          assigned_user_id: assignedUserId,
+          assigned_user_id: resolvedUserId,
           routing_bucket: selectedBucket,
           instance_name: 'test-simulation',
         });
