@@ -77,19 +77,18 @@ export function NewCampaignWizard({ onClose }: Props) {
     },
   });
 
-  // Fetch automations via automations-api (same as Automações page)
+  // Fetch automations via automations-api (same pattern as useAutomations)
   const { data: automations } = useQuery({
     queryKey: ['automations-for-broadcast', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('automations-api', {
-        body: { action: 'list', organization_id: orgId },
+      const res = await fetch(`https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automations-api`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list', organization_id: orgId }),
       });
-      if (error) {
-        console.error('Error fetching automations:', error);
-        return [];
-      }
-      return (data?.automations || []) as Array<{ id: string; name: string; is_active: boolean }>;
+      const json = await res.json();
+      return (json?.automations || []) as Array<{ id: string; name: string; is_active: boolean }>;
     },
   });
 
