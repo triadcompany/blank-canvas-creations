@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, 
@@ -23,7 +24,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "react-router-dom";
 
 export function UserProfile() {
-  const { profile, user, refreshProfile, isAdmin } = useAuth();
+  const { profile, user, refreshProfile, isAdmin, userName, userEmail } = useAuth();
   const { openUserProfile } = useClerk();
   const { toast } = useToast();
   const { subscription, loading: subscriptionLoading } = useSubscription();
@@ -32,10 +33,34 @@ export function UserProfile() {
   
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   
   const [formData, setFormData] = useState({
-    name: profile?.name || "",
+    name: "",
   });
+
+  // Load name: prioritize Supabase profile, fallback to Clerk
+  useEffect(() => {
+    if (profile?.name) {
+      setFormData({ name: profile.name });
+      setProfileLoaded(true);
+    } else if (userName) {
+      setFormData({ name: userName });
+      setProfileLoaded(true);
+
+      // Auto-sync to Supabase silently if profile exists with empty name
+      if (profile && !profile.name) {
+        supabase
+          .from('profiles')
+          .update({ name: userName, updated_at: new Date().toISOString() })
+          .eq('id', profile.id)
+          .then(({ error }) => {
+            if (error) console.error('Auto-sync name failed:', error);
+            else console.log('✅ Auto-synced name from Clerk to Supabase');
+          });
+      }
+    }
+  }, [profile, userName]);
 
   const getPlanInfo = () => {
     if (subscriptionLoading) return { label: "...", variant: "secondary" as const, icon: false };
@@ -184,9 +209,9 @@ export function UserProfile() {
           {/* Avatar Section */}
           <div className="flex items-center gap-6">
             <Avatar className="w-20 h-20 border-2 border-border">
-              <AvatarImage src={profile?.avatar_url} alt={profile?.name} />
+              <AvatarImage src={profile?.avatar_url} alt={formData.name || userName} />
               <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
-                {getInitials(profile?.name)}
+                {getInitials(formData.name || userName)}
               </AvatarFallback>
             </Avatar>
             <div className="space-y-2">
@@ -260,13 +285,17 @@ export function UserProfile() {
               <Label htmlFor="name" className="text-sm font-medium">
                 Nome completo
               </Label>
-              <Input 
-                id="name"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="Seu nome completo"
-                className="max-w-md"
-              />
+              {!profileLoaded ? (
+                <Skeleton className="h-10 max-w-md" />
+              ) : (
+                <Input 
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="Seu nome completo"
+                  className="max-w-md"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">
@@ -274,7 +303,7 @@ export function UserProfile() {
               </Label>
               <Input 
                 id="email"
-                value={user?.email || ""}
+                value={userEmail || user?.email || ""}
                 disabled
                 className="max-w-md bg-muted/50"
               />
@@ -290,7 +319,7 @@ export function UserProfile() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button 
               onClick={handleUpdateProfile}
-              disabled={isUpdating || !formData.name.trim()}
+              disabled={isUpdating || !formData.name.trim() || formData.name === (profile?.name || userName)}
               className="w-full sm:w-auto"
             >
               <Save className="h-4 w-4 mr-2" />
