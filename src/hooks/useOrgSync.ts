@@ -118,6 +118,8 @@ export function useOrgSync() {
         console.log('✅ useOrgSync: sync complete, orgId:', supabaseOrgId);
       } catch (err) {
         console.error('❌ useOrgSync error:', err);
+        // Reset sync key so it retries on next render
+        lastSyncRef.current = null;
       }
     };
 
