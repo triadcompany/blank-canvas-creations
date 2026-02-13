@@ -17,6 +17,7 @@ interface ConditionEditorProps {
 const conditionTypes = [
   { value: "responded", label: "Respondeu mensagem" },
   { value: "not_responded", label: "Não respondeu" },
+  { value: "replied_to_campaign", label: "📢 Respondeu à campanha" },
   { value: "clicked_button", label: "Clicou em botão" },
   { value: "has_tag", label: "Possui tag" },
   { value: "in_stage", label: "Está na etapa" },
@@ -61,6 +62,30 @@ export function ConditionEditor({ config, onChange }: ConditionEditorProps) {
           <p className="text-xs text-muted-foreground mt-1 font-poppins">
             Tempo máximo para considerar a resposta (0 = sem limite)
           </p>
+        </div>
+      )}
+
+      {config.conditionType === "replied_to_campaign" && (
+        <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/30">
+          <p className="text-[11px] text-muted-foreground">
+            Verifica se o destinatário respondeu à mensagem da campanha de broadcast. O <code>campaign_id</code> é passado automaticamente pelo contexto do gatilho.
+          </p>
+          <div>
+            <Label className="font-poppins text-sm">Timeout (horas)</Label>
+            <Input
+              type="number"
+              min={1}
+              className="mt-1.5"
+              placeholder="24"
+              value={config.timeoutHours || ""}
+              onChange={(e) =>
+                onChange({ ...config, timeoutHours: parseInt(e.target.value) || 24 })
+              }
+            />
+            <p className="text-xs text-muted-foreground mt-1 font-poppins">
+              Tempo máximo para aguardar resposta antes de seguir pelo caminho "Não"
+            </p>
+          </div>
         </div>
       )}
 

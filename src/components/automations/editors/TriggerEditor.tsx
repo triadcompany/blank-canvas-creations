@@ -26,6 +26,7 @@ const triggerTypes = [
   { value: "lead_from_instagram", label: "Lead via Instagram" },
   { value: "lead_from_whatsapp", label: "Lead via WhatsApp" },
   { value: "first_message", label: "📩 Primeira mensagem recebida" },
+  { value: "broadcast_campaign", label: "📢 Disparo de Campanha (Broadcast)" },
   { value: "tag_added", label: "Tag adicionada" },
   { value: "form_submitted", label: "Formulário enviado" },
   { value: "event", label: "📡 Evento do sistema (Event Bus)" },
@@ -406,6 +407,18 @@ export function TriggerEditor({ config, onChange }: TriggerEditorProps) {
               </Select>
             )}
           </div>
+        </div>
+      )}
+
+      {config.triggerType === "broadcast_campaign" && (
+        <div className="space-y-2 border border-border rounded-lg p-3 bg-muted/30">
+          <p className="text-[11px] text-muted-foreground">
+            Dispara automaticamente para cada destinatário após o envio da mensagem do broadcast.
+            O contexto inclui: <code>campaign_id</code>, <code>recipient_phone</code>, <code>instance_name</code>, <code>variables</code> e <code>message_id</code>.
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            💡 Use o bloco "Esperar Resposta" ou a condição "Respondeu à campanha" para criar fluxos de follow-up inteligentes.
+          </p>
         </div>
       )}
 
