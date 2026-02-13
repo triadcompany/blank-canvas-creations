@@ -5,13 +5,25 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+/**
+ * Dynamic headers that get injected into every Supabase REST/RPC request.
+ * Used to pass the Clerk user ID so PostgreSQL RLS functions can identify the user.
+ */
+export const dynamicHeaders: Record<string, string> = {};
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  global: {
+    fetch: (url: RequestInfo | URL, options?: RequestInit) => {
+      const headers = new Headers(options?.headers);
+      for (const [key, value] of Object.entries(dynamicHeaders)) {
+        if (value) headers.set(key, value);
+      }
+      return fetch(url, { ...options, headers });
+    },
+  },
 });

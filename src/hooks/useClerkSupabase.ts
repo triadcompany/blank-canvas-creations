@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, dynamicHeaders } from '@/integrations/supabase/client';
 
 interface Profile {
   id: string;
@@ -54,6 +54,8 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
     try {
       const clerkUserId = clerkUser.id;
+      // Set header immediately so any concurrent queries can use it
+      dynamicHeaders['x-clerk-user-id'] = clerkUserId;
       const email = clerkUser.primaryEmailAddress?.emailAddress || '';
       const name = clerkUser.fullName || clerkUser.firstName || email.split('@')[0] || 'User';
       const avatarUrl = clerkUser.imageUrl || undefined;
@@ -233,7 +235,7 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       setNeedsOnboarding(false);
       lastCheckedUserIdRef.current = null;
       // Clear the global header
-      delete (supabase as any).rest.headers['x-clerk-user-id'];
+      delete dynamicHeaders['x-clerk-user-id'];
       return;
     }
 
@@ -242,7 +244,7 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
     lastCheckedUserIdRef.current = user.id;
 
     // Set global header so PostgREST RLS functions can identify the user
-    (supabase as any).rest.headers['x-clerk-user-id'] = user.id;
+    dynamicHeaders['x-clerk-user-id'] = user.id;
 
     setLoading(true);
     withTimeout(checkProfile(user), 8000, 'Initial profile check')
