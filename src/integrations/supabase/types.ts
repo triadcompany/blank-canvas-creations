@@ -8008,6 +8008,7 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_clerk_user_id: { Args: never; Returns: string }
       get_conversation_messages: {
         Args: {
           p_clerk_user_id: string
