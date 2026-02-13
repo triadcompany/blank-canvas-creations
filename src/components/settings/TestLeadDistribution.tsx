@@ -111,7 +111,6 @@ export function TestLeadDistribution() {
           assigned_user_id: assignedUserId,
           routing_bucket: selectedBucket,
           instance_name: 'test-simulation',
-          remote_jid: `${testPhone}@s.whatsapp.net`,
         });
 
       if (threadError) {
