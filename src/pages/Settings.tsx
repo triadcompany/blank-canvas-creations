@@ -436,7 +436,7 @@ export function Settings() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => deleteProfile(userProfile.id, userProfile.user_id)}
+                                onClick={() => deleteProfile(userProfile.id, userProfile.clerk_user_id || userProfile.user_id)}
                                 className="font-poppins text-destructive hover:text-destructive"
                               >
                                 <Trash2 className="h-3 w-3" />
