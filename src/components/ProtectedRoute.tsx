@@ -44,7 +44,8 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
   }
 
   // Se precisa de onboarding (primeira vez), redireciona
-  if (needsOnboarding) {
+  // Double-check: only redirect if profile doesn't have onboarding_completed
+  if (needsOnboarding && !(profile as any)?.onboarding_completed) {
     // Evita redirect loop se já está no onboarding
     if (location.pathname !== '/onboarding') {
       return <Navigate to="/onboarding" replace />;

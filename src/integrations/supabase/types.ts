@@ -5836,6 +5836,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          onboarding_completed: boolean
           organization_id: string | null
           updated_at: string | null
           user_id: string | null
@@ -5848,6 +5849,7 @@ export type Database = {
           email: string
           id?: string
           name: string
+          onboarding_completed?: boolean
           organization_id?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -5860,6 +5862,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          onboarding_completed?: boolean
           organization_id?: string | null
           updated_at?: string | null
           user_id?: string | null
