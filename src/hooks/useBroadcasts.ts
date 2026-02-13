@@ -89,6 +89,8 @@ export function useBroadcasts() {
       settings: Record<string, any>;
       recipients: Array<{ phone: string; name?: string; variables?: Record<string, any> }>;
       profileId: string;
+      enableAutomation?: boolean;
+      automationId?: string | null;
     }) => {
       // Create campaign
       const { data: campaign, error: cErr } = await supabase
@@ -102,6 +104,8 @@ export function useBroadcasts() {
           payload: params.payload,
           settings: params.settings,
           status: 'running',
+          enable_automation: params.enableAutomation || false,
+          automation_id: params.automationId || null,
         })
         .select('id')
         .single();

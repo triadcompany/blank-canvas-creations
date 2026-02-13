@@ -191,6 +191,38 @@ serve(async (req) => {
               })
               .eq("id", recipient.id);
             sentThisHour++;
+
+            // Trigger automation if enabled
+            if (campaign.enable_automation && campaign.automation_id) {
+              try {
+                const triggerPayload = {
+                  organization_id: campaign.organization_id,
+                  trigger_type: "broadcast_campaign",
+                  entity_type: "broadcast_recipient",
+                  entity_id: recipient.id,
+                  context: {
+                    campaign_id: campaign.id,
+                    campaign_name: campaign.name,
+                    instance_name: campaign.instance_name,
+                    recipient_phone: phone,
+                    recipient_name: recipient.name || "",
+                    message_id: messageId,
+                    variables: recipient.variables || {},
+                    automation_id: campaign.automation_id,
+                  },
+                };
+                await fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${supabaseServiceKey}`,
+                  },
+                  body: JSON.stringify(triggerPayload),
+                });
+              } catch (autoErr) {
+                console.error(`[broadcast-worker] Automation trigger error for ${phone}:`, autoErr);
+              }
+            }
           }
         } catch (err) {
           await supabase

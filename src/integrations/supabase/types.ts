@@ -953,8 +953,10 @@ export type Database = {
       }
       broadcast_campaigns: {
         Row: {
+          automation_id: string | null
           created_at: string
           created_by: string
+          enable_automation: boolean
           id: string
           instance_name: string
           name: string
@@ -965,8 +967,10 @@ export type Database = {
           status: string
         }
         Insert: {
+          automation_id?: string | null
           created_at?: string
           created_by: string
+          enable_automation?: boolean
           id?: string
           instance_name: string
           name: string
@@ -977,8 +981,10 @@ export type Database = {
           status?: string
         }
         Update: {
+          automation_id?: string | null
           created_at?: string
           created_by?: string
+          enable_automation?: boolean
           id?: string
           instance_name?: string
           name?: string
@@ -989,6 +995,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "broadcast_campaigns_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "broadcast_campaigns_organization_id_fkey"
             columns: ["organization_id"]

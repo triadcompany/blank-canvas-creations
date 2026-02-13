@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, ArrowRight, Upload, Check, Loader2, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Upload, Check, Loader2, FileSpreadsheet, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBroadcasts } from '@/hooks/useBroadcasts';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,6 +60,8 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [windowStart, setWindowStart] = useState('09:00');
   const [windowEnd, setWindowEnd] = useState('18:00');
   const [noDuplicate, setNoDuplicate] = useState(true);
+  const [enableAutomation, setEnableAutomation] = useState(false);
+  const [selectedAutomationId, setSelectedAutomationId] = useState('');
 
   // Fetch WhatsApp instances
   const { data: instances, isLoading: instancesLoading } = useQuery({
@@ -71,6 +73,22 @@ export function NewCampaignWizard({ onClose }: Props) {
         .select('instance_name, status')
         .eq('organization_id', orgId!);
       if (error) console.error('Error fetching instances:', error);
+      return data || [];
+    },
+  });
+
+  // Fetch automations for broadcast linking
+  const { data: automations } = useQuery({
+    queryKey: ['automations-for-broadcast', orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('automations')
+        .select('id, name, is_active')
+        .eq('organization_id', orgId!)
+        .eq('is_active', true)
+        .order('name');
+      if (error) console.error('Error fetching automations:', error);
       return data || [];
     },
   });
@@ -209,6 +227,8 @@ export function NewCampaignWizard({ onClose }: Props) {
       },
       recipients: rows,
       profileId: profile.id,
+      enableAutomation,
+      automationId: enableAutomation ? selectedAutomationId || null : null,
     });
     onClose();
   };
@@ -452,6 +472,38 @@ export function NewCampaignWizard({ onClose }: Props) {
               <Label>Não reenviar para o mesmo telefone nesta campanha</Label>
             </div>
 
+            {/* Automation section */}
+            <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
+              <div className="flex items-center gap-3">
+                <Switch checked={enableAutomation} onCheckedChange={setEnableAutomation} />
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  <Label className="font-medium">Iniciar automação após envio</Label>
+                </div>
+              </div>
+
+              {enableAutomation && (
+                <div>
+                  <Label className="text-sm">Selecionar automação</Label>
+                  <Select value={selectedAutomationId} onValueChange={setSelectedAutomationId}>
+                    <SelectTrigger className="mt-1.5">
+                      <SelectValue placeholder="Selecione uma automação..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(automations || []).map(a => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    A automação será disparada para cada destinatário após o envio da mensagem. Use o gatilho "Disparo de Campanha" na automação.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>
                 <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
@@ -507,6 +559,15 @@ export function NewCampaignWizard({ onClose }: Props) {
                   <span className="text-sm text-muted-foreground">Janela</span>
                   <span className="text-sm">{windowStart} – {windowEnd}</span>
                 </div>
+                {enableAutomation && selectedAutomationId && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Automação</span>
+                    <Badge variant="secondary" className="gap-1">
+                      <Zap className="h-3 w-3" />
+                      {automations?.find(a => a.id === selectedAutomationId)?.name || 'Selecionada'}
+                    </Badge>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
