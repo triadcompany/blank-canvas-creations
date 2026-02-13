@@ -69,16 +69,31 @@ async function callMetaCapiEndpoint(body: Record<string, unknown>) {
 
 // ═══════════ MAIN COMPONENT ═══════════
 export function MetaAdsSettings() {
-  const { profile, role } = useAuth();
+  const { profile, role, loading: authLoading } = useAuth();
   const orgId = profile?.organization_id;
   const profileId = profile?.id;
   const isAdmin = role === "admin";
 
-  if (!orgId || !profileId) {
+  console.log('[MetaAds] authLoading', authLoading, 'orgId', orgId, 'profileId', profileId);
+
+  if (authLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!orgId || !profileId) {
+    return (
+      <div className="space-y-4">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Não foi possível carregar o contexto da organização. Verifique se você está logado e possui uma organização ativa.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
