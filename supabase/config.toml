@@ -95,3 +95,66 @@ verify_jwt = false
 
 [functions.update-sensitive-settings]
 verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.send-invitation-email]
+verify_jwt = false
+
+[functions.accept-invitation]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.cnpj-lookup]
+verify_jwt = false
+
+[functions.sync-clerk-user]
+verify_jwt = false
+
+[functions.send-confirmation-email]
+verify_jwt = false
+
+[functions.inbox-conversation-lead]
+verify_jwt = false
+
+[functions.inbox-debug]
+verify_jwt = false
+
+[functions.inbox-debug-links]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.notify-lead-assignment]
+verify_jwt = false
+
+[functions.test-whatsapp-notification]
+verify_jwt = false
+
+[functions.process-followups]
+verify_jwt = false
+
+[functions.send-meta-event]
+verify_jwt = false
+
+[functions.migrate-users-to-clerk]
+verify_jwt = false
+
+[functions.sync-subscription-from-checkout]
+verify_jwt = false
