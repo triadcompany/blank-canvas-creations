@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser, useClerk } from "@clerk/clerk-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,11 +16,19 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 export default function Onboarding() {
   const { user } = useUser();
   const { setActive } = useClerk();
-  const { refreshProfile, retryBootstrap } = useAuth();
+  const { refreshProfile, retryBootstrap, orgId, loading } = useAuth();
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  // Guard: if user already has an org, redirect to dashboard immediately
+  useEffect(() => {
+    if (!loading && orgId) {
+      console.log("🚀 Onboarding guard: orgId exists, redirecting to dashboard", orgId);
+      navigate("/", { replace: true });
+    }
+  }, [loading, orgId, navigate]);
 
   const handleCreateOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,14 +126,14 @@ export default function Onboarding() {
           role: "admin",
         });
 
-        // Create default lead sources
+        // Seed defaults (non-blocking)
         const defaultSources = [
           { name: "Meta Ads", sort_order: 10 },
           { name: "Indicação", sort_order: 20 },
           { name: "Site", sort_order: 30 },
           { name: "Orgânico", sort_order: 40 },
         ];
-        await supabase.from("lead_sources").insert(
+        supabase.from("lead_sources").insert(
           defaultSources.map((s) => ({
             name: s.name,
             sort_order: s.sort_order,
@@ -134,84 +142,96 @@ export default function Onboarding() {
             is_active: true,
           }))
         ).then(({ error }) => {
-          if (error) console.warn("⚠️ Lead sources seed error (non-critical):", error);
+          if (error) console.warn("⚠️ Lead sources seed error:", error);
         });
 
-        // Create default pipeline
-        await supabase.rpc('seed_default_pipeline', {
+        supabase.rpc('seed_default_pipeline', {
           p_org_id: newOrg.id,
           p_created_by: clerkUserId,
         }).then(({ error }) => {
-          if (error) console.warn("⚠️ Pipeline seed error (non-critical):", error);
+          if (error) console.warn("⚠️ Pipeline seed error:", error);
         });
 
-        // Create default automation
-        try {
-          const createRes = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
-            body: JSON.stringify({
-              action: "create",
-              organization_id: newOrg.id,
-              name: "Boas-vindas Lead",
-              description: "Envia mensagem de boas-vindas automaticamente para novos leads",
-              created_by: clerkUserId,
-              channel: "whatsapp",
-            }),
-          });
-          const createData = await createRes.json();
-          if (createData.ok && createData.automation) {
-            const nodes = [
-              { id: "trigger_1", type: "trigger", position: { x: 250, y: 50 }, data: { label: "Novo Lead", config: { triggerType: "lead_created" } } },
-              { id: "delay_1", type: "delay", position: { x: 250, y: 200 }, data: { label: "Esperar 1 min", config: { amount: 1, unit: "minutes" } } },
-              { id: "message_1", type: "message", position: { x: 250, y: 350 }, data: { label: "Boas-vindas", config: { text: "Olá {{lead.name}}, vi seu interesse. Posso te ajudar?" } } },
-            ];
-            const edges = [
-              { id: "e_trigger_delay", source: "trigger_1", target: "delay_1" },
-              { id: "e_delay_message", source: "delay_1", target: "message_1" },
-            ];
-            await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
-              body: JSON.stringify({ action: "save_flow", automation_id: createData.automation.id, organization_id: newOrg.id, nodes, edges }),
-            });
-          }
-        } catch (autoErr) {
-          console.warn("⚠️ Default automation error (non-critical):", autoErr);
-        }
+        // Default automation (fire and forget)
+        fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
+          body: JSON.stringify({
+            action: "create",
+            organization_id: newOrg.id,
+            name: "Boas-vindas Lead",
+            description: "Envia mensagem de boas-vindas automaticamente para novos leads",
+            created_by: clerkUserId,
+            channel: "whatsapp",
+          }),
+        }).then(async (res) => {
+          try {
+            const d = await res.json();
+            if (d.ok && d.automation) {
+              const nodes = [
+                { id: "trigger_1", type: "trigger", position: { x: 250, y: 50 }, data: { label: "Novo Lead", config: { triggerType: "lead_created" } } },
+                { id: "delay_1", type: "delay", position: { x: 250, y: 200 }, data: { label: "Esperar 1 min", config: { amount: 1, unit: "minutes" } } },
+                { id: "message_1", type: "message", position: { x: 250, y: 350 }, data: { label: "Boas-vindas", config: { text: "Olá {{lead.name}}, vi seu interesse. Posso te ajudar?" } } },
+              ];
+              const edges = [
+                { id: "e_trigger_delay", source: "trigger_1", target: "delay_1" },
+                { id: "e_delay_message", source: "delay_1", target: "message_1" },
+              ];
+              fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
+                body: JSON.stringify({ action: "save_flow", automation_id: d.automation.id, organization_id: newOrg.id, nodes, edges }),
+              });
+            }
+          } catch {}
+        }).catch(() => {});
       }
 
-      toast.success("Empresa criada com sucesso!", {
+      toast.success("Empresa criada! Redirecionando…", {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
 
       // 4. Refresh auth state so guards see the new org
       console.log("🔄 Refreshing auth state...");
-      await retryBootstrap();
-      await refreshProfile();
+      try {
+        await retryBootstrap();
+        await refreshProfile();
+      } catch (refreshErr) {
+        console.warn("⚠️ Refresh error (non-critical):", refreshErr);
+      }
 
-      // 5. Small delay to ensure state propagation, then redirect
+      // 5. Force redirect — don't wait for state to propagate
+      console.log("🚀 Force redirecting to dashboard...");
+      navigate("/", { replace: true });
+
+      // Fallback: if still on onboarding after 800ms, force reload
       setTimeout(() => {
-        console.log("🚀 Redirecting to dashboard...");
-        navigate("/", { replace: true });
-        // Fallback: force reload if navigate doesn't work
-        setTimeout(() => {
-          if (window.location.pathname === '/onboarding') {
-            console.log("⚠️ Navigate didn't work, forcing reload...");
-            window.location.assign("/");
-          }
-        }, 1000);
-      }, 300);
+        if (window.location.pathname.includes('onboarding')) {
+          console.log("⚠️ Still on onboarding, forcing page reload...");
+          window.location.href = "/";
+        }
+      }, 800);
 
     } catch (error) {
       console.error("❌ Error creating organization:", error);
       toast.error("Falha ao criar empresa", {
         description: error instanceof Error ? error.message : "Tente novamente.",
       });
-    } finally {
       setIsCreating(false);
     }
   };
+
+  // Don't render form if already has org (guard will redirect)
+  if (!loading && orgId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="mt-2 text-muted-foreground">Redirecionando…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
