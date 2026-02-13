@@ -182,7 +182,7 @@ export function EvolutionIntegration() {
     fetchIntegration(true);
   }, [fetchIntegration]);
 
-  // Start polling for connection status (3s intervals, max 60s)
+  // Start polling for connection status (3s intervals, max 90s)
   const startPolling = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingCountRef.current = 0;
@@ -194,21 +194,22 @@ export function EvolutionIntegration() {
       console.log(`[EvolutionIntegration] Poll #${pollingCountRef.current}`);
 
       const result = await fetchIntegration(true);
-      if (result?.status === "connected") {
+      // Check both DB status and live status
+      if (result?.status === "connected" || liveStatus === "connected") {
         console.log("[EvolutionIntegration] Connected! Stopping poll.");
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         setPolling(false);
         toast({ title: "WhatsApp conectado!", description: "Conexão estabelecida com sucesso." });
-      } else if (pollingCountRef.current >= 20) {
-        console.log("[EvolutionIntegration] Polling timeout (60s)");
+      } else if (pollingCountRef.current >= 30) {
+        console.log("[EvolutionIntegration] Polling timeout (90s)");
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         setPolling(false);
         toast({ title: "Timeout", description: "Verifique Base URL / API Key / Instance.", variant: "destructive" });
       }
     }, 3000);
-  }, [fetchIntegration, toast]);
+  }, [fetchIntegration, toast, liveStatus]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -353,7 +354,8 @@ export function EvolutionIntegration() {
 
   const handleReconnect = () => {
     if (integration?.instance_name) {
-      handleConnect(integration.instance_name);
+      // Reuse existing instance - just get a new QR, don't create a new instance
+      handleRefreshQR();
     }
   };
 
@@ -621,26 +623,16 @@ export function EvolutionIntegration() {
                     <Label className="font-poppins font-medium">Nome da instância</Label>
                     <Input value={integration?.instance_name || ""} disabled className="font-mono bg-muted" />
                   </div>
-                  <div className="flex gap-2">
-                    <Button onClick={handleReconnect} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
-                      {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCodeIcon className="h-4 w-4" />}
-                      Gerar QR novamente
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setIntegration(null);
-                        setInstanceName("");
-                        setLiveStatus(null);
-                        setInstanceFound(true);
-                        setAvailableInstances(null);
-                      }}
-                      className="font-poppins text-muted-foreground"
-                    >
-                      Usar outra instância
-                    </Button>
-                  </div>
+                   <div className="flex gap-2">
+                     <Button onClick={handleReconnect} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
+                       {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCodeIcon className="h-4 w-4" />}
+                       Gerar novo QR
+                     </Button>
+                     <Button variant="outline" size="sm" onClick={handleRefreshLiveStatus} disabled={actionLoading} className="font-poppins gap-2">
+                       <RefreshCw className={`h-4 w-4 ${actionLoading ? "animate-spin" : ""}`} />
+                       Verificar status
+                     </Button>
+                   </div>
                 </>
               ) : (
                 <>

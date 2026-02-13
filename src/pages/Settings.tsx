@@ -73,21 +73,28 @@ export function Settings() {
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
   const { inviteUser, loading: inviteLoading } = useUserInvites();
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("profile");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || "profile";
+  const [activeTab, setActiveTabState] = useState(initialTab);
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
+
+  // Sync from URL on mount/back-nav
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTabState(tab);
+    }
+  }, [searchParams]);
+
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "seller">("seller");
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  // Check for tab parameter in URL (e.g., after returning from Stripe)
-  useEffect(() => {
-    const tab = searchParams.get('tab');
-    if (tab) {
-      setActiveTab(tab);
-    }
-  }, [searchParams]);
 
   const handleRoleUpdate = async (profileId: string, newRole: "admin" | "seller") => {
     await updateProfile(profileId, { role: newRole });
