@@ -951,6 +951,131 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_campaigns: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          instance_name: string
+          name: string
+          organization_id: string
+          payload: Json
+          payload_type: string
+          settings: Json
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          instance_name: string
+          name: string
+          organization_id: string
+          payload?: Json
+          payload_type: string
+          settings?: Json
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          instance_name?: string
+          name?: string
+          organization_id?: string
+          payload?: Json
+          payload_type?: string
+          settings?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "broadcast_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "broadcast_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "broadcast_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "broadcast_campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_recipients: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          error: string | null
+          id: string
+          message_id: string | null
+          name: string | null
+          organization_id: string
+          phone: string
+          sent_at: string | null
+          status: string
+          variables: Json | null
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          name?: string | null
+          organization_id: string
+          phone: string
+          sent_at?: string | null
+          status?: string
+          variables?: Json | null
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          name?: string | null
+          organization_id?: string
+          phone?: string
+          sent_at?: string | null
+          status?: string
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_events: {
         Row: {
           all_day: boolean | null

@@ -29,6 +29,8 @@ import InboxPage from "./pages/Inbox";
 import TreinarAgente from "./pages/TreinarAgente";
 import AdminDebugAutomations from "./pages/AdminDebugAutomations";
 import AdminDiagnostico from "./pages/AdminDiagnostico";
+import Broadcasts from "./pages/Broadcasts";
+import BroadcastDetail from "./pages/BroadcastDetail";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -105,6 +107,8 @@ const App = () => {
                   <Route path="/treinar-agente" element={<TreinarAgente />} />
                   <Route path="/admin/debug/automations" element={<AdminDebugAutomations />} />
                   <Route path="/admin/diagnostico" element={<AdminDiagnostico />} />
+                  <Route path="/broadcasts" element={<Broadcasts />} />
+                  <Route path="/broadcasts/:id" element={<BroadcastDetail />} />
                 </Route>
               </Route>
 

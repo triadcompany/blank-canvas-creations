@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Bug,
   Stethoscope,
+  Radio,
 } from "lucide-react";
 
 import {
@@ -81,6 +82,11 @@ const navigationItems = [
     title: "Relatórios",
     url: "/reports", 
     icon: BarChart3,
+  },
+  {
+    title: "Disparos",
+    url: "/broadcasts",
+    icon: Radio,
   },
 ];
 
