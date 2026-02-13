@@ -105,6 +105,18 @@ export default function Automacoes() {
     if (saved) setCurrentFlow(saved);
   };
 
+  // Check if user can edit this automation
+  const canEditAutomation = (automation: Automation) => {
+    if (isAdmin) return true;
+    if (automation.is_active && !isAdmin) return false; // Only admin can toggle active automations
+    return automation.created_by === profile?.id;
+  };
+
+  const canDeleteAutomation = (automation: Automation) => {
+    if (isAdmin) return true;
+    return automation.created_by === profile?.id;
+  };
+
   const handleToggle = async () => {
     if (!editingAutomation || !isAdmin) return;
     const success = await toggleActive(editingAutomation.id, editingAutomation.is_active);
@@ -324,35 +336,29 @@ export default function Automacoes() {
                 }
               </Button>
             )}
-            {isAdmin && (
-              <Button
-                variant="outline"
-                className="font-poppins gap-2"
-                onClick={async () => {
-                  const result = await createFromTemplate("keyword_lead");
-                  if (result) setEditingAutomation(result);
-                }}
-              >
-                <Megaphone className="h-4 w-4" /> Template Palavra-chave
-              </Button>
-            )}
-            {isAdmin && (
-              <Button
-                variant="outline"
-                className="font-poppins gap-2"
-                onClick={async () => {
-                  const result = await createFromTemplate();
-                  if (result) setEditingAutomation(result);
-                }}
-              >
-                <FileText className="h-4 w-4" /> Template Follow-up
-              </Button>
-            )}
-            {isAdmin && (
-              <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-                <Plus className="h-4 w-4" /> Nova Automação
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              className="font-poppins gap-2"
+              onClick={async () => {
+                const result = await createFromTemplate("keyword_lead");
+                if (result) setEditingAutomation(result);
+              }}
+            >
+              <Megaphone className="h-4 w-4" /> Template Palavra-chave
+            </Button>
+            <Button
+              variant="outline"
+              className="font-poppins gap-2"
+              onClick={async () => {
+                const result = await createFromTemplate();
+                if (result) setEditingAutomation(result);
+              }}
+            >
+              <FileText className="h-4 w-4" /> Template Follow-up
+            </Button>
+            <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
+              <Plus className="h-4 w-4" /> Nova Automação
+            </Button>
           </div>
         </div>
 
@@ -378,11 +384,9 @@ export default function Automacoes() {
                   <p className="text-muted-foreground font-poppins text-sm mb-6 text-center max-w-md">
                     Crie fluxos automáticos para enviar mensagens, mover leads no pipeline e muito mais.
                   </p>
-                  {isAdmin && (
-                    <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-                      <Plus className="h-4 w-4" /> Criar primeira automação
-                    </Button>
-                  )}
+            <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
+              <Plus className="h-4 w-4" /> Criar primeira automação
+            </Button>
                 </CardContent>
               </Card>
             ) : (
@@ -431,7 +435,7 @@ export default function Automacoes() {
                           >
                             <Copy className="h-4 w-4" />
                           </Button>
-                          {isAdmin && (
+                          {canDeleteAutomation(automation) && (
                             <Button
                               variant="ghost" size="icon"
                               onClick={() => deleteAutomation(automation.id)}
