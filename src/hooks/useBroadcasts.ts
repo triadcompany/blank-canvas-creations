@@ -14,9 +14,13 @@ export interface BroadcastCampaign {
   payload: Record<string, any>;
   settings: Record<string, any>;
   created_at: string;
+  enable_automation: boolean;
+  automation_id: string | null;
+  response_window_hours: number;
   total?: number;
   sent?: number;
   failed?: number;
+  responded?: number;
 }
 
 export interface BroadcastRecipient {
@@ -30,6 +34,9 @@ export interface BroadcastRecipient {
   sent_at: string | null;
   error: string | null;
   message_id: string | null;
+  response_received: boolean;
+  response_at: string | null;
+  response_message_id: string | null;
   created_at: string;
 }
 
@@ -65,15 +72,24 @@ export function useBroadcasts() {
           .select('*', { count: 'exact', head: true })
           .eq('campaign_id', c.id)
           .eq('status', 'failed');
+        const { count: responded } = await supabase
+          .from('broadcast_recipients')
+          .select('*', { count: 'exact', head: true })
+          .eq('campaign_id', c.id)
+          .eq('response_received', true);
         campaigns.push({
           ...c,
           status: c.status as BroadcastCampaign['status'],
           payload_type: c.payload_type as BroadcastCampaign['payload_type'],
           payload: c.payload as Record<string, any>,
           settings: c.settings as Record<string, any>,
+          enable_automation: c.enable_automation || false,
+          automation_id: c.automation_id || null,
+          response_window_hours: c.response_window_hours || 24,
           total: total || 0,
           sent: sent || 0,
           failed: failed || 0,
+          responded: responded || 0,
         });
       }
       return campaigns;
@@ -91,6 +107,7 @@ export function useBroadcasts() {
       profileId: string;
       enableAutomation?: boolean;
       automationId?: string | null;
+      responseWindowHours?: number;
     }) => {
       // Create campaign
       const { data: campaign, error: cErr } = await supabase
@@ -106,6 +123,7 @@ export function useBroadcasts() {
           status: 'running',
           enable_automation: params.enableAutomation || false,
           automation_id: params.automationId || null,
+          response_window_hours: params.responseWindowHours || 24,
         })
         .select('id')
         .single();
@@ -241,6 +259,7 @@ export function useBroadcastDetail(campaignId: string | undefined) {
     failed: recipientsQuery.data?.filter(r => r.status === 'failed').length || 0,
     pending: recipientsQuery.data?.filter(r => r.status === 'pending').length || 0,
     sending: recipientsQuery.data?.filter(r => r.status === 'sending').length || 0,
+    responded: recipientsQuery.data?.filter(r => (r as any).response_received === true).length || 0,
   };
 
   return {

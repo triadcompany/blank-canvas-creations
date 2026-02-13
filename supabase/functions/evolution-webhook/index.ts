@@ -586,6 +586,9 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         console.log(`[evolution-webhook] Linked to lead ${leadId}`);
       }
 
+      // ── 5b) Broadcast response attribution ──
+      await matchBroadcastResponse(supabase, orgId, normalizedPhone, instanceName, externalMessageId, text || displayBody);
+
       // ── 6) Publish inbound_first_message event to Event Bus ──
       const eventPublished = await publishFirstMessageEvent(
         supabase, orgId, normalizedPhone, pushName,
@@ -652,6 +655,79 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
   await invokeWorker();
   return respond({ ok: true });
+}
+
+// ── Helper: Match inbound message to broadcast recipient (response attribution) ──
+async function matchBroadcastResponse(
+  supabase: any, orgId: string, phone: string, instanceName: string,
+  externalMessageId: string | null, messageText: string
+) {
+  try {
+    // Find the latest pending broadcast recipient for this phone
+    // Join with campaign to get response_window_hours and instance_name
+    const { data: recipients, error } = await supabase
+      .from("broadcast_recipients")
+      .select("id, campaign_id, sent_at, broadcast_campaigns!inner(id, instance_name, response_window_hours, automation_id, organization_id)")
+      .eq("organization_id", orgId)
+      .eq("phone", phone)
+      .eq("response_received", false)
+      .in("status", ["sent", "delivered", "read"])
+      .order("sent_at", { ascending: false })
+      .limit(10);
+
+    if (error || !recipients || recipients.length === 0) return;
+
+    const now = new Date();
+    for (const r of recipients) {
+      const campaign = r.broadcast_campaigns;
+      if (!campaign) continue;
+      // Check instance matches
+      if (campaign.instance_name !== instanceName) continue;
+      // Check within response window
+      const sentAt = new Date(r.sent_at);
+      const windowMs = (campaign.response_window_hours || 24) * 3600000;
+      if (now.getTime() - sentAt.getTime() > windowMs) continue;
+
+      // Found a match — mark as responded
+      await supabase.from("broadcast_recipients").update({
+        response_received: true,
+        response_at: now.toISOString(),
+        response_message_id: externalMessageId || null,
+      }).eq("id", r.id);
+
+      console.log(`[evolution-webhook] Broadcast response matched: recipient=${r.id} campaign=${r.campaign_id} phone=${phone}`);
+
+      // Trigger automation if configured
+      if (campaign.automation_id) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const triggerPayload = {
+          organization_id: orgId,
+          trigger_type: "broadcast_response",
+          entity_type: "broadcast_recipient",
+          entity_id: r.id,
+          context: {
+            campaign_id: r.campaign_id,
+            recipient_id: r.id,
+            recipient_phone: phone,
+            inbound_message_text: messageText,
+            instance_name: instanceName,
+            automation_id: campaign.automation_id,
+          },
+        };
+        fetch(`${supabaseUrl}/functions/v1/automation-trigger`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify(triggerPayload),
+        }).catch(err => console.error(`[evolution-webhook] Broadcast automation trigger error:`, err));
+      }
+
+      // Only match one recipient (the most recent pending)
+      break;
+    }
+  } catch (err) {
+    console.error("[evolution-webhook] matchBroadcastResponse error:", err);
+  }
 }
 
 // ── Helper: Invoke ai-auto-reply worker (fire-and-forget) ──

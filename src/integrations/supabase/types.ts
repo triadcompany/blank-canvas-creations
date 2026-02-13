@@ -963,6 +963,7 @@ export type Database = {
           organization_id: string
           payload: Json
           payload_type: string
+          response_window_hours: number
           settings: Json
           status: string
         }
@@ -977,6 +978,7 @@ export type Database = {
           organization_id: string
           payload?: Json
           payload_type: string
+          response_window_hours?: number
           settings?: Json
           status?: string
         }
@@ -991,6 +993,7 @@ export type Database = {
           organization_id?: string
           payload?: Json
           payload_type?: string
+          response_window_hours?: number
           settings?: Json
           status?: string
         }
@@ -1049,6 +1052,9 @@ export type Database = {
           name: string | null
           organization_id: string
           phone: string
+          response_at: string | null
+          response_message_id: string | null
+          response_received: boolean
           sent_at: string | null
           status: string
           variables: Json | null
@@ -1062,6 +1068,9 @@ export type Database = {
           name?: string | null
           organization_id: string
           phone: string
+          response_at?: string | null
+          response_message_id?: string | null
+          response_received?: boolean
           sent_at?: string | null
           status?: string
           variables?: Json | null
@@ -1075,6 +1084,9 @@ export type Database = {
           name?: string | null
           organization_id?: string
           phone?: string
+          response_at?: string | null
+          response_message_id?: string | null
+          response_received?: boolean
           sent_at?: string | null
           status?: string
           variables?: Json | null
