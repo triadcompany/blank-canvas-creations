@@ -73,7 +73,7 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
     const fetchData = async () => {
       const [pRes, sRes, mRes, eRes] = await Promise.all([
         supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
-        supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("sort_order").order("name"),
+        supabase.rpc("get_org_lead_sources", { p_org_id: orgId }),
         supabase.from("org_members" as any).select("clerk_user_id").eq("organization_id", orgId),
         supabase.from("capi_event_definitions" as any).select("id, name, meta_event_name").eq("organization_id", orgId).eq("active", true).order("name"),
       ]);
