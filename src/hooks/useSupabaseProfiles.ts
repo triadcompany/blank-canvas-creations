@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 export interface Profile {
   id: string;
   user_id: string;
+  clerk_user_id?: string;
   name: string;
   email: string;
   role: 'admin' | 'seller';
@@ -150,12 +151,15 @@ export function useSupabaseProfiles() {
     }
   };
 
-  const deleteProfile = async (profileId: string, clerkUserId: string) => {
+  const deleteProfile = async (profileId: string, clerkUserId?: string) => {
+    // Find the actual clerk_user_id from the profile if not provided or if user_id was passed instead
+    const profileObj = profiles.find(p => p.id === profileId);
+    const resolvedClerkUserId = profileObj?.clerk_user_id || clerkUserId || profileObj?.user_id;
     try {
       // Chamar edge function para deletar usuário tanto do Clerk quanto do profiles
       const { data, error } = await supabase.functions.invoke('delete-user', {
         body: {
-          clerkUserId: clerkUserId,
+          clerkUserId: resolvedClerkUserId,
           profileId: profileId
         }
       });
