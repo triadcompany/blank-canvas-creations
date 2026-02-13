@@ -93,6 +93,36 @@ serve(async (req) => {
 
     console.log(`[evolution-create] === START === org=${organization_id} instance=${instance_name}`);
 
+    // ──── Step 0: Ensure org exists in organizations table (FK requirement) ────
+    {
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("id", organization_id)
+        .maybeSingle();
+
+      if (!orgRow) {
+        // Org exists in clerk_organizations but not in organizations — create it
+        const { data: clerkOrg } = await supabase
+          .from("clerk_organizations")
+          .select("name")
+          .eq("id", organization_id)
+          .maybeSingle();
+
+        const orgName = clerkOrg?.name || "Organização";
+        console.log(`[evolution-create] Creating missing organizations row for ${organization_id} (${orgName})`);
+
+        const { error: orgInsertErr } = await supabase
+          .from("organizations")
+          .insert({ id: organization_id, name: orgName });
+
+        if (orgInsertErr) {
+          console.error("[evolution-create] Failed to create org row:", orgInsertErr);
+          return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: `Erro ao criar organização: ${orgInsertErr.message}` }, 500);
+        }
+      }
+    }
+
     // ──── Generate per-org webhook token ────
     const webhookToken = generateWebhookToken();
     const webhookUrl = buildWebhookUrl(supabaseUrl, webhookToken);
