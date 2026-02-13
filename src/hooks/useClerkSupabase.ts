@@ -13,6 +13,7 @@ interface Profile {
   updated_at: string;
   avatar_url?: string;
   whatsapp_e164?: string;
+  onboarding_completed?: boolean;
 }
 
 interface UseClerkSupabaseReturn {
@@ -24,11 +25,16 @@ interface UseClerkSupabaseReturn {
   refreshProfile: () => Promise<void>;
 }
 
-/**
- * Hook to synchronize Clerk user with Supabase profile and roles.
- * Checks if profile exists - if not, sets needsOnboarding flag.
- * Organization creation happens in the Onboarding page.
- */
+/** Race a promise against a timeout */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 export function useClerkSupabase(): UseClerkSupabaseReturn {
   const { user, isLoaded } = useUser();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -37,14 +43,11 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
   const [error, setError] = useState<Error | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const isCheckingRef = useRef(false);
+  const refreshingRef = useRef(false);
 
-  /**
-   * Check if profile exists. If not, mark as needing onboarding.
-   * If exists, update with latest Clerk data.
-   */
   const checkProfile = useCallback(async (clerkUser: typeof user) => {
     if (!clerkUser || isCheckingRef.current) return null;
-    
+
     isCheckingRef.current = true;
     setError(null);
     setNeedsOnboarding(false);
@@ -57,19 +60,23 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
       console.log('🔍 checkProfile: Checking profile for:', clerkUserId);
 
-      // Try to find existing profile
-      const { data: existingProfile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('clerk_user_id', clerkUserId)
-        .maybeSingle();
+      const { data: existingProfile, error: fetchError } = await withTimeout(
+        Promise.resolve(
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('clerk_user_id', clerkUserId)
+            .maybeSingle()
+        ),
+        8000,
+        'Profile fetch'
+      );
 
       if (fetchError && !fetchError.message?.includes('No rows')) {
         console.error('❌ Error fetching profile:', fetchError);
         throw new Error(fetchError.message);
       }
 
-      // If no profile exists, check if user was invited (has org in metadata)
       if (!existingProfile) {
         const metadata = clerkUser.unsafeMetadata as Record<string, any> | undefined;
         const invitedOrgId = metadata?.organization_id as string | undefined;
@@ -77,8 +84,6 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
         if (invitedOrgId) {
           console.log('🎟️ Invited user detected, auto-provisioning profile...');
-          
-          // Auto-create profile for invited user
           const { data: newProfile, error: insertError } = await supabase
             .from('profiles')
             .insert({
@@ -87,30 +92,26 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
               name,
               avatar_url: avatarUrl,
               organization_id: invitedOrgId,
+              onboarding_completed: true,
             })
             .select()
             .single();
 
           if (insertError) {
-            console.error('❌ Error creating invited profile:', insertError);
             throw new Error(insertError.message);
           }
 
-          // Create role
           await supabase.from('user_roles').insert({
             clerk_user_id: clerkUserId,
             organization_id: invitedOrgId,
             role: invitedRole === 'admin' ? 'admin' : 'seller',
           });
 
-          console.log('✅ Invited user provisioned:', newProfile.id);
-          
           setProfile(newProfile as Profile);
           setRole(invitedRole === 'admin' ? 'admin' : 'seller');
           return newProfile as Profile;
         }
 
-        // No invitation data — needs onboarding to create organization
         console.log('📝 No profile found - needs onboarding');
         setNeedsOnboarding(true);
         setProfile(null);
@@ -118,18 +119,16 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
         return null;
       }
 
-      console.log('✅ Profile found:', existingProfile.id);
-      
+      console.log('✅ Profile found:', existingProfile.id, 'onboarding_completed:', existingProfile.onboarding_completed);
+
       let finalProfile: Profile = existingProfile as Profile;
 
-      // Check if we need to update the profile with new Clerk data
-      const needsUpdate = 
+      const needsUpdate =
         existingProfile.email !== email ||
         existingProfile.name !== name ||
         existingProfile.avatar_url !== avatarUrl;
 
       if (needsUpdate) {
-        console.log('🔄 Updating profile with new Clerk data...');
         const { data: updatedProfile, error: updateError } = await supabase
           .from('profiles')
           .update({
@@ -149,7 +148,6 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
       setProfile(finalProfile);
 
-      // Fetch role
       const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
@@ -159,12 +157,10 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       if (roleData?.role) {
         setRole(roleData.role as 'admin' | 'seller');
       } else {
-        // Default to admin for profile owner
         setRole('admin');
       }
 
       return finalProfile;
-
     } catch (err) {
       console.error('❌ checkProfile error:', err);
       const error = err instanceof Error ? err : new Error('Unknown error');
@@ -176,17 +172,25 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (user) {
-      setLoading(true);
-      await checkProfile(user);
+    if (!user || refreshingRef.current) {
+      console.log('⏭️ refreshProfile: skipped (no user or already refreshing)');
+      return;
+    }
+    refreshingRef.current = true;
+    setLoading(true);
+    try {
+      await withTimeout(checkProfile(user), 8000, 'refreshProfile');
+    } catch (err) {
+      console.error('❌ refreshProfile error:', err);
+      setError(err instanceof Error ? err : new Error('Refresh failed'));
+    } finally {
       setLoading(false);
+      refreshingRef.current = false;
     }
   }, [user, checkProfile]);
 
   useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
+    if (!isLoaded) return;
 
     if (!user) {
       console.log('👤 useClerkSupabase: No user, clearing profile');
@@ -198,11 +202,15 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       return;
     }
 
-    // Check profile exists
     setLoading(true);
-    checkProfile(user).finally(() => {
-      setLoading(false);
-    });
+    withTimeout(checkProfile(user), 8000, 'Initial profile check')
+      .catch((err) => {
+        console.error('❌ Initial profile check failed:', err);
+        setError(err instanceof Error ? err : new Error('Initial check failed'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [user, isLoaded, checkProfile]);
 
   return useMemo(() => ({
