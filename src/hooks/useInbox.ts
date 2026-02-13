@@ -141,6 +141,13 @@ export function useInbox() {
         query = query.is('assigned_to', null);
       } else if (['open', 'in_progress', 'waiting_customer', 'closed'].includes(filter)) {
         query = query.eq('status', filter);
+        // Sellers can only see their own + unassigned conversations
+        if (!isAdmin && myProfileId) {
+          query = query.or(`assigned_to.eq.${myProfileId},assigned_to.is.null`);
+        }
+      } else if (filter === 'all' && !isAdmin && myProfileId) {
+        // Sellers: show only their own + unassigned
+        query = query.or(`assigned_to.eq.${myProfileId},assigned_to.is.null`);
       }
 
       if (search.trim()) {
