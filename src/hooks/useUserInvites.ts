@@ -13,23 +13,24 @@ type InviteUserResult = { error?: string; success?: boolean; data?: any; actionL
 
 export function useUserInvites() {
   const [loading, setLoading] = useState(false);
-  const { user, profile } = useAuth();
+  const { user, profile, orgId } = useAuth();
   const { toast } = useToast();
 
   const inviteUser = async (userData: InviteUserData): Promise<InviteUserResult> => {
     console.log('🔥 inviteUser called with:', userData);
-    if (!user || !profile) {
-      console.error('❌ No user/profile');
+    if (!user) {
+      console.error('❌ No user');
       toast({
         title: 'Erro',
-        description: 'Usuário não autenticado ou perfil não encontrado',
+        description: 'Usuário não autenticado',
         variant: 'destructive',
       });
       return { error: 'Usuário não autenticado' };
     }
 
-    const organizationId = profile.organization_id;
+    const organizationId = profile?.organization_id || orgId;
     if (!organizationId) {
+      console.error('❌ No organization_id. profile:', profile, 'orgId:', orgId);
       toast({
         title: 'Erro',
         description: 'Você não pertence a nenhuma organização',
