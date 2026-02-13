@@ -52,13 +52,71 @@ Deno.serve(async (req) => {
     }
 
     // Also fetch user's org membership
-    const { data: membership } = await supabase
+    let { data: membership } = await supabase
       .from("org_members")
       .select("role, clerk_org_id, organization_id")
       .eq("clerk_user_id", clerk_user_id)
       .eq("status", "active")
       .limit(1)
       .maybeSingle();
+
+    // Fallback: if no org_members record but profile has organization_id,
+    // auto-create the org_members record (for invited users)
+    if (!membership && data?.organization_id) {
+      console.log(`🔧 sync-login: no org_members but profile has org_id ${data.organization_id}, creating membership...`);
+
+      // Check if there's a pending invitation for this user
+      const { data: invitation } = await supabase
+        .from("user_invitations")
+        .select("role, organization_id")
+        .eq("email", email)
+        .eq("organization_id", data.organization_id)
+        .limit(1)
+        .maybeSingle();
+
+      const memberRole = invitation?.role || "seller";
+
+      // Look up the clerk_org_id from clerk_organizations
+      const { data: clerkOrgRecord } = await supabase
+        .from("clerk_organizations")
+        .select("clerk_org_id")
+        .eq("id", data.organization_id)
+        .maybeSingle();
+
+      const { error: memberInsertErr } = await supabase
+        .from("org_members")
+        .upsert(
+          {
+            organization_id: data.organization_id,
+            clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+            clerk_user_id,
+            role: memberRole,
+            status: "active",
+          },
+          { onConflict: "clerk_org_id,clerk_user_id" }
+        );
+
+      if (memberInsertErr) {
+        console.warn("⚠️ sync-login: auto-create org_members failed:", memberInsertErr.message);
+      } else {
+        membership = {
+          role: memberRole,
+          clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+          organization_id: data.organization_id,
+        };
+        console.log("✅ sync-login: auto-created org_members for invited user");
+
+        // Mark invitation as accepted if exists
+        if (invitation) {
+          await supabase
+            .from("user_invitations")
+            .update({ status: "accepted" })
+            .eq("email", email)
+            .eq("organization_id", data.organization_id)
+            .eq("status", "pending");
+        }
+      }
+    }
 
     console.log(`✅ sync-login complete for ${clerk_user_id}`);
 
