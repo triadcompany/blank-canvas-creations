@@ -40,13 +40,13 @@ export function usePipelines() {
 
   // Ensure default pipeline exists for the org
   const ensureDefaultPipeline = useCallback(async () => {
-    if (!orgId || !clerkUserId) return false;
+    if (!orgId) return false;
     
     setEnsuring(true);
     try {
       const { data, error } = await supabase.rpc('ensure_default_pipeline', {
         p_org_id: orgId,
-        p_created_by: clerkUserId,
+        p_created_by: clerkUserId || 'system',
       });
       
       if (error) {
@@ -310,9 +310,9 @@ export function usePipelines() {
   };
 
   useEffect(() => {
-    if (orgId && clerkUserId) {
+    if (orgId) {
       fetchPipelines().finally(() => setLoading(false));
-    } else if (!orgId) {
+    } else {
       setLoading(false);
     }
   }, [orgId, clerkUserId, fetchPipelines]);
