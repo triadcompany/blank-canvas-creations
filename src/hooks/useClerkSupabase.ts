@@ -232,12 +232,17 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       setError(null);
       setNeedsOnboarding(false);
       lastCheckedUserIdRef.current = null;
+      // Clear the global header
+      delete (supabase as any).rest.headers['x-clerk-user-id'];
       return;
     }
 
     // Skip if we already checked this user
     if (lastCheckedUserIdRef.current === user.id) return;
     lastCheckedUserIdRef.current = user.id;
+
+    // Set global header so PostgREST RLS functions can identify the user
+    (supabase as any).rest.headers['x-clerk-user-id'] = user.id;
 
     setLoading(true);
     withTimeout(checkProfile(user), 8000, 'Initial profile check')
