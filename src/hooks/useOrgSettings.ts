@@ -36,15 +36,17 @@ export function useOrgSettings() {
 
   const updateInboxEnabled = useCallback(async (enabled: boolean) => {
     if (!orgId) return;
-    const { error } = await supabase
-      .from('organizations')
-      .update({ inbox_enabled: enabled })
-      .eq('id', orgId);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return new Error('No session');
 
-    if (!error) {
-      setSettings(prev => ({ ...prev, inbox_enabled: enabled }));
-    }
-    return error;
+    const res = await supabase.functions.invoke('update-sensitive-settings', {
+      body: { table: 'organizations', updates: { inbox_enabled: enabled } },
+    });
+
+    if (res.error) return res.error;
+    setSettings(prev => ({ ...prev, inbox_enabled: enabled }));
+    return null;
   }, [orgId]);
 
   return { settings, loading, updateInboxEnabled, refetch: fetchSettings };
