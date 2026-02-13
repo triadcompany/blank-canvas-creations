@@ -7838,6 +7838,15 @@ export type Database = {
           sort_order: number
         }[]
       }
+      get_org_members: {
+        Args: { p_org_id: string }
+        Returns: {
+          clerk_user_id: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
+      }
       get_org_pipelines: {
         Args: { p_org_id: string }
         Returns: {
