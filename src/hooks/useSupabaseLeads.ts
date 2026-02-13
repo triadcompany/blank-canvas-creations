@@ -109,38 +109,25 @@ export function useSupabaseLeads(pipelineId?: string) {
     }
   };
 
-  // Fetch leads
+  // Fetch leads via RPC (bypasses RLS issues with Clerk auth)
   const fetchLeads = async () => {
-    if (!orgId) {
-      console.log('❌ useSupabaseLeads: No orgId, skipping fetch');
+    if (!orgId || !profile?.clerk_user_id) {
+      console.log('❌ useSupabaseLeads: No orgId or clerk_user_id, skipping fetch');
       return;
     }
     
-    console.log('🔍 useSupabaseLeads: Fetching leads...', { 
+    console.log('🔍 useSupabaseLeads: Fetching leads via RPC...', { 
       isAdmin, 
       profileId: profile?.id,
       organizationId: orgId 
     });
     
-    let query = supabase
-      .from('leads')
-      .select(`
-        *,
-        seller:profiles!seller_id(name),
-        stage:pipeline_stages!stage_id(name, position, color)
-      `);
-
-    // If not admin, only show own leads
-    if (!isAdmin && profile?.id) {
-      query = query.eq('seller_id', profile.id);
-      console.log('👤 useSupabaseLeads: Filtering by seller_id:', profile.id);
-    } else {
-      // Admin vê todos os leads da organização
-      query = query.eq('organization_id', orgId);
-      console.log('👑 useSupabaseLeads: Admin - Fetching all leads from org:', orgId);
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data, error } = await supabase.rpc('get_org_leads', {
+      p_clerk_user_id: profile.clerk_user_id,
+      p_org_id: orgId,
+      p_is_admin: isAdmin || false,
+      p_seller_id: (!isAdmin && profile?.id) ? profile.id : null,
+    });
 
     if (error) {
       console.error('❌ useSupabaseLeads: Error fetching leads:', error);
@@ -150,14 +137,9 @@ export function useSupabaseLeads(pipelineId?: string) {
         variant: "destructive",
       });
     } else {
-      console.log(`✅ useSupabaseLeads: Fetched ${data?.length || 0} leads`);
-      const formattedLeads = data?.map(lead => ({
-        ...lead,
-        seller_name: lead.seller?.name,
-        stage_name: lead.stage?.name,
-        stage_position: lead.stage?.position,
-      })) || [];
-      setLeads(formattedLeads);
+      const leadsArray = (data || []) as any[];
+      console.log(`✅ useSupabaseLeads: Fetched ${leadsArray.length} leads`);
+      setLeads(leadsArray);
     }
   };
 
@@ -283,9 +265,9 @@ export function useSupabaseLeads(pipelineId?: string) {
     }
   };
 
-  // Update lead
+  // Update lead via RPC
   const updateLead = async (leadId: string, updatedData: Partial<Lead>) => {
-    if (!profile || !leadId) {
+    if (!profile || !leadId || !profile.clerk_user_id) {
       toast({
         title: "Erro",
         description: "Dados inválidos para atualização",
@@ -308,20 +290,11 @@ export function useSupabaseLeads(pipelineId?: string) {
       return;
     }
 
-    // Ensure organization_id is included and remove any undefined values
-    const cleanUpdateData = Object.fromEntries(
-      Object.entries({
-        ...updatedData,
-        organization_id: profile.organization_id
-      }).filter(([_, value]) => value !== undefined && value !== "")
-    );
-
-    console.log('Clean update data:', cleanUpdateData);
-
-    const { error } = await supabase
-      .from('leads')
-      .update(cleanUpdateData)
-      .eq('id', leadId);
+    const { error } = await supabase.rpc('update_lead_rpc', {
+      p_clerk_user_id: profile.clerk_user_id,
+      p_lead_id: leadId,
+      p_data: updatedData as any,
+    });
 
     if (error) {
       console.error('Error updating lead:', error);
@@ -346,36 +319,32 @@ export function useSupabaseLeads(pipelineId?: string) {
     }
   };
 
-  // Add new lead
+  // Add new lead via RPC
   const addLead = async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => {
-    if (!profile) return;
+    if (!profile || !profile.clerk_user_id) return;
 
     // Use the stage_id passed from the modal, or fall back to the first stage
     const stageId = (newLeadData as any).stage_id || stages.find(s => s.position === 1)?.id;
     if (!stageId) return;
 
-    // Remove stage_id from spread to avoid type conflict
-    const { stage_id: _, ...restData } = newLeadData as any;
-
-    const leadData = {
-      ...restData,
-      seller_id: (newLeadData as any).seller_id || profile.id,
-      created_by: profile.id,
-      stage_id: stageId,
-      organization_id: profile.organization_id,
-    };
-
-    const { data, error } = await supabase
-      .from('leads')
-      .insert(leadData)
-      .select(`
-        *,
-        seller:profiles!seller_id(name),
-        stage:pipeline_stages!stage_id(name, position, color)
-      `)
-      .single();
+    const { data, error } = await supabase.rpc('create_lead_rpc', {
+      p_clerk_user_id: profile.clerk_user_id,
+      p_name: newLeadData.name,
+      p_phone: newLeadData.phone || '',
+      p_email: newLeadData.email || '',
+      p_source: newLeadData.source || '',
+      p_interest: newLeadData.interest || '',
+      p_price: (newLeadData as any).price || '',
+      p_observations: newLeadData.observations || '',
+      p_servico: (newLeadData as any).servico || '',
+      p_cidade: (newLeadData as any).cidade || '',
+      p_estado: (newLeadData as any).estado || '',
+      p_seller_id: (newLeadData as any).seller_id || null,
+      p_stage_id: stageId,
+    });
 
     if (error) {
+      console.error('Error creating lead:', error);
       toast({
         title: "Erro",
         description: "Erro ao criar lead",
@@ -384,16 +353,17 @@ export function useSupabaseLeads(pipelineId?: string) {
       return;
     }
 
+    const createdLead = data as any;
+
     // Chamar distribuição automática
     try {
       const { error: distributionError } = await (supabase.rpc as any)('distribute_lead', {
-        p_lead_id: data.id,
+        p_lead_id: createdLead.id,
         p_organization_id: profile.organization_id
       });
 
       if (distributionError) {
         console.error('Error distributing lead:', distributionError);
-        // Não falhar a criação do lead se a distribuição falhar
       } else {
         console.log('Lead distributed successfully');
       }
@@ -401,25 +371,9 @@ export function useSupabaseLeads(pipelineId?: string) {
       console.error('Exception during lead distribution:', err);
     }
 
-    // Buscar lead atualizado com o seller correto após distribuição
-    const { data: updatedLead } = await supabase
-      .from('leads')
-      .select(`
-        *,
-        seller:profiles!seller_id(name),
-        stage:pipeline_stages!stage_id(name, position, color)
-      `)
-      .eq('id', data.id)
-      .single();
+    // Refresh leads to get full data with joins
+    await fetchLeads();
 
-    const formattedLead = {
-      ...(updatedLead || data),
-      seller_name: updatedLead?.seller?.name || data.seller?.name,
-      stage_name: updatedLead?.stage?.name || data.stage?.name,
-      stage_position: updatedLead?.stage?.position || data.stage?.position,
-    };
-    
-    setLeads(prevLeads => [formattedLead, ...prevLeads]);
     toast({
       title: "Sucesso",
       description: "Lead criado e distribuído com sucesso",
@@ -427,7 +381,6 @@ export function useSupabaseLeads(pipelineId?: string) {
 
     // Fire automation trigger (non-blocking)
     if (profile.organization_id) {
-      const finalLead = updatedLead || data;
       fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -435,27 +388,28 @@ export function useSupabaseLeads(pipelineId?: string) {
           organization_id: profile.organization_id,
           trigger_type: "lead_created",
           entity_type: "lead",
-          entity_id: finalLead.id,
+          entity_id: createdLead.id,
           context: {
-            lead_name: finalLead.name,
-            lead_phone: finalLead.phone,
-            lead_email: finalLead.email,
-            lead_source: finalLead.source,
-            stage_name: finalLead.stage?.name || '',
-            stage_id: finalLead.stage_id,
-            seller_id: finalLead.seller_id,
+            lead_name: createdLead.name,
+            lead_phone: createdLead.phone,
+            lead_email: createdLead.email,
+            lead_source: createdLead.source,
+            stage_id: createdLead.stage_id,
+            seller_id: createdLead.seller_id,
           },
         }),
       }).catch((err) => console.error("Automation trigger error:", err));
     }
   };
 
-  // Delete lead (admin only)
+  // Delete lead via RPC
   const deleteLead = async (leadId: string) => {
-    const { error } = await supabase
-      .from('leads')
-      .delete()
-      .eq('id', leadId);
+    if (!profile?.clerk_user_id) return;
+
+    const { error } = await supabase.rpc('delete_lead_rpc', {
+      p_clerk_user_id: profile.clerk_user_id,
+      p_lead_id: leadId,
+    });
 
     if (error) {
       console.error('Error deleting lead:', error);
