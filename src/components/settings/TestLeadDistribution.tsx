@@ -106,7 +106,6 @@ export function TestLeadDistribution() {
         .from('whatsapp_threads')
         .insert({
           organization_id: profile?.organization_id!,
-          phone: testPhone,
           contact_phone_e164: testPhone,
           contact_name: `Teste Distribuição (${selectedBucket})`,
           assigned_user_id: assignedUserId,
