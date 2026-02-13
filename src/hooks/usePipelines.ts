@@ -33,19 +33,20 @@ export function usePipelines() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [ensuring, setEnsuring] = useState(false);
-  const { profile, orgId: authOrgId } = useAuth();
+  const { profile, orgId: authOrgId, user } = useAuth();
   const orgId = profile?.organization_id || authOrgId;
+  const clerkUserId = profile?.clerk_user_id || user?.id;
   const { toast } = useToast();
 
   // Ensure default pipeline exists for the org
   const ensureDefaultPipeline = useCallback(async () => {
-    if (!orgId || !profile?.clerk_user_id) return false;
+    if (!orgId || !clerkUserId) return false;
     
     setEnsuring(true);
     try {
       const { data, error } = await supabase.rpc('ensure_default_pipeline', {
         p_org_id: orgId,
-        p_created_by: profile.clerk_user_id,
+        p_created_by: clerkUserId,
       });
       
       if (error) {
@@ -61,7 +62,7 @@ export function usePipelines() {
     } finally {
       setEnsuring(false);
     }
-  }, [orgId, profile?.clerk_user_id]);
+  }, [orgId, clerkUserId]);
 
   // Fetch pipelines using RPC (bypasses RLS for Clerk)
   const fetchPipelines = useCallback(async () => {
@@ -149,7 +150,7 @@ export function usePipelines() {
         throw new Error('Falha ao criar pipeline padrão');
       }
 
-      const createdBy = profile?.id || profile?.clerk_user_id || '';
+      const createdBy = profile?.id || clerkUserId || '';
       if (!createdBy) {
         toast({ title: "Erro", description: "Informações de usuário não encontradas", variant: "destructive" });
         return false;
@@ -309,12 +310,12 @@ export function usePipelines() {
   };
 
   useEffect(() => {
-    if (orgId && profile?.clerk_user_id) {
+    if (orgId && clerkUserId) {
       fetchPipelines().finally(() => setLoading(false));
     } else if (!orgId) {
       setLoading(false);
     }
-  }, [orgId, profile?.clerk_user_id, fetchPipelines]);
+  }, [orgId, clerkUserId, fetchPipelines]);
 
   useEffect(() => {
     if (selectedPipeline) {
