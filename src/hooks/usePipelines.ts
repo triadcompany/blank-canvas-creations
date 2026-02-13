@@ -294,6 +294,8 @@ export function usePipelines() {
   useEffect(() => {
     if (profile?.organization_id) {
       fetchPipelines().finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
   }, [profile?.organization_id, fetchPipelines]);
 

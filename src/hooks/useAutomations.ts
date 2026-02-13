@@ -82,7 +82,10 @@ export function useAutomations() {
   const orgId = profile?.organization_id;
 
   const fetchAutomations = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const result = await apiCall("list", { organization_id: orgId });
     if (result.ok) {
