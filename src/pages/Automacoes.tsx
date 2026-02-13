@@ -487,7 +487,7 @@ export default function Automacoes() {
           </TabsContent>
 
           <TabsContent value="executions" className="mt-4">
-            <AutomationExecutionsPanel organizationId={profile?.organization_id} />
+            <AutomationExecutionsPanel organizationId={profile?.organization_id || authOrgId || undefined} />
           </TabsContent>
 
           <TabsContent value="meta-capi" className="mt-4">
