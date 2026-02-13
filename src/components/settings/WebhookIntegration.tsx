@@ -17,14 +17,14 @@ import {
 } from "lucide-react";
 
 export function WebhookIntegration() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
-  const organizationId = profile?.organization_id;
+  const organizationId = profile?.organization_id || authOrgId;
   
-  // URL base do webhook - usando a URL do Supabase
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  // URL base do webhook - usando a URL do Supabase diretamente
+  const supabaseUrl = "https://tapbwlmdvluqdgvixkxf.supabase.co";
   const webhookUrl = organizationId 
     ? `${supabaseUrl}/functions/v1/receive-lead-webhook?org=${organizationId}`
     : '';
