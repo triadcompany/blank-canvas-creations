@@ -35,7 +35,14 @@ import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
 import { OfflineIndicator } from "./components/pwa/OfflineIndicator";
 import { useEffect } from "react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
 
 const App = () => {
   useEffect(() => {
