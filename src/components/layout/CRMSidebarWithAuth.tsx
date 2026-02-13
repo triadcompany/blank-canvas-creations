@@ -96,7 +96,7 @@ const adminMenuItems = [
 export function CRMSidebarWithAuth() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isAdmin, userName, orgName, role } = useAuth();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   
   
@@ -124,7 +124,11 @@ export function CRMSidebarWithAuth() {
           <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">CRM</span>
           </div>
-          <h2 className="text-lg font-poppins font-bold text-foreground">AutoLead</h2>
+          <div className="min-w-0">
+            <h2 className="text-lg font-poppins font-bold text-foreground truncate">
+              {orgName || 'AutoLead'}
+            </h2>
+          </div>
         </div>
       </SidebarHeader>
       
@@ -192,22 +196,22 @@ export function CRMSidebarWithAuth() {
                 {profile?.avatar_url ? (
                   <img 
                     src={profile.avatar_url} 
-                    alt={profile?.name}
+                    alt={userName || profile?.name || ''}
                     className="w-full h-full object-cover"
                   />
                 ) : (
                   <span className="text-white font-bold text-xs">
-                    {profile?.name?.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    {(userName || profile?.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2)}
                   </span>
                 )}
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-poppins font-medium text-foreground truncate">
-                  {profile?.name}
+                  {userName || profile?.name || 'Usuário'}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground font-poppins capitalize">
-                    {isAdmin ? 'Admin' : 'Seller'}
+                    {isAdmin ? 'Admin' : 'Vendedor'}
                   </span>
                   <span className="text-xs text-muted-foreground">•</span>
                   <span className={`text-xs font-poppins font-medium flex items-center gap-0.5 ${getPlanColor()}`}>

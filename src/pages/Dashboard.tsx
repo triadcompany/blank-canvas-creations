@@ -15,13 +15,11 @@ import {
 import heroImage from "@/assets/crm-hero.jpg";
 import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
 import { TasksWidget } from "@/components/tasks/TasksWidget";
-import { useOrganization } from "@/hooks/useOrganization";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function Dashboard() {
   const { leads, stages, loading } = useSupabaseLeads();
-  const { organization } = useOrganization();
-  const { profile } = useAuth();
+  const { userName, orgName, orgId, userEmail, role, isAdmin, refreshProfile } = useAuth();
 
   // Calcular métricas reais baseadas nos dados
   const metrics = useMemo(() => {
@@ -126,10 +124,22 @@ export function Dashboard() {
     ];
   }, [leads, stages, loading]);
 
-  const firstName = profile?.name?.split(' ')[0] || 'Usuário';
+  const displayName = userName || 'Usuário';
+  const displayOrg = orgName || 'AutoLead CRM';
 
   return (
     <div className="p-6 space-y-8">
+      {/* Debug panel (dev only) */}
+      {import.meta.env.DEV && (
+        <details className="bg-muted/50 rounded-lg p-3 text-xs font-mono">
+          <summary className="cursor-pointer text-muted-foreground">🐛 Debug Context</summary>
+          <pre className="mt-2 whitespace-pre-wrap">
+{JSON.stringify({ userName, userEmail, orgId, orgName, role, isAdmin }, null, 2)}
+          </pre>
+          <button onClick={() => refreshProfile()} className="mt-2 text-primary underline">Recarregar contexto</button>
+        </details>
+      )}
+
       {/* Hero Banner - Improved */}
       <div 
         className="relative h-40 rounded-3xl overflow-hidden shadow-xl"
@@ -145,11 +155,11 @@ export function Dashboard() {
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-5 w-5 text-white/80" />
             <span className="text-white/80 font-medium text-sm uppercase tracking-wider">
-              {organization?.name || 'AutoLead CRM'}
+              {displayOrg}
             </span>
           </div>
           <h1 className="text-3xl font-poppins font-bold text-white mb-1">
-            Olá, {firstName}! 👋
+            Olá, {displayName.split(' ')[0]}! 👋
           </h1>
           <p className="font-poppins text-white/90 text-lg">
             Gerencie seus leads e potencialize suas vendas
