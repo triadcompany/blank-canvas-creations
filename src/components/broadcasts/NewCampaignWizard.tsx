@@ -50,7 +50,8 @@ export function NewCampaignWizard({ onClose }: Props) {
   // Step 2 state
   const [campaignName, setCampaignName] = useState('');
   const [instanceName, setInstanceName] = useState('');
-  const [payloadType, setPayloadType] = useState<'text' | 'image' | 'audio'>('text');
+  const [payloadType, setPayloadType] = useState<'text' | 'interactive' | 'image' | 'audio'>('text');
+  const [buttons, setButtons] = useState<Array<{ label: string; value: string }>>([]);
   const [messageText, setMessageText] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
   const [caption, setCaption] = useState('');
@@ -210,13 +211,16 @@ export function NewCampaignWizard({ onClose }: Props) {
 
   const handleCreate = async () => {
     if (!profile) return;
+    const payload = payloadType === 'text'
+      ? { text: messageText }
+      : payloadType === 'interactive'
+        ? { text: messageText }
+        : { media_url: mediaUrl, caption };
     await createCampaign.mutateAsync({
       name: campaignName,
       instance_name: instanceName,
       payload_type: payloadType,
-      payload: payloadType === 'text'
-        ? { text: messageText }
-        : { media_url: mediaUrl, caption },
+      payload,
       settings: {
         minDelay,
         maxDelay,
@@ -230,6 +234,7 @@ export function NewCampaignWizard({ onClose }: Props) {
       enableAutomation,
       automationId: enableAutomation ? selectedAutomationId || null : null,
       responseWindowHours,
+      buttons: payloadType === 'interactive' ? buttons.filter(b => b.label && b.value) : null,
     });
     onClose();
   };
@@ -367,19 +372,25 @@ export function NewCampaignWizard({ onClose }: Props) {
 
             <div>
               <Label>Tipo de disparo</Label>
-              <Select value={payloadType} onValueChange={(v) => setPayloadType(v as any)}>
+              <Select value={payloadType} onValueChange={(v) => {
+                setPayloadType(v as any);
+                if (v === 'interactive' && buttons.length === 0) {
+                  setButtons([{ label: '', value: '' }]);
+                }
+              }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="text">Texto</SelectItem>
+                  <SelectItem value="text">Texto livre</SelectItem>
+                  <SelectItem value="interactive">Texto com botões</SelectItem>
                   <SelectItem value="image">Imagem</SelectItem>
                   <SelectItem value="audio">Áudio</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {payloadType === 'text' && (
+            {(payloadType === 'text' || payloadType === 'interactive') && (
               <div>
                 <Label>Mensagem</Label>
                 <Textarea
@@ -424,6 +435,54 @@ export function NewCampaignWizard({ onClose }: Props) {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {payloadType === 'interactive' && (
+              <div className="space-y-3 border border-border rounded-lg p-4 bg-muted/30">
+                <Label className="font-medium">Botões (até 3)</Label>
+                {buttons.map((btn, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <Input
+                      placeholder="Texto do botão (ex: SIM)"
+                      value={btn.label}
+                      onChange={e => {
+                        const updated = [...buttons];
+                        updated[idx] = { ...updated[idx], label: e.target.value };
+                        setButtons(updated);
+                      }}
+                    />
+                    <Input
+                      placeholder="Valor interno (ex: sim)"
+                      value={btn.value}
+                      onChange={e => {
+                        const updated = [...buttons];
+                        updated[idx] = { ...updated[idx], value: e.target.value };
+                        setButtons(updated);
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setButtons(buttons.filter((_, i) => i !== idx))}
+                      disabled={buttons.length <= 1}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ))}
+                {buttons.length < 3 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setButtons([...buttons, { label: '', value: '' }])}
+                  >
+                    + Adicionar botão
+                  </Button>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  Quando o destinatário clicar em um botão, o valor interno será enviado como contexto para a automação.
+                </p>
               </div>
             )}
 
@@ -525,7 +584,7 @@ export function NewCampaignWizard({ onClose }: Props) {
               </Button>
               <Button
                 onClick={goToStep3}
-                disabled={!campaignName || !instanceName || (payloadType === 'text' && !messageText) || ((payloadType === 'image' || payloadType === 'audio') && !mediaUrl)}
+                disabled={!campaignName || !instanceName || ((payloadType === 'text' || payloadType === 'interactive') && !messageText) || ((payloadType === 'image' || payloadType === 'audio') && !mediaUrl) || (payloadType === 'interactive' && buttons.filter(b => b.label && b.value).length === 0)}
               >
                 Próximo <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
@@ -548,7 +607,7 @@ export function NewCampaignWizard({ onClose }: Props) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Tipo</span>
-                  <Badge variant="secondary">{payloadType === 'text' ? 'Texto' : payloadType === 'image' ? 'Imagem' : 'Áudio'}</Badge>
+                  <Badge variant="secondary">{payloadType === 'text' ? 'Texto' : payloadType === 'interactive' ? 'Botões' : payloadType === 'image' ? 'Imagem' : 'Áudio'}</Badge>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-muted-foreground">Total válidos</span>
@@ -586,13 +645,20 @@ export function NewCampaignWizard({ onClose }: Props) {
               </CardContent>
             </Card>
 
-            {payloadType === 'text' && (
+            {(payloadType === 'text' || payloadType === 'interactive') && (
               <Card>
                 <CardContent className="p-4">
                   <Label className="text-xs text-muted-foreground">Preview da mensagem</Label>
                   <p className="text-sm mt-1 whitespace-pre-wrap bg-muted/50 rounded-lg p-3">
                     {messageText}
                   </p>
+                  {payloadType === 'interactive' && buttons.filter(b => b.label).length > 0 && (
+                    <div className="flex gap-2 mt-2">
+                      {buttons.filter(b => b.label).map((b, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">{b.label}</Badge>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

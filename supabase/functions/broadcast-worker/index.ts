@@ -127,11 +127,34 @@ serve(async (req) => {
           const phone = recipient.phone.replace(/\D/g, "");
           const payload = campaign.payload as Record<string, any>;
           const payloadType = campaign.payload_type;
+          const campaignButtons = (campaign as any).buttons as Array<{ label: string; value: string }> | null;
 
           let sendUrl: string;
           let sendBody: Record<string, any>;
 
-          if (payloadType === "text") {
+          if (payloadType === "interactive" && campaignButtons && campaignButtons.length > 0) {
+            // Render template text
+            let text = payload.text || "";
+            const vars = (recipient.variables || {}) as Record<string, any>;
+            text = text.replace(/\{\{nome\}\}/gi, recipient.name || "");
+            for (const [key, val] of Object.entries(vars)) {
+              text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, "gi"), String(val || ""));
+            }
+
+            // Use Evolution API sendButtons endpoint
+            sendUrl = `${evolutionBaseUrl}/message/sendButtons/${campaign.instance_name}`;
+            sendBody = {
+              number: phone,
+              title: "",
+              description: text,
+              footer: "",
+              buttons: campaignButtons.map((b, idx) => ({
+                title: "reply",
+                displayText: b.label,
+                id: b.value,
+              })),
+            };
+          } else if (payloadType === "text" || payloadType === "interactive") {
             // Render template
             let text = payload.text || "";
             const vars = (recipient.variables || {}) as Record<string, any>;

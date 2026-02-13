@@ -587,7 +587,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       }
 
       // ── 5b) Broadcast response attribution ──
-      await matchBroadcastResponse(supabase, orgId, normalizedPhone, instanceName, externalMessageId, text || displayBody);
+      await matchBroadcastResponse(supabase, orgId, normalizedPhone, instanceName, externalMessageId, text || displayBody, msg);
 
       // ── 6) Publish inbound_first_message event to Event Bus ──
       const eventPublished = await publishFirstMessageEvent(
@@ -660,11 +660,21 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 // ── Helper: Match inbound message to broadcast recipient (response attribution) ──
 async function matchBroadcastResponse(
   supabase: any, orgId: string, phone: string, instanceName: string,
-  externalMessageId: string | null, messageText: string
+  externalMessageId: string | null, messageText: string, rawMsg?: any
 ) {
   try {
+    // Detect button response: Evolution sends buttonResponseMessage or buttonsResponseMessage
+    let buttonValue: string | null = null;
+    if (rawMsg) {
+      const btnResp = rawMsg.message?.buttonsResponseMessage
+        || rawMsg.message?.buttonReplyMessage
+        || rawMsg.message?.templateButtonReplyMessage;
+      if (btnResp) {
+        buttonValue = btnResp.selectedButtonId || btnResp.selectedId || btnResp.id || null;
+      }
+    }
+
     // Find the latest pending broadcast recipient for this phone
-    // Join with campaign to get response_window_hours and instance_name
     const { data: recipients, error } = await supabase
       .from("broadcast_recipients")
       .select("id, campaign_id, sent_at, broadcast_campaigns!inner(id, instance_name, response_window_hours, automation_id, organization_id)")
@@ -681,21 +691,21 @@ async function matchBroadcastResponse(
     for (const r of recipients) {
       const campaign = r.broadcast_campaigns;
       if (!campaign) continue;
-      // Check instance matches
       if (campaign.instance_name !== instanceName) continue;
-      // Check within response window
       const sentAt = new Date(r.sent_at);
       const windowMs = (campaign.response_window_hours || 24) * 3600000;
       if (now.getTime() - sentAt.getTime() > windowMs) continue;
 
-      // Found a match — mark as responded
+      // Found a match — mark as responded with inbound context
       await supabase.from("broadcast_recipients").update({
         response_received: true,
         response_at: now.toISOString(),
         response_message_id: externalMessageId || null,
+        inbound_text: messageText || null,
+        inbound_button_value: buttonValue || null,
       }).eq("id", r.id);
 
-      console.log(`[evolution-webhook] Broadcast response matched: recipient=${r.id} campaign=${r.campaign_id} phone=${phone}`);
+      console.log(`[evolution-webhook] Broadcast response matched: recipient=${r.id} campaign=${r.campaign_id} phone=${phone} button=${buttonValue || "none"}`);
 
       // Trigger automation if configured
       if (campaign.automation_id) {
@@ -711,6 +721,7 @@ async function matchBroadcastResponse(
             recipient_id: r.id,
             recipient_phone: phone,
             inbound_message_text: messageText,
+            inbound_button_value: buttonValue,
             instance_name: instanceName,
             automation_id: campaign.automation_id,
           },
