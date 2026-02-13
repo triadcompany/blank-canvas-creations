@@ -29,7 +29,7 @@ export function TestLeadDistribution() {
       const [profilesRes, threadsRes] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, name, user_id')
+          .select('id, name, user_id, clerk_user_id')
           .eq('organization_id', profile?.organization_id),
         supabase
           .from('whatsapp_threads')
@@ -103,7 +103,7 @@ export function TestLeadDistribution() {
       // Resolve Clerk user ID to profile user_id (UUID) if needed
       let resolvedUserId = assignedUserId;
       if (assignedUserId.startsWith('user_')) {
-        const matchedProfile = profiles.find(p => p.user_id === assignedUserId);
+        const matchedProfile = profiles.find(p => p.clerk_user_id === assignedUserId || p.user_id === assignedUserId);
         if (matchedProfile) {
           resolvedUserId = matchedProfile.id;
         } else {
@@ -160,7 +160,7 @@ export function TestLeadDistribution() {
   };
 
   const getUserName = (userId: string) => {
-    const user = profiles.find(p => p.user_id === userId || p.id === userId);
+    const user = profiles.find(p => p.clerk_user_id === userId || p.user_id === userId || p.id === userId);
     return user?.name || 'Usuário desconhecido';
   };
 
