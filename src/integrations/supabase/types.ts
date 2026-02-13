@@ -7829,6 +7829,26 @@ export type Database = {
       }
       get_my_org_id: { Args: never; Returns: string }
       get_my_role: { Args: never; Returns: string }
+      get_org_lead_sources: {
+        Args: { p_org_id: string }
+        Returns: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string
+          sort_order: number
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "lead_sources"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_org_pipelines: {
         Args: { p_org_id: string }
         Returns: {
