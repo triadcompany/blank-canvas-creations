@@ -127,7 +127,8 @@ export default function Onboarding() {
         { name: "Meta Ads", sort_order: 10 },
         { name: "Indicação", sort_order: 20 },
         { name: "Site", sort_order: 30 },
-        { name: "Orgânico", sort_order: 40 },
+        { name: "Instagram Orgânico", sort_order: 40 },
+        { name: "WhatsApp", sort_order: 50 },
       ];
       supabase.from("lead_sources").insert(
         defaultSources.map((s) => ({
