@@ -83,20 +83,22 @@ const App = () => {
                 {/* Onboarding (AppGate only allows access when no org) */}
                 <Route path="/onboarding" element={<Onboarding />} />
 
-                {/* App routes (AppGate only allows when org exists) */}
-                <Route path="/dashboard" element={<CRMLayout><Dashboard /></CRMLayout>} />
-                <Route path="/oportunidades" element={<CRMLayout><Oportunidades /></CRMLayout>} />
-                <Route path="/leads" element={<CRMLayout><Leads /></CRMLayout>} />
-                <Route path="/reports" element={<CRMLayout><Reports /></CRMLayout>} />
-                <Route path="/settings" element={<CRMLayout><Settings /></CRMLayout>} />
-                <Route path="/pipelines" element={<CRMLayout><Pipelines /></CRMLayout>} />
-                <Route path="/tarefas" element={<CRMLayout><Tasks /></CRMLayout>} />
-                <Route path="/prospeccao" element={<CRMLayout><Prospeccao /></CRMLayout>} />
-                <Route path="/automacoes" element={<Automacoes />} />
-                <Route path="/inbox" element={<CRMLayout><InboxPage /></CRMLayout>} />
-                <Route path="/treinar-agente" element={<CRMLayout><TreinarAgente /></CRMLayout>} />
-                <Route path="/admin/debug/automations" element={<CRMLayout><AdminDebugAutomations /></CRMLayout>} />
-                <Route path="/admin/diagnostico" element={<CRMLayout><AdminDiagnostico /></CRMLayout>} />
+              {/* App routes wrapped in persistent CRMLayout */}
+                <Route element={<CRMLayout />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/oportunidades" element={<Oportunidades />} />
+                  <Route path="/leads" element={<Leads />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/pipelines" element={<Pipelines />} />
+                  <Route path="/tarefas" element={<Tasks />} />
+                  <Route path="/prospeccao" element={<Prospeccao />} />
+                  <Route path="/automacoes" element={<Automacoes />} />
+                  <Route path="/inbox" element={<InboxPage />} />
+                  <Route path="/treinar-agente" element={<TreinarAgente />} />
+                  <Route path="/admin/debug/automations" element={<AdminDebugAutomations />} />
+                  <Route path="/admin/diagnostico" element={<AdminDiagnostico />} />
+                </Route>
               </Route>
 
               {/* ── Catch-all ── */}
