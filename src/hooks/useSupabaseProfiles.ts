@@ -31,11 +31,11 @@ export function useSupabaseProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [invitations, setInvitations] = useState<UserInvitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isAdmin, user, profile: currentProfile } = useAuth();
+  const { isAdmin, user, profile: currentProfile, orgId: authOrgId } = useAuth();
   const { toast } = useToast();
 
   const fetchProfiles = async () => {
-    const organizationId = currentProfile?.organization_id;
+    const organizationId = currentProfile?.organization_id || authOrgId;
 
     // Se não tiver organization_id, não pode listar ninguém
     if (!organizationId) {
@@ -121,7 +121,7 @@ export function useSupabaseProfiles() {
 
   useEffect(() => {
     fetchProfiles();
-  }, [isAdmin, user, currentProfile?.organization_id]);
+  }, [isAdmin, user, currentProfile?.organization_id, authOrgId]);
 
   const updateProfile = async (profileId: string, updates: Partial<Profile>) => {
     try {

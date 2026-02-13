@@ -82,7 +82,7 @@ function dedupeAndSort(msgs: InboxMessage[]): InboxMessage[] {
 }
 
 export function useInbox() {
-  const { profile, role, isAdmin } = useAuth();
+  const { profile, role, isAdmin, orgId: authOrgId } = useAuth();
   const [threads, setThreads] = useState<InboxThread[]>([]);
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -94,7 +94,7 @@ export function useInbox() {
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [newMessageFlag, setNewMessageFlag] = useState(0);
 
-  const orgId = profile?.organization_id;
+  const orgId = profile?.organization_id || authOrgId;
   const myProfileId = profile?.id;
 
   const selectedThreadIdRef = useRef(selectedThreadId);

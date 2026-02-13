@@ -14,11 +14,12 @@ export function useFollowups() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FollowupFilter>('hoje');
   const [sellerFilter, setSellerFilter] = useState<string>('todos');
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const resolvedOrgId = profile?.organization_id || authOrgId;
   const { toast } = useToast();
 
   const fetchFollowups = useCallback(async () => {
-    if (!profile?.organization_id) {
+    if (!resolvedOrgId) {
       setLoading(false);
       return;
     }
@@ -34,7 +35,7 @@ export function useFollowups() {
           assigned_user:profiles!assigned_to(id, name),
           template:followup_templates!template_id(id, name, content, category)
         `)
-        .eq('organization_id', profile.organization_id)
+        .eq('organization_id', resolvedOrgId)
         .order('scheduled_for', { ascending: true });
 
       // Aplicar filtro de data
@@ -85,7 +86,7 @@ export function useFollowups() {
     } finally {
       setLoading(false);
     }
-  }, [profile?.organization_id, filter, sellerFilter, isAdmin, toast]);
+  }, [resolvedOrgId, filter, sellerFilter, isAdmin, toast]);
 
   useEffect(() => {
     fetchFollowups();

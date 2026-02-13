@@ -17,8 +17,8 @@ function leadSourcesQueryKey(orgId: string | undefined) {
 
 export function useLeadSources() {
   const { toast } = useToast();
-  const { profile } = useAuth();
-  const orgId = profile?.organization_id;
+  const { profile, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
   const queryClient = useQueryClient();
 
   const { data: leadSources = [], isLoading: loading, refetch } = useQuery({

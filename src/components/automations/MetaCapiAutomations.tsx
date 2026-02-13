@@ -64,12 +64,12 @@ async function callMetaCapiEndpoint(body: Record<string, unknown>) {
 }
 
 export function MetaCapiAutomations() {
-  const { profile, role } = useAuth();
-  const orgId = profile?.organization_id;
-  const profileId = profile?.id;
+  const { profile, role, orgId: authOrgId, user } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
+  const profileId = profile?.id || user?.id || null;
   const isAdmin = role === "admin";
 
-  if (!orgId || !profileId) {
+  if (!orgId) {
     return (
       <div className="space-y-6">
         <Alert>

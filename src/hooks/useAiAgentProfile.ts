@@ -182,14 +182,14 @@ const nicheTemplates: Record<string, Partial<AiAgentProfile>> = {
 };
 
 export function useAiAgentProfile() {
-  const { profile: userProfile } = useAuth();
+  const { profile: userProfile, orgId: authOrgId } = useAuth();
   const [agentProfile, setAgentProfile] = useState<AiAgentProfile>(defaultProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasExisting, setHasExisting] = useState(false);
   const [versions, setVersions] = useState<AiAgentProfile[]>([]);
 
-  const organizationId = userProfile?.organization_id;
+  const organizationId = userProfile?.organization_id || authOrgId;
 
   const fetchProfile = useCallback(async () => {
     if (!organizationId) {

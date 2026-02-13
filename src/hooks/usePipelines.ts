@@ -33,17 +33,18 @@ export function usePipelines() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [ensuring, setEnsuring] = useState(false);
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
   const { toast } = useToast();
 
   // Ensure default pipeline exists for the org
   const ensureDefaultPipeline = useCallback(async () => {
-    if (!profile?.organization_id || !profile?.clerk_user_id) return false;
+    if (!orgId || !profile?.clerk_user_id) return false;
     
     setEnsuring(true);
     try {
       const { data, error } = await supabase.rpc('ensure_default_pipeline', {
-        p_org_id: profile.organization_id,
+        p_org_id: orgId,
         p_created_by: profile.clerk_user_id,
       });
       
@@ -60,15 +61,15 @@ export function usePipelines() {
     } finally {
       setEnsuring(false);
     }
-  }, [profile?.organization_id, profile?.clerk_user_id]);
+  }, [orgId, profile?.clerk_user_id]);
 
   // Fetch pipelines using RPC (bypasses RLS for Clerk)
   const fetchPipelines = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!orgId) return;
 
     try {
       const { data, error } = await supabase.rpc('get_org_pipelines', {
-        p_org_id: profile.organization_id,
+        p_org_id: orgId,
       });
 
       if (error) throw error;
@@ -80,7 +81,7 @@ export function usePipelines() {
         const ensured = await ensureDefaultPipeline();
         if (ensured) {
           const { data: refreshed, error: refreshError } = await supabase.rpc('get_org_pipelines', {
-            p_org_id: profile.organization_id,
+            p_org_id: orgId,
           });
           if (!refreshError) pipelineList = (refreshed || []) as Pipeline[];
         }
@@ -101,7 +102,7 @@ export function usePipelines() {
       });
       console.error('Error fetching pipelines:', error);
     }
-  }, [profile?.organization_id, ensureDefaultPipeline, toast]);
+  }, [orgId, ensureDefaultPipeline, toast]);
 
   // Fetch stages using RPC (bypasses RLS for Clerk)
   const fetchStages = useCallback(async (pipelineId: string) => {
@@ -127,7 +128,7 @@ export function usePipelines() {
     name: string;
     description?: string;
   }) => {
-    if (!profile?.organization_id || !profile?.id) {
+    if (!orgId) {
       toast({ title: "Erro", description: "Informações de usuário não encontradas", variant: "destructive" });
       return false;
     }
@@ -143,8 +144,8 @@ export function usePipelines() {
         .insert({
           name: pipelineData.name,
           description: pipelineData.description,
-          organization_id: profile.organization_id,
-          created_by: profile.id,
+          organization_id: orgId,
+          created_by: profile?.id || '',
           is_default: pipelines.length === 0,
         });
 
@@ -292,12 +293,12 @@ export function usePipelines() {
   };
 
   useEffect(() => {
-    if (profile?.organization_id) {
+    if (orgId) {
       fetchPipelines().finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
-  }, [profile?.organization_id, fetchPipelines]);
+  }, [orgId, fetchPipelines]);
 
   useEffect(() => {
     if (selectedPipeline) {
