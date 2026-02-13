@@ -133,13 +133,28 @@ export function TestLeadDistribution() {
 
       // Update routing state for round-robin
       if (mode !== 'fixed_user') {
-        await supabase
+        // Check if state row exists
+        const { data: existingState } = await supabase
           .from('whatsapp_routing_state')
-          .upsert({
-            organization_id: profile?.organization_id!,
-            bucket: selectedBucket,
-            last_assigned_user_id: assignedUserId,
-          }, { onConflict: 'organization_id,bucket' });
+          .select('id')
+          .eq('organization_id', profile?.organization_id)
+          .eq('bucket', selectedBucket)
+          .maybeSingle();
+
+        if (existingState) {
+          await supabase
+            .from('whatsapp_routing_state')
+            .update({ last_assigned_user_id: assignedUserId })
+            .eq('id', existingState.id);
+        } else {
+          await supabase
+            .from('whatsapp_routing_state')
+            .insert({
+              organization_id: profile?.organization_id!,
+              bucket: selectedBucket,
+              last_assigned_user_id: assignedUserId,
+            });
+        }
       }
 
       const userName = getUserName(assignedUserId);
