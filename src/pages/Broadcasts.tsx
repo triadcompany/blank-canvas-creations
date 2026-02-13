@@ -70,9 +70,10 @@ export default function Broadcasts() {
                   <TableHead>Instância</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Criado em</TableHead>
-                  <TableHead>Enviados/Total</TableHead>
-                  <TableHead>Falhas</TableHead>
-                  <TableHead></TableHead>
+                   <TableHead>Enviados/Total</TableHead>
+                   <TableHead>Respondidos</TableHead>
+                   <TableHead>Falhas</TableHead>
+                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -92,6 +93,9 @@ export default function Broadcasts() {
                       <TableCell>
                         <span className="text-green-600 font-medium">{c.sent}</span>
                         <span className="text-muted-foreground">/{c.total}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-blue-600 font-medium">{c.responded || 0}</span>
                       </TableCell>
                       <TableCell>
                         {(c.failed || 0) > 0 ? (

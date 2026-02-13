@@ -29,7 +29,7 @@ interface Props {
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/[^0-9]/g, '');
   if (digits.length < 12) return null;
-  return '+' + digits;
+  return digits;
 }
 
 export function NewCampaignWizard({ onClose }: Props) {
@@ -62,6 +62,7 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [noDuplicate, setNoDuplicate] = useState(true);
   const [enableAutomation, setEnableAutomation] = useState(false);
   const [selectedAutomationId, setSelectedAutomationId] = useState('');
+  const [responseWindowHours, setResponseWindowHours] = useState(24);
 
   // Fetch WhatsApp instances
   const { data: instances, isLoading: instancesLoading } = useQuery({
@@ -228,6 +229,7 @@ export function NewCampaignWizard({ onClose }: Props) {
       profileId: profile.id,
       enableAutomation,
       automationId: enableAutomation ? selectedAutomationId || null : null,
+      responseWindowHours,
     });
     onClose();
   };
@@ -497,8 +499,22 @@ export function NewCampaignWizard({ onClose }: Props) {
                     </SelectContent>
                   </Select>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    A automação será disparada para cada destinatário após o envio da mensagem. Use o gatilho "Disparo de Campanha" na automação.
+                    A automação será disparada quando o destinatário responder dentro da janela configurada. O broadcast NÃO cria lead — a automação é quem controla isso.
                   </p>
+                  <div className="mt-2">
+                    <Label className="text-sm">Janela de resposta (horas)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={168}
+                      value={responseWindowHours}
+                      onChange={e => setResponseWindowHours(+e.target.value)}
+                      className="mt-1 w-32"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Respostas após esse período não serão vinculadas à campanha.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

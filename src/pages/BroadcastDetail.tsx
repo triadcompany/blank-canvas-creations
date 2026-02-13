@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Pause, Play, XCircle, RotateCcw, Loader2, Send, AlertTriangle, Clock, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Pause, Play, XCircle, RotateCcw, Loader2, Send, AlertTriangle, Clock, CheckCircle, MessageSquareReply } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 const statusBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
@@ -62,7 +62,7 @@ export default function BroadcastDetail() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <Send className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
@@ -75,6 +75,13 @@ export default function BroadcastDetail() {
             <CheckCircle className="h-5 w-5 mx-auto mb-1 text-green-500" />
             <div className="text-2xl font-bold text-green-600">{stats.sent}</div>
             <div className="text-xs text-muted-foreground">Enviados</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <MessageSquareReply className="h-5 w-5 mx-auto mb-1 text-blue-500" />
+            <div className="text-2xl font-bold text-blue-600">{stats.responded}</div>
+            <div className="text-xs text-muted-foreground">Respondidos</div>
           </CardContent>
         </Card>
         <Card>
@@ -181,6 +188,7 @@ export default function BroadcastDetail() {
                 <TableHead>Telefone</TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Respondeu</TableHead>
                 <TableHead>Enviado em</TableHead>
                 <TableHead>Erro</TableHead>
               </TableRow>
@@ -188,7 +196,7 @@ export default function BroadcastDetail() {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Nenhum destinatário encontrado
                   </TableCell>
                 </TableRow>
@@ -199,6 +207,13 @@ export default function BroadcastDetail() {
                     <TableRow key={r.id}>
                       <TableCell className="font-mono text-sm">{r.phone}</TableCell>
                       <TableCell>{r.name || '—'}</TableCell>
+                      <TableCell>
+                        {r.response_received ? (
+                          <Badge variant="default" className="bg-blue-500">Sim</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={st.variant}>{st.label}</Badge>
                       </TableCell>
