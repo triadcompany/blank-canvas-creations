@@ -1,0 +1,2 @@
+
+DROP SCHEMA IF EXISTS _deprecated CASCADE;
