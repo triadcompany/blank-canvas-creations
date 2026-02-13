@@ -15,6 +15,54 @@ const respond = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+/**
+ * Ensures a users_profile record also exists in the `profiles` table
+ * (which is the FK target for leads.seller_id / leads.created_by).
+ * Uses upsert so it's safe to call multiple times.
+ */
+async function ensureProfileExists(supabase: any, userId: string, orgId: string): Promise<void> {
+  try {
+    // Check if already exists
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (existing) return;
+
+    // Fetch from users_profile
+    const { data: up } = await supabase
+      .from("users_profile")
+      .select("id, full_name, email, clerk_user_id, avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!up) {
+      console.warn(`[automation-worker] ensureProfileExists: users_profile not found for ${userId}`);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .upsert({
+        id: up.id,
+        name: up.full_name || "Usuário",
+        email: up.email || "no-email@placeholder.com",
+        clerk_user_id: up.clerk_user_id,
+        avatar_url: up.avatar_url || null,
+        organization_id: orgId,
+        onboarding_completed: true,
+      }, { onConflict: "id" });
+
+    if (error) {
+      console.error(`[automation-worker] ensureProfileExists upsert error:`, error);
+    } else {
+      console.log(`[automation-worker] ensureProfileExists: created profile for ${userId} in org ${orgId}`);
+    }
+  } catch (e) {
+    console.error(`[automation-worker] ensureProfileExists exception:`, e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -647,6 +695,10 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   const resolvedSellerId = sellerResolution.sellerId;
 
   console.log(`[automation-worker] Seller resolved: strategy=${sellerResolution.strategy}, seller_id=${resolvedSellerId}`);
+
+  // ── Ensure profiles exist in FK-target table ──
+  if (resolvedSellerId) await ensureProfileExists(supabase, resolvedSellerId, orgId);
+  if (resolvedCreatedBy && resolvedCreatedBy !== resolvedSellerId) await ensureProfileExists(supabase, resolvedCreatedBy, orgId);
 
   // ── Resolve pipeline + stage ──
   let resolvedPipelineId = pipelineId;
