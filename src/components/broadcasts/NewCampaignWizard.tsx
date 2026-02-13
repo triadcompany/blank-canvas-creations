@@ -62,15 +62,16 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [noDuplicate, setNoDuplicate] = useState(true);
 
   // Fetch WhatsApp instances
-  const { data: instances } = useQuery({
+  const { data: instances, isLoading: instancesLoading } = useQuery({
     queryKey: ['whatsapp-instances', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('whatsapp_integrations')
         .select('instance_name, status')
-        .eq('organization_id', orgId!)
-        .eq('is_active', true);
+        .eq('organization_id', orgId!);
+      if (error) console.error('Error fetching instances:', error);
+      console.log('[broadcasts] instances loaded:', data, 'orgId:', orgId);
       return data || [];
     },
   });
