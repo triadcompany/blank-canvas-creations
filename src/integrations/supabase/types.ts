@@ -7758,6 +7758,24 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_lead_rpc: {
+        Args: {
+          p_cidade?: string
+          p_clerk_user_id: string
+          p_email?: string
+          p_estado?: string
+          p_interest?: string
+          p_name: string
+          p_observations?: string
+          p_phone: string
+          p_price?: string
+          p_seller_id?: string
+          p_servico?: string
+          p_source?: string
+          p_stage_id?: string
+        }
+        Returns: Json
+      }
       create_manual_notification: {
         Args: {
           p_link?: string
@@ -7814,6 +7832,10 @@ export type Database = {
         Returns: Json
       }
       decrypt_n8n_api_key: { Args: { encrypted_key: string }; Returns: string }
+      delete_lead_rpc: {
+        Args: { p_clerk_user_id: string; p_lead_id: string }
+        Returns: boolean
+      }
       distribute_instagram_conversation: {
         Args: { p_conversation_id: string; p_organization_id: string }
         Returns: Json
@@ -7837,6 +7859,15 @@ export type Database = {
           name: string
           sort_order: number
         }[]
+      }
+      get_org_leads: {
+        Args: {
+          p_clerk_user_id: string
+          p_is_admin?: boolean
+          p_org_id: string
+          p_seller_id?: string
+        }
+        Returns: Json
       }
       get_org_members: {
         Args: { p_org_id: string }
@@ -7966,6 +7997,10 @@ export type Database = {
           p_event_type: string
           p_organization_id: string
         }
+        Returns: Json
+      }
+      update_lead_rpc: {
+        Args: { p_clerk_user_id: string; p_data: Json; p_lead_id: string }
         Returns: Json
       }
     }
