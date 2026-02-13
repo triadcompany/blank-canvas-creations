@@ -607,7 +607,7 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       createdByStrategy = "automation_creator";
     } else {
       // Fallback: first admin in org (via org_members + profiles)
-      const { data: adminMembersForCreatedBy } = await supabase
+      const { data: adminMembersForCreatedBy, error: adminMembersErr } = await supabase
         .from("org_members")
         .select("clerk_user_id")
         .eq("organization_id", orgId)
@@ -615,8 +615,12 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
         .eq("status", "active")
         .limit(10);
 
+      console.log(`[automation-worker] Admin members for created_by:`, JSON.stringify(adminMembersForCreatedBy), adminMembersErr?.message);
+
       if (adminMembersForCreatedBy && adminMembersForCreatedBy.length > 0) {
         const clerkIds = adminMembersForCreatedBy.map((m: any) => m.clerk_user_id);
+        
+        // Try with organization_id first
         const { data: adminFallback } = await supabase
           .from("profiles")
           .select("id")
@@ -625,9 +629,26 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
           .order("created_at")
           .limit(1)
           .maybeSingle();
+        
         if (adminFallback) {
           resolvedCreatedBy = adminFallback.id;
           createdByStrategy = "fallback_first_admin";
+        } else {
+          // Try without organization_id filter (profile may not have org_id set yet)
+          const { data: adminFallback2 } = await supabase
+            .from("profiles")
+            .select("id")
+            .in("clerk_user_id", clerkIds)
+            .order("created_at")
+            .limit(1)
+            .maybeSingle();
+          
+          console.log(`[automation-worker] Admin fallback2 (no org filter):`, JSON.stringify(adminFallback2));
+          
+          if (adminFallback2) {
+            resolvedCreatedBy = adminFallback2.id;
+            createdByStrategy = "fallback_first_admin_no_org";
+          }
         }
       }
     }
