@@ -10,6 +10,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
+const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
+
 export default function Onboarding() {
   const { user } = useUser();
   const { refreshProfile } = useAuth();
@@ -31,9 +34,33 @@ export default function Onboarding() {
       const name = user.fullName || user.firstName || email.split("@")[0] || "Usuário";
       const avatarUrl = user.imageUrl || undefined;
 
-      console.log("🏢 Creating organization:", companyName);
+      console.log("🏢 Creating organization via bootstrap-org:", companyName);
 
-      // 1. Create organization
+      // 1. Call bootstrap-org edge function (creates Clerk org + Supabase mirror)
+      const bootstrapRes = await fetch(`${SUPABASE_URL}/functions/v1/bootstrap-org`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({
+          clerk_user_id: clerkUserId,
+          email,
+          full_name: name,
+          avatar_url: avatarUrl,
+          org_name: companyName.trim(),
+        }),
+      });
+
+      const bootstrapData = await bootstrapRes.json();
+
+      if (!bootstrapRes.ok || !bootstrapData.ok) {
+        throw new Error(bootstrapData.error || "Erro ao criar organização");
+      }
+
+      console.log("✅ Organization bootstrapped:", bootstrapData);
+
+      // 2. Also create the legacy organization + profile for backward compatibility
       const { data: newOrg, error: orgError } = await supabase
         .from("organizations")
         .insert({
@@ -45,67 +72,47 @@ export default function Onboarding() {
         .single();
 
       if (orgError) {
-        throw new Error("Erro ao criar organização: " + orgError.message);
-      }
-
-      console.log("✅ Organization created:", newOrg.id);
-
-      // 2. Upsert profile (may already exist from a previous attempt)
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("clerk_user_id", clerkUserId)
-        .maybeSingle();
-
-      if (existingProfile) {
-        // Update existing profile with the new org
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({ organization_id: newOrg.id })
-          .eq("clerk_user_id", clerkUserId);
-
-        if (updateError) {
-          await supabase.from("organizations").delete().eq("id", newOrg.id);
-          throw new Error("Erro ao atualizar perfil: " + updateError.message);
-        }
-        console.log("✅ Profile updated with new org");
+        console.warn("⚠️ Legacy org creation error (non-critical):", orgError.message);
       } else {
-        const { error: profileError } = await supabase
+        // Upsert legacy profile
+        const { data: existingProfile } = await supabase
           .from("profiles")
-          .insert({
-            clerk_user_id: clerkUserId,
-            email,
-            name,
-            avatar_url: avatarUrl,
-            organization_id: newOrg.id,
-          });
+          .select("id")
+          .eq("clerk_user_id", clerkUserId)
+          .maybeSingle();
 
-        if (profileError) {
-          await supabase.from("organizations").delete().eq("id", newOrg.id);
-          throw new Error("Erro ao criar perfil: " + profileError.message);
+        if (existingProfile) {
+          await supabase
+            .from("profiles")
+            .update({ organization_id: newOrg.id })
+            .eq("clerk_user_id", clerkUserId);
+        } else {
+          await supabase
+            .from("profiles")
+            .insert({
+              clerk_user_id: clerkUserId,
+              email,
+              name,
+              avatar_url: avatarUrl,
+              organization_id: newOrg.id,
+            });
         }
-        console.log("✅ Profile created");
-      }
 
-      // 3. Create admin role
-      await supabase.from("user_roles").insert({
-        clerk_user_id: clerkUserId,
-        organization_id: newOrg.id,
-        role: "admin",
-      });
+        // Create admin role in legacy table
+        await supabase.from("user_roles").insert({
+          clerk_user_id: clerkUserId,
+          organization_id: newOrg.id,
+          role: "admin",
+        });
 
-      console.log("✅ Admin role created");
-
-      // 4. Create default lead sources
-      const defaultSources = [
-        { name: "Meta Ads", sort_order: 10 },
-        { name: "Indicação", sort_order: 20 },
-        { name: "Site", sort_order: 30 },
-        { name: "Orgânico", sort_order: 40 },
-      ];
-      const { error: sourcesError } = await supabase
-        .from("lead_sources")
-        .insert(
+        // Create default lead sources
+        const defaultSources = [
+          { name: "Meta Ads", sort_order: 10 },
+          { name: "Indicação", sort_order: 20 },
+          { name: "Site", sort_order: 30 },
+          { name: "Orgânico", sort_order: 40 },
+        ];
+        await supabase.from("lead_sources").insert(
           defaultSources.map((s) => ({
             name: s.name,
             sort_order: s.sort_order,
@@ -113,98 +120,58 @@ export default function Onboarding() {
             created_by: clerkUserId,
             is_active: true,
           }))
-        );
-
-      if (sourcesError) {
-        console.warn("⚠️ Lead sources seed error (non-critical):", sourcesError);
-      } else {
-        console.log("✅ Default lead sources created");
-      }
-
-      // 5. Create default pipeline via idempotent seed function
-      const { data: pipelineId, error: seedError } = await supabase.rpc('seed_default_pipeline', {
-        p_org_id: newOrg.id,
-        p_created_by: clerkUserId,
-      });
-
-      if (seedError) {
-        console.warn("⚠️ Pipeline seed error (non-critical):", seedError);
-      } else {
-        console.log("✅ Default pipeline created:", pipelineId);
-      }
-
-      // 6. Create default "Boas-vindas Lead" automation
-      try {
-        const supabaseUrl = "https://tapbwlmdvluqdgvixkxf.supabase.co";
-        const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
-
-        // Create automation
-        const createRes = await fetch(`${supabaseUrl}/functions/v1/automations-api`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
-          body: JSON.stringify({
-            action: "create",
-            organization_id: newOrg.id,
-            name: "Boas-vindas Lead",
-            description: "Envia mensagem de boas-vindas automaticamente para novos leads",
-            created_by: clerkUserId,
-            channel: "whatsapp",
-          }),
+        ).then(({ error }) => {
+          if (error) console.warn("⚠️ Lead sources seed error (non-critical):", error);
         });
-        const createData = await createRes.json();
 
-        if (createData.ok && createData.automation) {
-          // Save flow with trigger → delay → message
-          const nodes = [
-            {
-              id: "trigger_1",
-              type: "trigger",
-              position: { x: 250, y: 50 },
-              data: { label: "Novo Lead", config: { triggerType: "lead_created" } },
-            },
-            {
-              id: "delay_1",
-              type: "delay",
-              position: { x: 250, y: 200 },
-              data: { label: "Esperar 1 min", config: { amount: 1, unit: "minutes" } },
-            },
-            {
-              id: "message_1",
-              type: "message",
-              position: { x: 250, y: 350 },
-              data: {
-                label: "Boas-vindas",
-                config: { text: "Olá {{lead.name}}, vi seu interesse. Posso te ajudar?" },
-              },
-            },
-          ];
-          const edges = [
-            { id: "e_trigger_delay", source: "trigger_1", target: "delay_1" },
-            { id: "e_delay_message", source: "delay_1", target: "message_1" },
-          ];
+        // Create default pipeline
+        await supabase.rpc('seed_default_pipeline', {
+          p_org_id: newOrg.id,
+          p_created_by: clerkUserId,
+        }).then(({ error }) => {
+          if (error) console.warn("⚠️ Pipeline seed error (non-critical):", error);
+        });
 
-          await fetch(`${supabaseUrl}/functions/v1/automations-api`, {
+        // Create default automation
+        try {
+          const createRes = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
             body: JSON.stringify({
-              action: "save_flow",
-              automation_id: createData.automation.id,
+              action: "create",
               organization_id: newOrg.id,
-              nodes,
-              edges,
+              name: "Boas-vindas Lead",
+              description: "Envia mensagem de boas-vindas automaticamente para novos leads",
+              created_by: clerkUserId,
+              channel: "whatsapp",
             }),
           });
-          console.log("✅ Default automation created");
+          const createData = await createRes.json();
+          if (createData.ok && createData.automation) {
+            const nodes = [
+              { id: "trigger_1", type: "trigger", position: { x: 250, y: 50 }, data: { label: "Novo Lead", config: { triggerType: "lead_created" } } },
+              { id: "delay_1", type: "delay", position: { x: 250, y: 200 }, data: { label: "Esperar 1 min", config: { amount: 1, unit: "minutes" } } },
+              { id: "message_1", type: "message", position: { x: 250, y: 350 }, data: { label: "Boas-vindas", config: { text: "Olá {{lead.name}}, vi seu interesse. Posso te ajudar?" } } },
+            ];
+            const edges = [
+              { id: "e_trigger_delay", source: "trigger_1", target: "delay_1" },
+              { id: "e_delay_message", source: "delay_1", target: "message_1" },
+            ];
+            await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPABASE_KEY}` },
+              body: JSON.stringify({ action: "save_flow", automation_id: createData.automation.id, organization_id: newOrg.id, nodes, edges }),
+            });
+          }
+        } catch (autoErr) {
+          console.warn("⚠️ Default automation error (non-critical):", autoErr);
         }
-      } catch (autoErr) {
-        console.warn("⚠️ Default automation error (non-critical):", autoErr);
       }
 
       toast.success("Empresa criada com sucesso!", {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
 
-      // Refresh profile and navigate
       await refreshProfile();
       navigate("/", { replace: true });
 

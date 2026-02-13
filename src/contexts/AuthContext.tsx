@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useUser, useAuth as useClerkAuth, useClerk } from '@clerk/clerk-react';
 import { useClerkSupabase } from '@/hooks/useClerkSupabase';
+import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
 import { useClerkAvailable } from '@/providers/ClerkProvider';
 
 interface Profile {
@@ -35,6 +36,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   isAdmin: boolean;
+  // New Phase 2 fields
+  orgId: string | null;
+  clerkOrgId: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +49,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { signOut: clerkSignOut } = useClerkAuth();
   const { openSignIn, openSignUp } = useClerk();
   const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
+  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding } = useAuthBootstrap();
 
   // Converter usuário Clerk para formato compatível
   const user: CompatUser | null = clerkUser ? {
@@ -52,8 +57,11 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     email: clerkUser.primaryEmailAddress?.emailAddress,
   } : null;
 
-  // Loading state combinado
-  const loading = !clerkLoaded || supabaseLoading;
+  // Combined loading
+  const loading = !clerkLoaded || supabaseLoading || bootstrapLoading;
+
+  // Merge needsOnboarding from both hooks
+  const combinedNeedsOnboarding = needsOnboarding || bootstrapNeedsOnboarding;
 
   // signIn agora abre o modal do Clerk
   const signIn = useCallback(async (_email: string, _password: string): Promise<{ error: any }> => {
@@ -82,22 +90,26 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     await clerkSignOut();
   }, [clerkSignOut]);
 
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || org?.role === 'admin';
+
+  const combinedError = error || (bootstrapError ? new Error(bootstrapError) : null);
 
   const value: AuthContextType = useMemo(() => ({
     user,
     session: clerkUser ? { user: clerkUser } : null,
     profile,
-    role,
-    error,
+    role: org?.role || role,
+    error: combinedError,
     loading,
-    needsOnboarding,
+    needsOnboarding: combinedNeedsOnboarding,
     signIn,
     signUp,
     signOut,
     refreshProfile,
     isAdmin,
-  }), [user, clerkUser, profile, role, error, loading, needsOnboarding, signIn, signUp, signOut, refreshProfile, isAdmin]);
+    orgId: org?.org_id || null,
+    clerkOrgId: org?.clerk_org_id || null,
+  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, isAdmin, org]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -133,6 +145,8 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     signOut,
     refreshProfile,
     isAdmin: false,
+    orgId: null,
+    clerkOrgId: null,
   }), [signIn, signUp, signOut, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

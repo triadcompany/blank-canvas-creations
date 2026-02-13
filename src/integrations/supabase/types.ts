@@ -1112,6 +1112,7 @@ export type Database = {
         Row: {
           clerk_org_id: string
           created_at: string
+          created_by_clerk_user_id: string | null
           deleted_at: string | null
           id: string
           name: string
@@ -1121,6 +1122,7 @@ export type Database = {
         Insert: {
           clerk_org_id: string
           created_at?: string
+          created_by_clerk_user_id?: string | null
           deleted_at?: string | null
           id?: string
           name: string
@@ -1130,6 +1132,7 @@ export type Database = {
         Update: {
           clerk_org_id?: string
           created_at?: string
+          created_by_clerk_user_id?: string | null
           deleted_at?: string | null
           id?: string
           name?: string
@@ -4780,6 +4783,7 @@ export type Database = {
           id: string
           organization_id: string
           role: string
+          status: string
           updated_at: string
         }
         Insert: {
@@ -4789,6 +4793,7 @@ export type Database = {
           id?: string
           organization_id: string
           role: string
+          status?: string
           updated_at?: string
         }
         Update: {
@@ -4798,6 +4803,7 @@ export type Database = {
           id?: string
           organization_id?: string
           role?: string
+          status?: string
           updated_at?: string
         }
         Relationships: [
@@ -6116,27 +6122,33 @@ export type Database = {
       }
       users_profile: {
         Row: {
+          avatar_url: string | null
           clerk_user_id: string
           created_at: string
           email: string | null
           full_name: string | null
-          image_url: string | null
+          id: string | null
+          last_login_at: string | null
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           clerk_user_id: string
           created_at?: string
           email?: string | null
           full_name?: string | null
-          image_url?: string | null
+          id?: string | null
+          last_login_at?: string | null
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           clerk_user_id?: string
           created_at?: string
           email?: string | null
           full_name?: string | null
-          image_url?: string | null
+          id?: string | null
+          last_login_at?: string | null
           updated_at?: string
         }
         Relationships: []
