@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReadOnlyBanner } from "@/components/auth/ReadOnlyBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -172,14 +173,9 @@ export function Settings() {
 
     if (isReadonly && activeTab !== "profile") {
       return (
-        <div className="relative">
-          <div className="absolute top-0 right-0 z-10">
-            <Badge variant="secondary" className="font-poppins text-xs">
-              <Shield className="h-3 w-3 mr-1" />
-              Somente visualização
-            </Badge>
-          </div>
-          <div className="pointer-events-none opacity-70 select-none">
+        <div>
+          <ReadOnlyBanner />
+          <div className="pointer-events-none opacity-80 select-none">
             {content}
           </div>
         </div>
