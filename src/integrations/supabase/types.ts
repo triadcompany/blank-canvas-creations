@@ -5501,6 +5501,7 @@ export type Database = {
           created_at: string | null
           email: string | null
           id: string
+          inbox_enabled: boolean
           is_active: boolean | null
           name: string
           phone: string | null
@@ -5519,6 +5520,7 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id?: string
+          inbox_enabled?: boolean
           is_active?: boolean | null
           name: string
           phone?: string | null
@@ -5537,6 +5539,7 @@ export type Database = {
           created_at?: string | null
           email?: string | null
           id?: string
+          inbox_enabled?: boolean
           is_active?: boolean | null
           name?: string
           phone?: string | null

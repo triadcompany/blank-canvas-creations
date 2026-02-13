@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useOrgSettings } from "@/hooks/useOrgSettings";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard,
@@ -122,6 +123,7 @@ export function CRMSidebar() {
   const { open } = useSidebar();
   const location = useLocation();
   const { isAdmin } = useAuth();
+  const { settings: orgSettings } = useOrgSettings();
   const currentPath = location.pathname;
   const searchParams = new URLSearchParams(location.search);
   const currentTab = searchParams.get('tab');
@@ -138,6 +140,13 @@ export function CRMSidebar() {
     active 
       ? "bg-primary text-primary-foreground font-medium" 
       : "hover:bg-accent hover:text-accent-foreground";
+
+  const filteredNavItems = useMemo(() => {
+    return navigationItems.filter(item => {
+      if (item.url === '/inbox' && !orgSettings.inbox_enabled) return false;
+      return true;
+    });
+  }, [orgSettings.inbox_enabled]);
 
   return (
     <Sidebar collapsible="icon">
@@ -162,7 +171,7 @@ export function CRMSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
-              {navigationItems.map((item) => (
+              {filteredNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useInbox, InboxThread, InboxMessage, ConversationStatus } from '@/hooks/useInbox';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useOrgSettings } from '@/hooks/useOrgSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -470,6 +471,14 @@ export default function InboxPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [messageText, setMessageText] = useState('');
+  const { settings: orgSettings, loading: orgSettingsLoading } = useOrgSettings();
+
+  // Redirect if inbox is disabled
+  useEffect(() => {
+    if (!orgSettingsLoading && !orgSettings.inbox_enabled) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [orgSettings.inbox_enabled, orgSettingsLoading, navigate]);
 
   // Auto-select thread by phone query param (e.g. from Kanban)
   useEffect(() => {
