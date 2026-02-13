@@ -69,12 +69,10 @@ async function callMetaCapiEndpoint(body: Record<string, unknown>) {
 
 // ═══════════ MAIN COMPONENT ═══════════
 export function MetaAdsSettings() {
-  const { profile, role, loading: authLoading } = useAuth();
-  const orgId = profile?.organization_id;
+  const { profile, role, loading: authLoading, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
   const profileId = profile?.id;
   const isAdmin = role === "admin";
-
-  console.log('[MetaAds] authLoading', authLoading, 'orgId', orgId, 'profileId', profileId);
 
   if (authLoading) {
     return (

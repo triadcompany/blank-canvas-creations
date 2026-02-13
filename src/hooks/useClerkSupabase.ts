@@ -82,8 +82,29 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
         const invitedOrgId = metadata?.organization_id as string | undefined;
         const invitedRole = (metadata?.role as string) || 'seller';
 
-        if (invitedOrgId) {
-          console.log('🎟️ Invited user detected, auto-provisioning profile...');
+        // Determine org ID: from invite metadata OR from existing org_members row
+        let resolvedOrgId = invitedOrgId;
+        let resolvedRole = invitedRole;
+
+        if (!resolvedOrgId) {
+          // Check if user has an org membership (created by sync-login / bootstrap)
+          const { data: membership } = await supabase
+            .from('org_members')
+            .select('organization_id, role')
+            .eq('clerk_user_id', clerkUserId)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle();
+
+          if (membership?.organization_id) {
+            console.log('🔗 Found org_members membership, auto-provisioning profile...');
+            resolvedOrgId = membership.organization_id;
+            resolvedRole = membership.role || 'admin';
+          }
+        }
+
+        if (resolvedOrgId) {
+          console.log('🎟️ Auto-provisioning profile for org:', resolvedOrgId);
           const { data: newProfile, error: insertError } = await supabase
             .from('profiles')
             .insert({
@@ -91,28 +112,29 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
               email,
               name,
               avatar_url: avatarUrl,
-              organization_id: invitedOrgId,
+              organization_id: resolvedOrgId,
               onboarding_completed: true,
             })
             .select()
             .single();
 
           if (insertError) {
-            throw new Error(insertError.message);
+            console.error('❌ Profile auto-provision failed:', insertError);
+            // Don't throw - fall through to onboarding
+          } else {
+            await supabase.from('user_roles').upsert({
+              clerk_user_id: clerkUserId,
+              organization_id: resolvedOrgId,
+              role: resolvedRole === 'admin' ? 'admin' : 'seller',
+            }, { onConflict: 'clerk_user_id,organization_id' }).select();
+
+            setProfile(newProfile as Profile);
+            setRole(resolvedRole === 'admin' ? 'admin' : 'seller');
+            return newProfile as Profile;
           }
-
-          await supabase.from('user_roles').insert({
-            clerk_user_id: clerkUserId,
-            organization_id: invitedOrgId,
-            role: invitedRole === 'admin' ? 'admin' : 'seller',
-          });
-
-          setProfile(newProfile as Profile);
-          setRole(invitedRole === 'admin' ? 'admin' : 'seller');
-          return newProfile as Profile;
         }
 
-        console.log('📝 No profile found - needs onboarding');
+        console.log('📝 No profile found and no membership - needs onboarding');
         setNeedsOnboarding(true);
         setProfile(null);
         setRole(null);
