@@ -45,75 +45,53 @@ export function useSupabaseProfiles() {
       return;
     }
 
-    // Se não for admin, carrega apenas o próprio perfil
-    if (!isAdmin) {
-      if (user) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('clerk_user_id', user.id)
-          .eq('organization_id', organizationId)
-          .single();
-        
-        if (!error && data) {
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('clerk_user_id', user.id)
-            .eq('organization_id', organizationId)
-            .single();
-          
-          setProfiles([{
-            ...data,
-            role: roleData?.role || 'seller'
-          }]);
-        }
+    try {
+      const { data, error } = await supabase.rpc('get_org_profiles_with_roles', {
+        p_org_id: organizationId,
+      });
+
+      if (error) {
+        console.error('Error fetching profiles via RPC:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao carregar usuários",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-      return;
-    }
 
-    // Admin: buscar SOMENTE perfis e roles da mesma organização
-    const [profilesResult, rolesResult, invitationsResult] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('user_roles')
-        .select('clerk_user_id, role')
-        .eq('organization_id', organizationId),
-      supabase
-        .from('user_invitations')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false })
-    ]);
+      const result = data as any;
 
-    if (profilesResult.error) {
+      // Build profiles with roles
+      const profilesList = result?.profiles || [];
+      const rolesList = result?.roles || [];
+
+      if (!isAdmin && user) {
+        // Non-admin: only show own profile
+        const ownProfile = profilesList.find((p: any) => p.clerk_user_id === user.id);
+        if (ownProfile) {
+          const ownRole = rolesList.find((r: any) => r.clerk_user_id === user.id);
+          setProfiles([{ ...ownProfile, role: ownRole?.role || 'seller' }]);
+        } else {
+          setProfiles([]);
+        }
+      } else {
+        // Admin: all profiles with roles
+        const profilesWithRoles = profilesList.map((profile: any) => ({
+          ...profile,
+          role: rolesList.find((r: any) => r.clerk_user_id === profile.clerk_user_id)?.role || 'seller',
+        }));
+        setProfiles(profilesWithRoles);
+        setInvitations((result?.invitations || []) as unknown as UserInvitation[]);
+      }
+    } catch (err) {
+      console.error('Error in fetchProfiles:', err);
       toast({
         title: "Erro",
         description: "Erro ao carregar usuários",
         variant: "destructive",
       });
-    } else {
-      const profilesWithRoles = (profilesResult.data || []).map(profile => ({
-        ...profile,
-        role: rolesResult.data?.find(r => r.clerk_user_id === profile.clerk_user_id)?.role || 'seller'
-      }));
-      setProfiles(profilesWithRoles);
-    }
-
-    if (invitationsResult.error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar convites",
-        variant: "destructive",
-      });
-    } else {
-      setInvitations((invitationsResult.data || []) as unknown as UserInvitation[]);
     }
 
     setLoading(false);

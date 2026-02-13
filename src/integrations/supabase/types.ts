@@ -7869,6 +7869,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_org_profiles_with_roles: { Args: { p_org_id: string }; Returns: Json }
       get_pipeline_stages: {
         Args: { p_pipeline_id: string }
         Returns: {
