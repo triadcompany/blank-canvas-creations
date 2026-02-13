@@ -481,10 +481,9 @@ async function resolveSellerOrOwner(
   // C) Fallback 1: automation creator
   if (automationCreatedBy) {
     const { data: creatorProfile } = await supabase
-      .from("profiles")
+      .from("users_profile")
       .select("id")
       .eq("id", automationCreatedBy)
-      .eq("organization_id", orgId)
       .maybeSingle();
     if (creatorProfile) {
       return { sellerId: creatorProfile.id, strategy: "fallback_created_by" };
@@ -503,9 +502,8 @@ async function resolveSellerOrOwner(
   if (sellerMembers && sellerMembers.length > 0) {
     const clerkIds = sellerMembers.map((m: any) => m.clerk_user_id);
     const { data: sellerProfile } = await supabase
-      .from("profiles")
+      .from("users_profile")
       .select("id")
-      .eq("organization_id", orgId)
       .in("clerk_user_id", clerkIds)
       .order("created_at")
       .limit(1)
@@ -527,9 +525,8 @@ async function resolveSellerOrOwner(
   if (adminMembers && adminMembers.length > 0) {
     const clerkIds = adminMembers.map((m: any) => m.clerk_user_id);
     const { data: adminProfile } = await supabase
-      .from("profiles")
+      .from("users_profile")
       .select("id")
-      .eq("organization_id", orgId)
       .in("clerk_user_id", clerkIds)
       .order("created_at")
       .limit(1)
@@ -590,12 +587,11 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       .eq("id", job.automation_id)
       .maybeSingle();
     if (automation && automation.created_by && automation.created_by !== "unknown") {
-      // Validate it's a real profile UUID in this org
+      // Validate it's a real profile UUID
       const { data: creatorProfile } = await supabase
-        .from("profiles")
+        .from("users_profile")
         .select("id")
         .eq("id", automation.created_by)
-        .eq("organization_id", orgId)
         .maybeSingle();
       if (creatorProfile) {
         automationCreatedBy = creatorProfile.id;
@@ -606,8 +602,8 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       resolvedCreatedBy = automationCreatedBy;
       createdByStrategy = "automation_creator";
     } else {
-      // Fallback: first admin in org (via org_members + profiles)
-      const { data: adminMembersForCreatedBy, error: adminMembersErr } = await supabase
+      // Fallback: first admin in org (via org_members + users_profile)
+      const { data: adminMembersForCreatedBy } = await supabase
         .from("org_members")
         .select("clerk_user_id")
         .eq("organization_id", orgId)
@@ -615,16 +611,11 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
         .eq("status", "active")
         .limit(10);
 
-      console.log(`[automation-worker] Admin members for created_by:`, JSON.stringify(adminMembersForCreatedBy), adminMembersErr?.message);
-
       if (adminMembersForCreatedBy && adminMembersForCreatedBy.length > 0) {
         const clerkIds = adminMembersForCreatedBy.map((m: any) => m.clerk_user_id);
-        
-        // Try with organization_id first
         const { data: adminFallback } = await supabase
-          .from("profiles")
+          .from("users_profile")
           .select("id")
-          .eq("organization_id", orgId)
           .in("clerk_user_id", clerkIds)
           .order("created_at")
           .limit(1)
@@ -633,22 +624,6 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
         if (adminFallback) {
           resolvedCreatedBy = adminFallback.id;
           createdByStrategy = "fallback_first_admin";
-        } else {
-          // Try without organization_id filter (profile may not have org_id set yet)
-          const { data: adminFallback2 } = await supabase
-            .from("profiles")
-            .select("id")
-            .in("clerk_user_id", clerkIds)
-            .order("created_at")
-            .limit(1)
-            .maybeSingle();
-          
-          console.log(`[automation-worker] Admin fallback2 (no org filter):`, JSON.stringify(adminFallback2));
-          
-          if (adminFallback2) {
-            resolvedCreatedBy = adminFallback2.id;
-            createdByStrategy = "fallback_first_admin_no_org";
-          }
         }
       }
     }
