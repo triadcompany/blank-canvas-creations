@@ -100,12 +100,47 @@ export function TestLeadDistribution() {
         return;
       }
 
+      // Create a real test thread
+      const testPhone = `test_${Date.now()}`;
+      const { error: threadError } = await supabase
+        .from('whatsapp_threads')
+        .insert({
+          organization_id: profile?.organization_id!,
+          phone: testPhone,
+          contact_phone_e164: testPhone,
+          contact_name: `Teste Distribuição (${selectedBucket})`,
+          assigned_user_id: assignedUserId,
+          routing_bucket: selectedBucket,
+          instance_name: 'test-simulation',
+          remote_jid: `${testPhone}@s.whatsapp.net`,
+        });
+
+      if (threadError) {
+        console.error('Erro ao criar thread de teste:', threadError);
+        toast.error(`Erro ao criar thread: ${threadError.message}`);
+        return;
+      }
+
+      // Update routing state for round-robin
+      if (mode !== 'fixed_user') {
+        await supabase
+          .from('whatsapp_routing_state')
+          .upsert({
+            organization_id: profile?.organization_id!,
+            bucket: selectedBucket,
+            last_assigned_user_id: assignedUserId,
+          }, { onConflict: 'organization_id,bucket' });
+      }
+
       const userName = getUserName(assignedUserId);
       const bucketLabel = selectedBucket === 'traffic' ? 'Tráfego' : 'Não-tráfego';
       const modeLabel = mode === 'fixed_user' ? 'Usuário único' : 'Round-robin';
 
       setLastResult({ user: userName, bucket: bucketLabel, mode: modeLabel });
-      toast.success(`Simulação: ${userName} receberia o lead (${bucketLabel}, ${modeLabel})`);
+      toast.success(`Lead de teste criado e atribuído a ${userName} (${bucketLabel}, ${modeLabel})`);
+
+      // Reload assignments
+      await loadData();
     } catch (error: any) {
       console.error('Erro ao simular:', error);
       toast.error(error.message || 'Erro ao simular');
