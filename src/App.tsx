@@ -39,12 +39,17 @@ const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    // Register service worker for PWA
-    if ('serviceWorker' in navigator) {
+    // Register service worker for PWA — only in production to avoid stale cache
+    if ('serviceWorker' in navigator && import.meta.env.PROD) {
       navigator.serviceWorker
         .register('/sw.js')
         .then(() => console.log('Service Worker registered'))
         .catch((err) => console.log('Service Worker registration failed:', err));
+    } else if ('serviceWorker' in navigator && !import.meta.env.PROD) {
+      // Unregister SW in dev to avoid stale bundles
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((r) => r.unregister());
+      });
     }
 
     // Add manifest link

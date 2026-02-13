@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,40 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
   const { user, profile, role, loading, error, refreshProfile, signOut, needsOnboarding } = useAuth();
   const location = useLocation();
+  const [stuckLoading, setStuckLoading] = useState(false);
 
-  // Show toast when error occurs (hook at top level)
+  // Diagnostic logging
+  useEffect(() => {
+    console.log('🛡️ ProtectedRoute state', {
+      path: location.pathname,
+      loading,
+      user: !!user,
+      hasProfile: !!profile,
+      needsOnboarding,
+      role,
+      error: error?.message,
+      onboardingCompleted: (profile as any)?.onboarding_completed,
+    });
+  }, [loading, user, profile, needsOnboarding, role, error, location.pathname]);
+
+  // Detect stuck loading after 6 seconds
+  useEffect(() => {
+    if (!loading) {
+      setStuckLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.warn('⚠️ ProtectedRoute: Loading stuck for 6s, showing recovery UI');
+        setStuckLoading(true);
+      }
+    }, 6000);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  // Show toast when error occurs
   useEffect(() => {
     if (error && user && !profile && !needsOnboarding) {
       toast.error('Erro ao configurar conta', {
@@ -26,8 +58,36 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     }
   }, [error, user, profile, needsOnboarding, refreshProfile]);
 
-  // Aguardar carregar
+  // Loading state with stuck detection
   if (loading) {
+    if (stuckLoading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center max-w-md p-6 space-y-4">
+            <p className="font-poppins text-foreground">Demorando mais que o normal…</p>
+            <p className="text-sm text-muted-foreground">
+              Isso pode acontecer na primeira vez ou após uma atualização.
+            </p>
+            <div className="flex gap-2 justify-center pt-2">
+              <Button
+                onClick={() => {
+                  setStuckLoading(false);
+                  refreshProfile();
+                }}
+                size="sm"
+                className="font-poppins"
+              >
+                Tentar novamente
+              </Button>
+              <Button variant="outline" onClick={signOut} size="sm" className="font-poppins">
+                Sair
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -38,21 +98,19 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     );
   }
 
-  // Se não está logado, redireciona para auth
+  // Not logged in
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Se precisa de onboarding (primeira vez), redireciona
-  // Double-check: only redirect if profile doesn't have onboarding_completed
+  // Needs onboarding — double-check with onboarding_completed flag
   if (needsOnboarding && !(profile as any)?.onboarding_completed) {
-    // Evita redirect loop se já está no onboarding
     if (location.pathname !== '/onboarding') {
       return <Navigate to="/onboarding" replace />;
     }
   }
 
-  // Se profile ainda não existe e não é onboarding, mostrar loading com retry
+  // Profile missing but not onboarding — show retry UI
   if (!profile && !needsOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -80,9 +138,9 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     );
   }
 
-  // Verificar permissão de admin
+  // Admin check
   if (adminOnly && role !== 'admin') {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

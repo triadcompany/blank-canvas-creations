@@ -4,6 +4,16 @@ import { useUser } from '@clerk/clerk-react';
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
 
+/** Race a promise against a timeout */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 interface OrgInfo {
   org_id: string;
   clerk_org_id: string;
@@ -18,13 +28,6 @@ interface UseAuthBootstrapReturn {
   retryBootstrap: () => Promise<void>;
 }
 
-/**
- * Hook that bootstraps user on login:
- * 1. Syncs user profile to Supabase (sync-login)
- * 2. Checks for existing org membership
- * 3. If no org found, calls bootstrap-org to create one
- * 4. Returns resolved org info
- */
 export function useAuthBootstrap(): UseAuthBootstrapReturn {
   const { user, isLoaded } = useUser();
   const [org, setOrg] = useState<OrgInfo | null>(null);
@@ -62,15 +65,17 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
 
       console.log('🔄 useAuthBootstrap: syncing login for', clerkUserId);
 
-      // Step 1: Sync login (upsert profile + get membership)
-      const syncResult = await callEdgeFunction('sync-login', {
-        clerk_user_id: clerkUserId,
-        email,
-        full_name: fullName,
-        avatar_url: avatarUrl,
-      });
+      const syncResult = await withTimeout(
+        callEdgeFunction('sync-login', {
+          clerk_user_id: clerkUserId,
+          email,
+          full_name: fullName,
+          avatar_url: avatarUrl,
+        }),
+        8000,
+        'sync-login'
+      );
 
-      // Step 2: Check if membership already exists
       if (syncResult.membership) {
         console.log('✅ User has existing org membership');
         setOrg({
@@ -82,27 +87,24 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
         return;
       }
 
-      // Step 3: Check Clerk orgs (user might have been invited via Clerk)
-      // If no membership in Supabase, try to bootstrap
       console.log('📝 No org found, checking if we should auto-create...');
 
-      // Check Clerk organizationMemberships from user object
       const clerkMemberships = clerkUser.organizationMemberships;
-      
+
       if (clerkMemberships && clerkMemberships.length > 0) {
-        // User has Clerk org but not in Supabase yet — webhook should handle this
-        // For now, wait a bit and re-check
         console.log('⏳ User has Clerk org, waiting for webhook sync...');
-        // Give webhook a chance to fire
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Re-check
-        const recheck = await callEdgeFunction('sync-login', {
-          clerk_user_id: clerkUserId,
-          email,
-          full_name: fullName,
-          avatar_url: avatarUrl,
-        });
+
+        const recheck = await withTimeout(
+          callEdgeFunction('sync-login', {
+            clerk_user_id: clerkUserId,
+            email,
+            full_name: fullName,
+            avatar_url: avatarUrl,
+          }),
+          8000,
+          'sync-login recheck'
+        );
 
         if (recheck.membership) {
           setOrg({
@@ -115,11 +117,9 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
         }
       }
 
-      // Step 4: No org anywhere — needs onboarding (will create via bootstrap-org)
       console.log('📝 No org found anywhere — marking needsOnboarding');
       setNeedsOnboarding(true);
       setOrg(null);
-
     } catch (err: any) {
       console.error('❌ useAuthBootstrap error:', err.message);
       setError(err.message);
@@ -129,9 +129,14 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
   }, [callEdgeFunction]);
 
   const retryBootstrap = useCallback(async () => {
-    if (user) {
-      setLoading(true);
-      await bootstrap(user);
+    if (!user) return;
+    setLoading(true);
+    try {
+      await withTimeout(bootstrap(user), 10000, 'retryBootstrap');
+    } catch (err: any) {
+      console.error('❌ retryBootstrap error:', err.message);
+      setError(err.message);
+    } finally {
       setLoading(false);
     }
   }, [user, bootstrap]);
@@ -148,7 +153,12 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
     }
 
     setLoading(true);
-    bootstrap(user).finally(() => setLoading(false));
+    withTimeout(bootstrap(user), 10000, 'bootstrap')
+      .catch((err: any) => {
+        console.error('❌ Bootstrap timeout/error:', err.message);
+        setError(err.message);
+      })
+      .finally(() => setLoading(false));
   }, [user, isLoaded, bootstrap]);
 
   return useMemo(() => ({
