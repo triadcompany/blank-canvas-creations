@@ -279,7 +279,7 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="__empty__" disabled>
                         Nenhuma origem cadastrada — vá em Configurações → Origens de Leads
                       </SelectItem>
                     )}
