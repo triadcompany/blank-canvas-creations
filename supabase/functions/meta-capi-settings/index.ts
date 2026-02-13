@@ -76,45 +76,48 @@ serve(async (req) => {
       );
     }
 
-    // ── Verify profile belongs to org ──
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("id, organization_id, clerk_user_id, name, email")
+    // ── Verify profile belongs to org (uses users_profile + org_members) ──
+    // First try users_profile by id
+    let profile: any = null;
+    const { data: upById } = await supabase
+      .from("users_profile")
+      .select("id, clerk_user_id, full_name, email, avatar_url")
       .eq("id", profile_id)
-      .single();
+      .maybeSingle();
 
-    if (profileErr || !profile) {
-      console.error(`${prefix} Profile not found:`, profileErr);
+    if (upById) {
+      profile = upById;
+    } else {
+      // Fallback: try by clerk_user_id
+      const { data: upByClerk } = await supabase
+        .from("users_profile")
+        .select("id, clerk_user_id, full_name, email, avatar_url")
+        .eq("clerk_user_id", profile_id)
+        .maybeSingle();
+      if (upByClerk) profile = upByClerk;
+    }
+
+    if (!profile) {
+      console.error(`${prefix} Profile not found in users_profile for id=${profile_id}`);
       return json({ ok: false, code: "PROFILE_NOT_FOUND", message: "Perfil não encontrado" }, 403);
     }
 
-    if (profile.organization_id !== organization_id) {
-      console.error(`${prefix} Org mismatch: profile.org=${profile.organization_id}, requested=${organization_id}`);
+    // Verify membership in org via org_members
+    const { data: membership } = await supabase
+      .from("org_members")
+      .select("organization_id, role")
+      .eq("clerk_user_id", profile.clerk_user_id)
+      .eq("organization_id", organization_id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!membership) {
+      console.error(`${prefix} No active membership for clerk_user_id=${profile.clerk_user_id} in org=${organization_id}`);
       return json({ ok: false, code: "ORG_MISMATCH", message: "Organização não corresponde ao perfil" }, 403);
     }
 
-    // Check admin role (lenient for Clerk-only setups)
-    const { data: roleRow } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", profile.clerk_user_id)
-      .limit(1)
-      .maybeSingle();
-
-    let isAdmin = roleRow?.role === "admin";
-    if (!isAdmin) {
-      const { data: roleRows } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("organization_id", organization_id)
-        .limit(10);
-      if (roleRows && roleRows.length > 0) {
-        isAdmin = roleRows.some((r: any) => r.role === "admin");
-      } else {
-        isAdmin = true; // No roles table entries – Clerk-only, allow
-      }
-    }
-
+    // Check admin role from org_members
+    const isAdmin = membership.role === "admin";
     console.log(`${prefix} is_admin=${isAdmin}`);
 
     // ── Auto-heal: ensure org exists in saas_organizations ──
