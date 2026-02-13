@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { clerk_user_id, email, full_name, avatar_url, org_name, slug } = await req.json();
+    const { clerk_user_id, email, full_name, avatar_url, org_name } = await req.json();
 
     if (!clerk_user_id) {
       return new Response(JSON.stringify({ error: "clerk_user_id is required" }), {
@@ -67,18 +67,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Create Organization in Clerk
+    // 3. Create Organization in Clerk (without slug — not enabled on this instance)
     const orgName = org_name || "Minha Organização";
-    const orgSlug =
-      slug ||
-      orgName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-        "-" +
-        Math.random().toString(36).slice(2, 7);
 
-    console.log(`🏢 Creating Clerk org: ${orgName} (${orgSlug})`);
+    console.log(`🏢 Creating Clerk org: ${orgName}`);
 
     const clerkOrgRes = await fetch("https://api.clerk.com/v1/organizations", {
       method: "POST",
@@ -88,7 +80,6 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         name: orgName,
-        slug: orgSlug,
         created_by: clerk_user_id,
       }),
     });
@@ -136,7 +127,6 @@ Deno.serve(async (req) => {
         {
           clerk_org_id: clerkOrgId,
           name: orgName,
-          slug: orgSlug,
           created_by_clerk_user_id: clerk_user_id,
         },
         { onConflict: "clerk_org_id" }
