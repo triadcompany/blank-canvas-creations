@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { CRMLayout } from "@/components/layout/CRMLayout";
 import { ClerkProvider } from "@/providers/ClerkProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppGate } from "@/components/AppGate";
 import { Dashboard } from "@/pages/Dashboard";
 import { Oportunidades } from "@/pages/Oportunidades";
 import { Leads } from "@/pages/Leads";
@@ -39,26 +39,23 @@ const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    // Register service worker for PWA — only in production to avoid stale cache
+    // Register service worker for PWA — only in production
     if ('serviceWorker' in navigator && import.meta.env.PROD) {
       navigator.serviceWorker
         .register('/sw.js')
         .then(() => console.log('Service Worker registered'))
         .catch((err) => console.log('Service Worker registration failed:', err));
     } else if ('serviceWorker' in navigator && !import.meta.env.PROD) {
-      // Unregister SW in dev to avoid stale bundles
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         registrations.forEach((r) => r.unregister());
       });
     }
 
-    // Add manifest link
     const link = document.createElement('link');
     link.rel = 'manifest';
     link.href = '/manifest.json';
     document.head.appendChild(link);
 
-    // Add viewport meta for mobile
     const viewport = document.querySelector('meta[name="viewport"]');
     if (viewport) {
       viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
@@ -74,113 +71,46 @@ const App = () => {
           <AuthProvider>
           <BrowserRouter>
             <Routes>
-            <Route path="/landing" element={<LandingPage />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/seller-auth" element={<SellerAuth />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Dashboard />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/oportunidades" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Oportunidades />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/leads" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Leads />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/reports" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Reports />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Settings />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/pipelines" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Pipelines />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/tarefas" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Tasks />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/prospeccao" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <Prospeccao />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/automacoes" element={
-              <ProtectedRoute>
-                <Automacoes />
-              </ProtectedRoute>
-            } />
-            <Route path="/inbox" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <InboxPage />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/treinar-agente" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <TreinarAgente />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/debug/automations" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <AdminDebugAutomations />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/diagnostico" element={
-              <ProtectedRoute>
-                <CRMLayout>
-                  <AdminDiagnostico />
-                </CRMLayout>
-              </ProtectedRoute>
-            } />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <TabBar />
-          <InstallPrompt />
-          <UpdatePrompt />
-          <OfflineIndicator />
+              {/* ── Public routes ── */}
+              <Route path="/landing" element={<LandingPage />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/seller-auth" element={<SellerAuth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+
+              {/* ── Private routes — all under AppGate ── */}
+              <Route element={<AppGate />}>
+                {/* Onboarding (AppGate only allows access when no org) */}
+                <Route path="/onboarding" element={<Onboarding />} />
+
+                {/* App routes (AppGate only allows when org exists) */}
+                <Route path="/dashboard" element={<CRMLayout><Dashboard /></CRMLayout>} />
+                <Route path="/oportunidades" element={<CRMLayout><Oportunidades /></CRMLayout>} />
+                <Route path="/leads" element={<CRMLayout><Leads /></CRMLayout>} />
+                <Route path="/reports" element={<CRMLayout><Reports /></CRMLayout>} />
+                <Route path="/settings" element={<CRMLayout><Settings /></CRMLayout>} />
+                <Route path="/pipelines" element={<CRMLayout><Pipelines /></CRMLayout>} />
+                <Route path="/tarefas" element={<CRMLayout><Tasks /></CRMLayout>} />
+                <Route path="/prospeccao" element={<CRMLayout><Prospeccao /></CRMLayout>} />
+                <Route path="/automacoes" element={<Automacoes />} />
+                <Route path="/inbox" element={<CRMLayout><InboxPage /></CRMLayout>} />
+                <Route path="/treinar-agente" element={<CRMLayout><TreinarAgente /></CRMLayout>} />
+                <Route path="/admin/debug/automations" element={<CRMLayout><AdminDebugAutomations /></CRMLayout>} />
+                <Route path="/admin/diagnostico" element={<CRMLayout><AdminDiagnostico /></CRMLayout>} />
+              </Route>
+
+              {/* ── Catch-all ── */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <TabBar />
+            <InstallPrompt />
+            <UpdatePrompt />
+            <OfflineIndicator />
           </BrowserRouter>
         </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
     </ClerkProvider>
   );
 };

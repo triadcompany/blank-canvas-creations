@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser, useClerk } from "@clerk/clerk-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,19 +16,13 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 export default function Onboarding() {
   const { user } = useUser();
   const { setActive } = useClerk();
-  const { refreshProfile, retryBootstrap, orgId, loading } = useAuth();
+  const { refreshProfile, retryBootstrap } = useAuth();
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
-  // Guard: if user already has an org, redirect to dashboard immediately
-  useEffect(() => {
-    if (!loading && orgId) {
-      console.log("🚀 Onboarding guard: orgId exists, redirecting to dashboard", orgId);
-      navigate("/dashboard", { replace: true });
-    }
-  }, [loading, orgId, navigate]);
+  // NOTE: No guard/redirect here. AppGate handles all routing decisions.
 
   const handleCreateOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +99,7 @@ export default function Onboarding() {
         if (existingProfile) {
           await supabase
             .from("profiles")
-            .update({ organization_id: newOrg.id })
+            .update({ organization_id: newOrg.id, onboarding_completed: true })
             .eq("clerk_user_id", clerkUserId);
         } else {
           await supabase
@@ -116,6 +110,7 @@ export default function Onboarding() {
               name,
               avatar_url: avatarUrl,
               organization_id: newOrg.id,
+              onboarding_completed: true,
             });
         }
 
@@ -191,15 +186,7 @@ export default function Onboarding() {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
 
-      // 4. Mark onboarding as completed in the profile
-      console.log("🔄 Marking onboarding_completed...");
-      const clerkUserIdForUpdate = user.id;
-      await supabase
-        .from("profiles")
-        .update({ onboarding_completed: true })
-        .eq("clerk_user_id", clerkUserIdForUpdate);
-
-      // 5. Refresh auth state so guards see the new org + completed flag
+      // 4. Refresh auth state so AppGate sees the new org
       console.log("🔄 Refreshing auth state...");
       try {
         await retryBootstrap();
@@ -208,17 +195,17 @@ export default function Onboarding() {
         console.warn("⚠️ Refresh error (non-critical):", refreshErr);
       }
 
-      // 6. Force redirect to /dashboard
-      console.log("🚀 Force redirecting to /dashboard...");
+      // 5. Navigate to dashboard — AppGate will allow it since orgId now exists
+      console.log("🚀 Navigating to /dashboard...");
       navigate("/dashboard", { replace: true });
 
-      // Fallback: if still on onboarding after 800ms, force reload
+      // Fallback: if still on onboarding after 1.5s, force reload
       setTimeout(() => {
         if (window.location.pathname.includes('onboarding')) {
           console.log("⚠️ Still on onboarding, forcing page reload...");
           window.location.href = "/dashboard";
         }
-      }, 800);
+      }, 1500);
 
     } catch (error) {
       console.error("❌ Error creating organization:", error);
@@ -228,18 +215,6 @@ export default function Onboarding() {
       setIsCreating(false);
     }
   };
-
-  // Don't render form if already has org (guard will redirect)
-  if (!loading && orgId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="mt-2 text-muted-foreground">Redirecionando…</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
