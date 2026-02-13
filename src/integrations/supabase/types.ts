@@ -7824,6 +7824,7 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_my_org_id: { Args: never; Returns: string }
       get_org_pipelines: {
         Args: { p_org_id: string }
         Returns: {
@@ -7879,6 +7880,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_org_admin: { Args: never; Returns: boolean }
       notify_automation_event: {
         Args: { event_data: Json; event_type: string; organization_id: string }
         Returns: undefined
