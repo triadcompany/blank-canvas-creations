@@ -190,13 +190,17 @@ export function useSupabaseLeads(pipelineId?: string) {
     const oldStage = stages.find(s => s.id === currentLead?.stage_id);
     const newStage = stages.find(s => s.id === newStageId);
 
-    // Use edge function for server-side validation
-    const result = await changeLeadStatusApi(leadId, newStageId);
+    // Use RPC for server-side validation (Clerk auth compatible)
+    const { error: moveError } = await supabase.rpc('update_lead_rpc', {
+      p_clerk_user_id: profile.clerk_user_id!,
+      p_lead_id: leadId,
+      p_data: { stage_id: newStageId } as any,
+    });
 
-    if (!result.ok) {
+    if (moveError) {
       toast({
         title: "Erro",
-        description: result.error || "Erro ao mover lead",
+        description: moveError.message || "Erro ao mover lead",
         variant: "destructive",
       });
     } else {
