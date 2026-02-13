@@ -336,6 +336,19 @@ export function Settings() {
                       });
 
                       if (result.success) {
+                        // If we have an actionLink, show it for manual sharing (Clerk dev mode may not send emails)
+                        if (result.actionLink) {
+                          toast({
+                            title: '🔗 Link de convite',
+                            description: 'O convite foi criado. Copie o link abaixo e envie ao usuário.',
+                            duration: 15000,
+                          });
+                          await navigator.clipboard.writeText(result.actionLink);
+                          toast({
+                            title: '✅ Link copiado!',
+                            description: 'O link de convite foi copiado para a área de transferência.',
+                          });
+                        }
                         setNewUserEmail('');
                         setNewUserName('');
                         setNewUserRole('seller');
