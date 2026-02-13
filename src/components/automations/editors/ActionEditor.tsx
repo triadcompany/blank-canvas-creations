@@ -74,7 +74,7 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
       const [pRes, sRes, mRes, eRes] = await Promise.all([
         supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
         supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("sort_order").order("name"),
-        supabase.from("profiles").select("id, name").eq("organization_id", orgId).order("name"),
+        supabase.from("org_members").select("profile_id, users_profile!inner(id, name)").eq("organization_id", orgId),
         supabase.from("capi_event_definitions" as any).select("id, name, meta_event_name").eq("organization_id", orgId).eq("active", true).order("name"),
       ]);
       if (pRes.data) setPipelines(pRes.data as Pipeline[]);
