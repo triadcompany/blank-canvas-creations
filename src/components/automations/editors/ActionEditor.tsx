@@ -56,8 +56,8 @@ interface LeadSource {
 
 export function ActionEditor({ config, onChange }: ActionEditorProps) {
   const params = config.params || {};
-  const { profile } = useAuth();
-  const orgId = profile?.organization_id;
+  const { profile, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -285,21 +285,50 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
         <div className="space-y-3">
           <div>
             <Label className="font-poppins text-sm">Pipeline</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="Nome do pipeline"
-              value={params.pipeline || ""}
-              onChange={(e) => updateParams("pipeline", e.target.value)}
-            />
+            <Select
+              value={params.pipeline_id || ""}
+              onValueChange={(v) => {
+                const pipeline = pipelines.find(p => p.id === v);
+                onChange({
+                  ...config,
+                  params: { ...params, pipeline_id: v, pipeline: pipeline?.name || "", stage_id: "", stage: "" },
+                });
+              }}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Selecione o pipeline" />
+              </SelectTrigger>
+              <SelectContent>
+                {pipelines.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label className="font-poppins text-sm">Etapa de destino</Label>
-            <Input
-              className="mt-1.5"
-              placeholder="Nome da etapa"
-              value={params.stage || ""}
-              onChange={(e) => updateParams("stage", e.target.value)}
-            />
+            <Select
+              value={params.stage_id || ""}
+              onValueChange={(v) => {
+                const stage = stages.find(s => s.id === v);
+                updateParams("stage_id", v);
+                updateParams("stage", stage?.name || "");
+              }}
+              disabled={!params.pipeline_id}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder={params.pipeline_id ? "Selecione a etapa" : "Selecione o pipeline primeiro"} />
+              </SelectTrigger>
+              <SelectContent>
+                {stages.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}
