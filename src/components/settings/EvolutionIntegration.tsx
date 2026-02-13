@@ -9,10 +9,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   MessageSquare, Wifi, WifiOff, QrCode as QrCodeIcon, Send,
-  Loader2, CheckCircle, XCircle, RefreshCw, ShieldAlert, Bug,
+  Loader2, CheckCircle, XCircle, RefreshCw, ShieldAlert, Bug, AlertTriangle,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import QRCodeLib from "qrcode";
 
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
@@ -35,8 +42,11 @@ interface DebugInfo {
   http_status: number;
   response: Record<string, unknown>;
   timestamp: string;
+  live_status?: string | null;
+  live_error?: string | null;
 }
 
+/* ── QR helpers ── */
 function QrFromText({ text }: { text: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -72,6 +82,34 @@ function detectQrFormat(data: string | null): string | null {
   return null;
 }
 
+function StatusBadge({ status, liveStatus }: { status: string | undefined; liveStatus?: string | null }) {
+  const effectiveStatus = liveStatus || status;
+  if (effectiveStatus === "connected") {
+    return <Badge className="bg-green-500/10 text-green-600 border-green-200 gap-1 px-3 py-1.5"><Wifi className="h-3.5 w-3.5" />Conectado</Badge>;
+  }
+  if (effectiveStatus === "qr_pending" || effectiveStatus === "pairing") {
+    return <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200 gap-1 px-3 py-1.5"><QrCodeIcon className="h-3.5 w-3.5" />Aguardando QR</Badge>;
+  }
+  if (effectiveStatus === "not_found") {
+    return <Badge className="bg-red-500/10 text-red-600 border-red-200 gap-1 px-3 py-1.5"><AlertTriangle className="h-3.5 w-3.5" />Instância não encontrada</Badge>;
+  }
+  if (effectiveStatus === "api_error" || effectiveStatus === "parse_error") {
+    return <Badge className="bg-red-500/10 text-red-600 border-red-200 gap-1 px-3 py-1.5"><XCircle className="h-3.5 w-3.5" />Erro na API</Badge>;
+  }
+  return <Badge variant="secondary" className="gap-1 px-3 py-1.5"><WifiOff className="h-3.5 w-3.5" />Desconectado</Badge>;
+}
+
+function maskUrl(url: string | undefined): string {
+  if (!url) return "N/A";
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname.substring(0, 6)}***`;
+  } catch {
+    return url.substring(0, 12) + "***";
+  }
+}
+
+/* ── Main Component ── */
 export function EvolutionIntegration() {
   const [integration, setIntegration] = useState<Integration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,15 +128,42 @@ export function EvolutionIntegration() {
   const orgId = profile?.organization_id || authOrgId || '';
   const { toast } = useToast();
 
-  const fetchIntegration = useCallback(async () => {
+  // Live status from Evolution API
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [instanceFound, setInstanceFound] = useState(true);
+  const [availableInstances, setAvailableInstances] = useState<string[] | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+
+  // Fetch integration + optionally check live status via Evolution API
+  const fetchIntegration = useCallback(async (checkLive = false) => {
     if (!orgId) { setLoading(false); return null; }
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId }),
+        body: JSON.stringify({ organization_id: orgId, check_live: checkLive }),
       });
       const result = await res.json();
+
+      if (checkLive) {
+        setLiveStatus(result.live_status || null);
+        setLiveError(result.live_error || null);
+        setInstanceFound(result.instance_found !== false);
+        setAvailableInstances(result.available_instances || null);
+        setLastCheckedAt(new Date().toISOString());
+
+        setDebugInfo({
+          instance_name: result.integration?.instance_name || "",
+          endpoint: `${SUPABASE_URL}/functions/v1/evolution-get-status`,
+          http_status: res.status,
+          response: { live_status: result.live_status, live_error: result.live_error, instance_found: result.instance_found, available_instances: result.available_instances },
+          timestamp: new Date().toISOString(),
+          live_status: result.live_status,
+          live_error: result.live_error,
+        });
+      }
+
       if (result.ok && result.integration) {
         setIntegration(result.integration as Integration);
         setInstanceName(result.integration.instance_name || "");
@@ -112,10 +177,12 @@ export function EvolutionIntegration() {
     }
   }, [orgId]);
 
-  // Initial load
-  useEffect(() => { fetchIntegration(); }, [fetchIntegration]);
+  // Initial load: fetch DB + live check
+  useEffect(() => {
+    fetchIntegration(true);
+  }, [fetchIntegration]);
 
-  // Start polling for connection status (2s intervals, max 60s)
+  // Start polling for connection status (3s intervals, max 60s)
   const startPolling = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingCountRef.current = 0;
@@ -126,20 +193,21 @@ export function EvolutionIntegration() {
       pollingCountRef.current++;
       console.log(`[EvolutionIntegration] Poll #${pollingCountRef.current}`);
 
-      const result = await fetchIntegration();
+      const result = await fetchIntegration(true);
       if (result?.status === "connected") {
         console.log("[EvolutionIntegration] Connected! Stopping poll.");
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         setPolling(false);
         toast({ title: "WhatsApp conectado!", description: "Conexão estabelecida com sucesso." });
-      } else if (pollingCountRef.current >= 30) {
+      } else if (pollingCountRef.current >= 20) {
         console.log("[EvolutionIntegration] Polling timeout (60s)");
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         setPolling(false);
+        toast({ title: "Timeout", description: "Verifique Base URL / API Key / Instance.", variant: "destructive" });
       }
-    }, 2000);
+    }, 3000);
   }, [fetchIntegration, toast]);
 
   // Cleanup polling on unmount
@@ -172,7 +240,6 @@ export function EvolutionIntegration() {
     const endpoint = `${SUPABASE_URL}/functions/v1/evolution-create-instance`;
 
     try {
-      console.log("[EvolutionIntegration] Connecting:", nameToUse);
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,7 +247,6 @@ export function EvolutionIntegration() {
       });
 
       const data = await res.json();
-      console.log("[EvolutionIntegration] Response:", { status: res.status, data });
 
       setDebugInfo({
         instance_name: nameToUse,
@@ -200,6 +266,7 @@ export function EvolutionIntegration() {
           connected_at: new Date().toISOString(),
           instance_name: nameToUse,
         } as Integration));
+        setLiveStatus("connected");
         toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
       } else if (data.ok && data.qr_code_data) {
         setIntegration((prev) => ({
@@ -208,8 +275,8 @@ export function EvolutionIntegration() {
           qr_code_data: data.qr_code_data,
           instance_name: nameToUse,
         } as Integration));
+        setLiveStatus("pairing");
         toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
-        // Start polling for connected status
         startPolling();
       } else {
         toast({
@@ -219,9 +286,8 @@ export function EvolutionIntegration() {
         });
       }
 
-      fetchIntegration();
+      fetchIntegration(false);
     } catch (err: any) {
-      console.error("[EvolutionIntegration] Connect error:", err);
       toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
       setDebugInfo({ instance_name: nameToUse, endpoint, http_status: 0, response: { error: err.message }, timestamp: new Date().toISOString() });
     } finally {
@@ -241,7 +307,6 @@ export function EvolutionIntegration() {
       });
 
       const data = await res.json();
-      console.log("[EvolutionIntegration] Refresh:", { status: res.status, data });
 
       setDebugInfo({ instance_name: integration?.instance_name || "", endpoint, http_status: res.status, response: sanitizeResponse(data), timestamp: new Date().toISOString() });
 
@@ -249,6 +314,7 @@ export function EvolutionIntegration() {
 
       if (data.status === "connected") {
         setIntegration((prev) => prev ? { ...prev, status: "connected", qr_code_data: null } : prev);
+        setLiveStatus("connected");
         toast({ title: "WhatsApp conectado!", description: "Seu WhatsApp já está vinculado" });
       } else if (data.ok && data.qr_code_data) {
         setIntegration((prev) => prev ? { ...prev, status: "qr_pending", qr_code_data: data.qr_code_data } : prev);
@@ -258,7 +324,7 @@ export function EvolutionIntegration() {
         toast({ title: "QR não disponível", description: data.message || "Tente novamente em alguns segundos", variant: "destructive" });
       }
 
-      fetchIntegration();
+      fetchIntegration(false);
     } catch (err: any) {
       toast({ title: "Erro ao buscar QR", description: err.message, variant: "destructive" });
     } finally {
@@ -273,9 +339,10 @@ export function EvolutionIntegration() {
     try {
       await supabase
         .from("whatsapp_integrations")
-        .update({ status: "disconnected", is_active: false, qr_code_data: null, connected_at: null, phone_number: null, updated_at: new Date().toISOString() })
+        .update({ status: "disconnected", is_active: false, qr_code_data: null, connected_at: null, phone_number: null, updated_at: new Date().toISOString() } as any)
         .eq("id", integration.id);
       setIntegration((prev) => prev ? { ...prev, status: "disconnected", qr_code_data: null, connected_at: null, phone_number: null } : prev);
+      setLiveStatus("disconnected");
       toast({ title: "Desconectado", description: "Integração WhatsApp desativada" });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -287,6 +354,29 @@ export function EvolutionIntegration() {
   const handleReconnect = () => {
     if (integration?.instance_name) {
       handleConnect(integration.instance_name);
+    }
+  };
+
+  const handleRefreshLiveStatus = async () => {
+    setActionLoading(true);
+    await fetchIntegration(true);
+    setActionLoading(false);
+  };
+
+  const handleSelectInstance = (name: string) => {
+    setInstanceName(name);
+    // Also update the integration's instance_name in DB if we have one
+    if (integration?.id) {
+      supabase
+        .from("whatsapp_integrations")
+        .update({ instance_name: name, updated_at: new Date().toISOString() } as any)
+        .eq("id", integration.id)
+        .then(() => {
+          setIntegration((prev) => prev ? { ...prev, instance_name: name } : prev);
+          toast({ title: "Instância atualizada", description: `Instância alterada para "${name}". Clique em Reconectar.` });
+          // Re-check live status
+          fetchIntegration(true);
+        });
     }
   };
 
@@ -319,8 +409,10 @@ export function EvolutionIntegration() {
     );
   }
 
-  const isConnected = integration?.status === "connected";
-  const isPending = integration?.status === "qr_pending";
+  // Use live status as the truth when available
+  const effectiveStatus = liveStatus || integration?.status;
+  const isConnected = effectiveStatus === "connected";
+  const isPending = effectiveStatus === "qr_pending" || effectiveStatus === "pairing";
   const isDisconnected = !isConnected && !isPending;
   const hasExistingInstance = !!integration?.instance_name;
 
@@ -341,7 +433,7 @@ export function EvolutionIntegration() {
               <AlertDescription>Apenas administradores podem configurar o WhatsApp. Peça para um admin conectar.</AlertDescription>
             </Alert>
             <div className="flex items-center gap-3">
-              <StatusBadge status={integration?.status} />
+              <StatusBadge status={integration?.status} liveStatus={liveStatus} />
               {hasExistingInstance && (
                 <span className="text-xs text-muted-foreground font-mono">Instância: {integration?.instance_name}</span>
               )}
@@ -367,7 +459,7 @@ export function EvolutionIntegration() {
         <CardContent className="space-y-6">
           {/* Status bar */}
           <div className="flex items-center gap-3 flex-wrap">
-            <StatusBadge status={integration?.status} />
+            <StatusBadge status={integration?.status} liveStatus={liveStatus} />
             {hasExistingInstance && (
               <span className="text-xs text-muted-foreground font-mono">Instância: {integration?.instance_name}</span>
             )}
@@ -376,10 +468,55 @@ export function EvolutionIntegration() {
             )}
             {polling && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" /> Aguardando conexão...
+                <Loader2 className="h-3 w-3 animate-spin" /> Verificando conexão...
               </span>
             )}
+            {/* Refresh live status button */}
+            <Button variant="ghost" size="sm" onClick={handleRefreshLiveStatus} disabled={actionLoading} className="ml-auto text-xs gap-1">
+              <RefreshCw className={`h-3.5 w-3.5 ${actionLoading ? "animate-spin" : ""}`} />
+              Testar conexão
+            </Button>
           </div>
+
+          {/* Instance not found alert */}
+          {!instanceFound && hasExistingInstance && (
+            <Alert className="border-destructive/50 bg-destructive/5">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <AlertDescription className="text-destructive">
+                Instância <strong className="font-mono">"{integration?.instance_name}"</strong> não encontrada no servidor Evolution.
+                Verifique o nome e o ambiente.
+                {availableInstances && availableInstances.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm font-medium">Instâncias disponíveis:</p>
+                    <Select onValueChange={handleSelectInstance}>
+                      <SelectTrigger className="w-full max-w-xs">
+                        <SelectValue placeholder="Selecione uma instância" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableInstances.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Live error alert */}
+          {liveError && liveStatus !== "not_found" && (
+            <Alert className="border-destructive/30 bg-destructive/5">
+              <XCircle className="h-4 w-4 text-destructive" />
+              <AlertDescription className="text-destructive text-sm">
+                Erro ao verificar status: {liveError}
+                <br />
+                <span className="text-xs">Verifique Base URL / API Key / Instance.</span>
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Separator />
 
@@ -474,7 +611,6 @@ export function EvolutionIntegration() {
             <div className="space-y-4">
               {hasExistingInstance ? (
                 <>
-                  {/* Has existing instance — show reconnect flow */}
                   <Alert className="border-destructive/30 bg-destructive/5">
                     <WifiOff className="h-4 w-4 text-destructive" />
                     <AlertDescription className="text-destructive">
@@ -496,6 +632,9 @@ export function EvolutionIntegration() {
                       onClick={() => {
                         setIntegration(null);
                         setInstanceName("");
+                        setLiveStatus(null);
+                        setInstanceFound(true);
+                        setAvailableInstances(null);
                       }}
                       className="font-poppins text-muted-foreground"
                     >
@@ -505,7 +644,6 @@ export function EvolutionIntegration() {
                 </>
               ) : (
                 <>
-                  {/* No instance — new setup */}
                   <div className="space-y-2">
                     <Label className="font-poppins font-medium">Nome da instância</Label>
                     <Input
@@ -539,18 +677,28 @@ export function EvolutionIntegration() {
               {showDebug ? "Ocultar Debug" : "Debug (admin)"}
             </Button>
             {showDebug && (
-              <div className="mt-2 p-3 rounded-md bg-muted/50 border text-xs font-mono space-y-2 max-h-80 overflow-auto">
-                {debugInfo ? (
+              <div className="mt-2 p-3 rounded-md bg-muted/50 border text-xs font-mono space-y-2 max-h-96 overflow-auto">
+                <div><span className="text-muted-foreground">Base URL:</span> {maskUrl(undefined)} (secret)</div>
+                <div><span className="text-muted-foreground">Instance Name:</span> {integration?.instance_name || instanceName || "N/A"}</div>
+                <div><span className="text-muted-foreground">DB Status:</span> {integration?.status || "none"}</div>
+                <div><span className="text-muted-foreground">Live Status (API):</span> <span className={liveStatus === "connected" ? "text-green-600" : liveStatus === "not_found" ? "text-red-500" : "text-yellow-600"}>{liveStatus || "not checked"}</span></div>
+                <div><span className="text-muted-foreground">Instance Found:</span> {instanceFound ? "✅" : "❌"}</div>
+                <div><span className="text-muted-foreground">Last Checked:</span> {lastCheckedAt ? new Date(lastCheckedAt).toLocaleString("pt-BR") : "N/A"}</div>
+                <div><span className="text-muted-foreground">Polling:</span> {polling ? `active (#${pollingCountRef.current})` : "off"}</div>
+                <div><span className="text-muted-foreground">QR Format:</span> {lastQrFormat || "N/A"}</div>
+                <div><span className="text-muted-foreground">QR in state:</span> {integration?.qr_code_data ? `present (${integration.qr_code_data.length} chars)` : "null"}</div>
+                {liveError && (
+                  <div><span className="text-muted-foreground">Live Error:</span> <span className="text-destructive">{liveError}</span></div>
+                )}
+                {availableInstances && (
+                  <div><span className="text-muted-foreground">Available Instances:</span> {availableInstances.join(", ") || "none"}</div>
+                )}
+                {debugInfo && (
                   <>
-                    <div><span className="text-muted-foreground">Timestamp:</span> {debugInfo.timestamp}</div>
-                    <div><span className="text-muted-foreground">Instance:</span> {debugInfo.instance_name}</div>
+                    <Separator />
+                    <div><span className="text-muted-foreground">Last Request:</span> {debugInfo.timestamp}</div>
                     <div><span className="text-muted-foreground">Endpoint:</span> {debugInfo.endpoint}</div>
                     <div><span className="text-muted-foreground">HTTP Status:</span> {debugInfo.http_status}</div>
-                    <div><span className="text-muted-foreground">QR Format:</span> {lastQrFormat || "N/A"}</div>
-                    <div><span className="text-muted-foreground">QR in state:</span> {integration?.qr_code_data ? `present (${integration.qr_code_data.length} chars)` : "null"}</div>
-                    <div><span className="text-muted-foreground">Status:</span> {integration?.status || "none"}</div>
-                    <div><span className="text-muted-foreground">Polling:</span> {polling ? `active (#${pollingCountRef.current})` : "off"}</div>
-                    <Separator />
                     <div>
                       <span className="text-muted-foreground">Response:</span>
                       <pre className="mt-1 whitespace-pre-wrap break-all text-[10px]">
@@ -558,8 +706,6 @@ export function EvolutionIntegration() {
                       </pre>
                     </div>
                   </>
-                ) : (
-                  <p className="text-muted-foreground">Nenhuma requisição feita ainda.</p>
                 )}
               </div>
             )}
@@ -598,14 +744,4 @@ export function EvolutionIntegration() {
       </Card>
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: string | undefined }) {
-  if (status === "connected") {
-    return <Badge className="bg-green-500/10 text-green-600 border-green-200 gap-1 px-3 py-1.5"><Wifi className="h-3.5 w-3.5" />Conectado</Badge>;
-  }
-  if (status === "qr_pending") {
-    return <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200 gap-1 px-3 py-1.5"><QrCodeIcon className="h-3.5 w-3.5" />Aguardando QR</Badge>;
-  }
-  return <Badge variant="secondary" className="gap-1 px-3 py-1.5"><WifiOff className="h-3.5 w-3.5" />Desconectado</Badge>;
 }
