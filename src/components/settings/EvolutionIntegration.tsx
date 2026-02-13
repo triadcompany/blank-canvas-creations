@@ -136,8 +136,9 @@ export function EvolutionIntegration() {
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
   // Fetch integration + optionally check live status via Evolution API
-  const fetchIntegration = useCallback(async (checkLive = false) => {
-    if (!orgId) { setLoading(false); return null; }
+  // Returns { integration, live_status } when checkLive=true
+  const fetchIntegration = useCallback(async (checkLive = false): Promise<{ integration: Integration | null; live_status: string | null; live_error: string | null }> => {
+    if (!orgId) { setLoading(false); return { integration: null, live_status: null, live_error: null }; }
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-status`, {
         method: "POST",
@@ -145,10 +146,12 @@ export function EvolutionIntegration() {
         body: JSON.stringify({ organization_id: orgId, check_live: checkLive }),
       });
       const result = await res.json();
+      const resultLiveStatus = result.live_status || null;
+      const resultLiveError = result.live_error || null;
 
       if (checkLive) {
-        setLiveStatus(result.live_status || null);
-        setLiveError(result.live_error || null);
+        setLiveStatus(resultLiveStatus);
+        setLiveError(resultLiveError);
         setInstanceFound(result.instance_found !== false);
         setAvailableInstances(result.available_instances || null);
         setLastCheckedAt(new Date().toISOString());
@@ -157,21 +160,21 @@ export function EvolutionIntegration() {
           instance_name: result.integration?.instance_name || "",
           endpoint: `${SUPABASE_URL}/functions/v1/evolution-get-status`,
           http_status: res.status,
-          response: { live_status: result.live_status, live_error: result.live_error, instance_found: result.instance_found, available_instances: result.available_instances },
+          response: { live_status: resultLiveStatus, live_error: resultLiveError, instance_found: result.instance_found, available_instances: result.available_instances },
           timestamp: new Date().toISOString(),
-          live_status: result.live_status,
-          live_error: result.live_error,
+          live_status: resultLiveStatus,
+          live_error: resultLiveError,
         });
       }
 
       if (result.ok && result.integration) {
         setIntegration(result.integration as Integration);
         setInstanceName(result.integration.instance_name || "");
-        return result.integration as Integration;
+        return { integration: result.integration as Integration, live_status: resultLiveStatus, live_error: resultLiveError };
       }
-      return null;
+      return { integration: null, live_status: resultLiveStatus, live_error: resultLiveError };
     } catch {
-      return null;
+      return { integration: null, live_status: null, live_error: null };
     } finally {
       setLoading(false);
     }
@@ -195,7 +198,7 @@ export function EvolutionIntegration() {
 
       const result = await fetchIntegration(true);
       // Check both DB status and live status
-      if (result?.status === "connected" || liveStatus === "connected") {
+      if (result?.live_status === "connected" || result?.integration?.status === "connected") {
         console.log("[EvolutionIntegration] Connected! Stopping poll.");
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -361,8 +364,27 @@ export function EvolutionIntegration() {
 
   const handleRefreshLiveStatus = async () => {
     setActionLoading(true);
-    await fetchIntegration(true);
-    setActionLoading(false);
+    try {
+      const result = await fetchIntegration(true);
+      const status = result.live_status || result.integration?.status;
+      if (status === "connected") {
+        toast({ title: "✅ Conectado", description: "WhatsApp está conectado e funcionando." });
+      } else if (status === "not_found") {
+        toast({ title: "Instância não encontrada", description: "Verifique o nome da instância e o servidor Evolution.", variant: "destructive" });
+      } else if (status === "api_error" || status === "parse_error") {
+        toast({ title: "Erro na API", description: liveError || "Verifique Base URL e API Key.", variant: "destructive" });
+      } else if (status === "disconnected" || status === "close") {
+        toast({ title: "Desconectado", description: "A instância existe mas não está conectada. Gere um novo QR." });
+      } else if (status === "pairing" || status === "qr_pending") {
+        toast({ title: "Aguardando QR", description: "Escaneie o QR Code no WhatsApp." });
+      } else {
+        toast({ title: "Status verificado", description: `Status atual: ${status || "desconhecido"}` });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao testar", description: err.message || "Falha na verificação", variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleSelectInstance = (name: string) => {
