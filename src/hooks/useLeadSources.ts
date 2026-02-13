@@ -25,20 +25,15 @@ export function useLeadSources() {
     queryKey: leadSourcesQueryKey(orgId),
     queryFn: async () => {
       if (!orgId) return [];
-      const { data, error } = await supabase
-        .from("lead_sources")
-        .select("id, name, description, is_active, sort_order")
-        .eq("organization_id", orgId)
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true });
+      const { data, error } = await supabase.rpc('get_org_lead_sources', {
+        p_org_id: orgId,
+      });
 
       if (error) throw error;
       return (data || []) as LeadSource[];
     },
     enabled: !!orgId,
     staleTime: 30_000,
-    refetchOnWindowFocus: true,
   });
 
   const createSource = useMutation({
