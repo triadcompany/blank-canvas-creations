@@ -74,12 +74,17 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
       const [pRes, sRes, mRes, eRes] = await Promise.all([
         supabase.rpc("get_org_pipelines", { p_org_id: orgId }),
         supabase.from("lead_sources").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("sort_order").order("name"),
-        supabase.from("org_members").select("profile_id, users_profile!inner(id, name)").eq("organization_id", orgId),
+        supabase.from("org_members" as any).select("clerk_user_id").eq("organization_id", orgId),
         supabase.from("capi_event_definitions" as any).select("id, name, meta_event_name").eq("organization_id", orgId).eq("active", true).order("name"),
       ]);
       if (pRes.data) setPipelines(pRes.data as Pipeline[]);
       if (sRes.data) setSources(sRes.data as LeadSource[]);
-      if (mRes.data) setMembers(mRes.data as { id: string; name: string }[]);
+      // Fetch user profiles for org members
+      const clerkIds = (mRes.data as any[] || []).map((m: any) => m.clerk_user_id).filter(Boolean);
+      if (clerkIds.length > 0) {
+        const { data: profiles } = await supabase.from("users_profile" as any).select("id, full_name, clerk_user_id").in("clerk_user_id", clerkIds);
+        if (profiles) setMembers((profiles as any[]).map((p: any) => ({ id: p.id, name: p.full_name || p.clerk_user_id })));
+      }
       if (eRes.data) setEventDefs(eRes.data as any[]);
     };
     fetchData();
