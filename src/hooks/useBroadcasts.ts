@@ -10,8 +10,9 @@ export interface BroadcastCampaign {
   name: string;
   instance_name: string;
   status: 'running' | 'paused' | 'completed' | 'canceled';
-  payload_type: 'text' | 'image' | 'audio';
+  payload_type: 'text' | 'image' | 'audio' | 'interactive';
   payload: Record<string, any>;
+  buttons: any;
   settings: Record<string, any>;
   created_at: string;
   enable_automation: boolean;
@@ -100,7 +101,7 @@ export function useBroadcasts() {
     mutationFn: async (params: {
       name: string;
       instance_name: string;
-      payload_type: 'text' | 'image' | 'audio';
+      payload_type: 'text' | 'image' | 'audio' | 'interactive';
       payload: Record<string, any>;
       settings: Record<string, any>;
       recipients: Array<{ phone: string; name?: string; variables?: Record<string, any> }>;
@@ -108,6 +109,7 @@ export function useBroadcasts() {
       enableAutomation?: boolean;
       automationId?: string | null;
       responseWindowHours?: number;
+      buttons?: Array<{ label: string; value: string }> | null;
     }) => {
       // Create campaign
       const { data: campaign, error: cErr } = await supabase
@@ -124,7 +126,8 @@ export function useBroadcasts() {
           enable_automation: params.enableAutomation || false,
           automation_id: params.automationId || null,
           response_window_hours: params.responseWindowHours || 24,
-        })
+          buttons: params.buttons || null,
+        } as any)
         .select('id')
         .single();
       if (cErr) throw cErr;

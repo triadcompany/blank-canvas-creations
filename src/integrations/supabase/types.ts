@@ -954,6 +954,7 @@ export type Database = {
       broadcast_campaigns: {
         Row: {
           automation_id: string | null
+          buttons: Json | null
           created_at: string
           created_by: string
           enable_automation: boolean
@@ -969,6 +970,7 @@ export type Database = {
         }
         Insert: {
           automation_id?: string | null
+          buttons?: Json | null
           created_at?: string
           created_by: string
           enable_automation?: boolean
@@ -984,6 +986,7 @@ export type Database = {
         }
         Update: {
           automation_id?: string | null
+          buttons?: Json | null
           created_at?: string
           created_by?: string
           enable_automation?: boolean
@@ -1048,6 +1051,8 @@ export type Database = {
           created_at: string
           error: string | null
           id: string
+          inbound_button_value: string | null
+          inbound_text: string | null
           message_id: string | null
           name: string | null
           organization_id: string
@@ -1064,6 +1069,8 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          inbound_button_value?: string | null
+          inbound_text?: string | null
           message_id?: string | null
           name?: string | null
           organization_id: string
@@ -1080,6 +1087,8 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          inbound_button_value?: string | null
+          inbound_text?: string | null
           message_id?: string | null
           name?: string | null
           organization_id?: string
