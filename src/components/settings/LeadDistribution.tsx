@@ -119,16 +119,18 @@ const LeadDistribution: React.FC = () => {
     try {
       // Save global toggle
       if (globalSettingsId) {
-        await supabase
+        const { error: gErr } = await supabase
           .from('whatsapp_routing_settings')
           .update({ enabled: globalEnabled, updated_at: new Date().toISOString() })
           .eq('id', globalSettingsId);
+        if (gErr) { console.error('Global update error:', gErr); toast.error('Erro ao atualizar: ' + gErr.message); setSaving(false); return; }
       } else {
-        const { data } = await supabase
+        const { data, error: gErr } = await supabase
           .from('whatsapp_routing_settings')
           .insert({ organization_id: orgId, enabled: globalEnabled })
           .select('id')
           .single();
+        if (gErr) { console.error('Global insert error:', gErr); toast.error('Erro ao inserir: ' + gErr.message); setSaving(false); return; }
         if (data) setGlobalSettingsId(data.id);
       }
 
@@ -145,16 +147,18 @@ const LeadDistribution: React.FC = () => {
         };
 
         if (settings.id) {
-          await supabase
+          const { error: bErr } = await supabase
             .from('whatsapp_routing_bucket_settings')
             .update(payload)
             .eq('id', settings.id);
+          if (bErr) { console.error('Bucket update error:', bErr); toast.error('Erro bucket: ' + bErr.message); }
         } else {
-          const { data } = await supabase
+          const { data, error: bErr } = await supabase
             .from('whatsapp_routing_bucket_settings')
             .insert(payload)
             .select('id')
             .single();
+          if (bErr) { console.error('Bucket insert error:', bErr); toast.error('Erro bucket: ' + bErr.message); }
           if (data) {
             if (settings.bucket === 'traffic') setTrafficSettings(s => ({ ...s, id: data.id }));
             else setNonTrafficSettings(s => ({ ...s, id: data.id }));
