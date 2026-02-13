@@ -60,60 +60,70 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Fallback: if no org_members record but profile has organization_id,
-    // auto-create the org_members record (for invited users)
-    if (!membership && data?.organization_id) {
-      console.log(`🔧 sync-login: no org_members but profile has org_id ${data.organization_id}, creating membership...`);
-
-      // Check if there's a pending invitation for this user
-      const { data: invitation } = await supabase
-        .from("user_invitations")
-        .select("role, organization_id")
-        .eq("email", email)
-        .eq("organization_id", data.organization_id)
-        .limit(1)
+    // Fallback: if no org_members record, check profiles table for organization_id
+    // (for invited users whose profile was created with org_id but no org_members)
+    if (!membership) {
+      const { data: profileRecord } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("clerk_user_id", clerk_user_id)
         .maybeSingle();
 
-      const memberRole = invitation?.role || "seller";
+      const profileOrgId = profileRecord?.organization_id;
 
-      // Look up the clerk_org_id from clerk_organizations
-      const { data: clerkOrgRecord } = await supabase
-        .from("clerk_organizations")
-        .select("clerk_org_id")
-        .eq("id", data.organization_id)
-        .maybeSingle();
+      if (profileOrgId) {
+        console.log(`🔧 sync-login: no org_members but profiles has org_id ${profileOrgId}, creating membership...`);
 
-      const { error: memberInsertErr } = await supabase
-        .from("org_members")
-        .upsert(
-          {
-            organization_id: data.organization_id,
-            clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
-            clerk_user_id,
+        // Check if there's a pending invitation for this user
+        const { data: invitation } = await supabase
+          .from("user_invitations")
+          .select("role, organization_id")
+          .eq("email", email)
+          .eq("organization_id", profileOrgId)
+          .limit(1)
+          .maybeSingle();
+
+        const memberRole = invitation?.role || "seller";
+
+        // Look up the clerk_org_id from clerk_organizations
+        const { data: clerkOrgRecord } = await supabase
+          .from("clerk_organizations")
+          .select("clerk_org_id")
+          .eq("id", profileOrgId)
+          .maybeSingle();
+
+        const { error: memberInsertErr } = await supabase
+          .from("org_members")
+          .upsert(
+            {
+              organization_id: profileOrgId,
+              clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+              clerk_user_id,
+              role: memberRole,
+              status: "active",
+            },
+            { onConflict: "clerk_org_id,clerk_user_id" }
+          );
+
+        if (memberInsertErr) {
+          console.warn("⚠️ sync-login: auto-create org_members failed:", memberInsertErr.message);
+        } else {
+          membership = {
             role: memberRole,
-            status: "active",
-          },
-          { onConflict: "clerk_org_id,clerk_user_id" }
-        );
+            clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+            organization_id: profileOrgId,
+          };
+          console.log("✅ sync-login: auto-created org_members for invited user");
 
-      if (memberInsertErr) {
-        console.warn("⚠️ sync-login: auto-create org_members failed:", memberInsertErr.message);
-      } else {
-        membership = {
-          role: memberRole,
-          clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
-          organization_id: data.organization_id,
-        };
-        console.log("✅ sync-login: auto-created org_members for invited user");
-
-        // Mark invitation as accepted if exists
-        if (invitation) {
-          await supabase
-            .from("user_invitations")
-            .update({ status: "accepted" })
-            .eq("email", email)
-            .eq("organization_id", data.organization_id)
-            .eq("status", "pending");
+          // Mark invitation as accepted if exists
+          if (invitation) {
+            await supabase
+              .from("user_invitations")
+              .update({ status: "accepted" })
+              .eq("email", email)
+              .eq("organization_id", profileOrgId)
+              .eq("status", "pending");
+          }
         }
       }
     }
