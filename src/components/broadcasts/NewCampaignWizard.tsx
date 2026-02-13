@@ -362,15 +362,46 @@ export function NewCampaignWizard({ onClose }: Props) {
               <div>
                 <Label>Mensagem</Label>
                 <Textarea
+                  id="broadcast-message-textarea"
                   value={messageText}
                   onChange={e => setMessageText(e.target.value)}
                   rows={5}
                   placeholder="Olá {{nome}}, tudo bem?"
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const variable = e.dataTransfer.getData('text/plain');
+                    if (!variable) return;
+                    const textarea = e.currentTarget;
+                    const start = textarea.selectionStart ?? messageText.length;
+                    const newText = messageText.slice(0, start) + variable + messageText.slice(start);
+                    setMessageText(newText);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
                 />
                 {availableVars.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Variáveis disponíveis: {availableVars.map(v => `{{${v}}}`).join(', ')}
-                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    <span className="text-xs text-muted-foreground mr-1">Variáveis:</span>
+                    {availableVars.map(v => (
+                      <span
+                        key={v}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', `{{${v}}}`);
+                          e.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        onClick={() => {
+                          const textarea = document.getElementById('broadcast-message-textarea') as HTMLTextAreaElement | null;
+                          const pos = textarea?.selectionStart ?? messageText.length;
+                          const newText = messageText.slice(0, pos) + `{{${v}}}` + messageText.slice(pos);
+                          setMessageText(newText);
+                          setTimeout(() => textarea?.focus(), 0);
+                        }}
+                        className="inline-flex items-center rounded-md border border-input bg-accent/50 px-2 py-0.5 text-xs font-medium cursor-grab active:cursor-grabbing hover:bg-accent transition-colors select-none"
+                      >
+                        {`{{${v}}}`}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
