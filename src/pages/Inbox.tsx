@@ -639,9 +639,9 @@ export default function InboxPage() {
   };
 
   const filters: { key: string; label: string; adminOnly?: boolean }[] = [
-    { key: 'all', label: 'Todas', adminOnly: true },
+    { key: 'all', label: 'Todas' },
     { key: 'mine', label: 'Minhas' },
-    { key: 'unassigned', label: 'Não atribuídas', adminOnly: true },
+    { key: 'unassigned', label: 'Não atribuídas' },
     { key: 'open', label: 'Abertas' },
     { key: 'in_progress', label: 'Em atendimento' },
     { key: 'waiting_customer', label: 'Aguardando' },
