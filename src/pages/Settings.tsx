@@ -49,6 +49,7 @@ import { FollowupCadencesManagement } from "@/components/settings/FollowupCadenc
 import { ClerkMigration } from "@/components/settings/ClerkMigration";
 import BillingSettings from "@/components/settings/BillingSettings";
 import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
+import { DebugPanel } from "@/components/settings/DebugPanel";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
@@ -113,6 +114,7 @@ export function Settings() {
     { id: "sources", icon: MapPin, label: "Origens de Leads" },
     { id: "meta-ads", icon: Zap, label: "Meta Ads (CAPI)" },
     { id: "notifications", icon: Bell, label: "Notificações" },
+    ...(isAdmin ? [{ id: "debug", icon: Shield, label: "Debug (Admin)" }] : []),
   ];
 
   const isReadonly = !isAdmin;
@@ -155,6 +157,8 @@ export function Settings() {
         return <LeadSourcesManagement />;
       case "meta-ads":
         return <MetaAdsSettings />;
+      case "debug":
+        return <DebugPanel />;
       case "notifications":
         return (
           <Card className="card-gradient border-0">

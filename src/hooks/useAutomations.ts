@@ -76,10 +76,10 @@ async function apiCall(action: string, params: Record<string, unknown>) {
 export function useAutomations() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
   const { toast } = useToast();
 
-  const orgId = profile?.organization_id;
+  const orgId = profile?.organization_id || authOrgId;
 
   const fetchAutomations = useCallback(async () => {
     if (!orgId) {
@@ -99,13 +99,14 @@ export function useAutomations() {
   }, [fetchAutomations]);
 
   const createAutomation = async (name: string, description?: string): Promise<Automation | null> => {
-    if (!orgId || !profile?.id) {
-      toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
+    if (!orgId) {
+      toast({ title: "Erro", description: "Organização não encontrada. Verifique suas configurações.", variant: "destructive" });
       return null;
     }
+    const createdBy = profile?.id || profile?.clerk_user_id || 'unknown';
     const result = await apiCall("create", {
       organization_id: orgId, name, description: description || null,
-      created_by: profile.id, channel: "whatsapp",
+      created_by: createdBy, channel: "whatsapp",
     });
     if (!result.ok) {
       toast({ title: "Erro ao criar automação", description: result.message, variant: "destructive" });
