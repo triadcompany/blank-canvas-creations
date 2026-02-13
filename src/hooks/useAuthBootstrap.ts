@@ -141,6 +141,9 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
     }
   }, [user, bootstrap]);
 
+  // Track user ID to avoid re-running on Clerk user object reference changes (e.g. window focus)
+  const lastBootstrappedUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -149,8 +152,13 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       setLoading(false);
       setError(null);
       setNeedsOnboarding(false);
+      lastBootstrappedUserIdRef.current = null;
       return;
     }
+
+    // Skip if we already bootstrapped this user
+    if (lastBootstrappedUserIdRef.current === user.id) return;
+    lastBootstrappedUserIdRef.current = user.id;
 
     setLoading(true);
     withTimeout(bootstrap(user), 10000, 'bootstrap')

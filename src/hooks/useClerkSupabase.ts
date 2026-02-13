@@ -218,6 +218,9 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
     }
   }, [user, checkProfile]);
 
+  // Track user ID to avoid re-running on Clerk user object reference changes (e.g. window focus)
+  const lastCheckedUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -228,8 +231,13 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       setLoading(false);
       setError(null);
       setNeedsOnboarding(false);
+      lastCheckedUserIdRef.current = null;
       return;
     }
+
+    // Skip if we already checked this user
+    if (lastCheckedUserIdRef.current === user.id) return;
+    lastCheckedUserIdRef.current = user.id;
 
     setLoading(true);
     withTimeout(checkProfile(user), 8000, 'Initial profile check')
