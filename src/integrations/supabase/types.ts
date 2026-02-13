@@ -7825,6 +7825,7 @@ export type Database = {
         Returns: Json
       }
       get_my_org_id: { Args: never; Returns: string }
+      get_my_role: { Args: never; Returns: string }
       get_org_pipelines: {
         Args: { p_org_id: string }
         Returns: {
