@@ -114,7 +114,10 @@ export function Settings() {
     { id: "notifications", icon: Bell, label: "Notificações" },
   ];
 
+  const isReadonly = !isAdmin;
+
   const renderContent = () => {
+    const content = (() => {
     switch (activeTab) {
       case "billing":
         return <BillingSettings />;
@@ -165,6 +168,25 @@ export function Settings() {
       default:
         return <BillingSettings />;
     }
+    })();
+
+    if (isReadonly && activeTab !== "profile") {
+      return (
+        <div className="relative">
+          <div className="absolute top-0 right-0 z-10">
+            <Badge variant="secondary" className="font-poppins text-xs">
+              <Shield className="h-3 w-3 mr-1" />
+              Somente visualização
+            </Badge>
+          </div>
+          <div className="pointer-events-none opacity-70 select-none">
+            {content}
+          </div>
+        </div>
+      );
+    }
+
+    return content;
   };
 
   const renderVendorsContent = () => {

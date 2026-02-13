@@ -99,8 +99,45 @@ serve(async (req) => {
 
       // ─── UPDATE AUTOMATION METADATA ───
       case "update": {
-        const { id, updates } = params;
+        const { id, updates, profileId } = params;
         if (!id) return respond({ ok: false, message: "id required" }, 400);
+
+        // Fetch the automation to check ownership and is_system
+        const { data: existing } = await supabase
+          .from("automations")
+          .select("created_by, is_system, organization_id")
+          .eq("id", id)
+          .single();
+
+        if (!existing) return respond({ ok: false, message: "Automação não encontrada" }, 404);
+
+        // Check role if profileId provided
+        if (profileId) {
+          const { data: roleData } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("id", profileId)
+            .single();
+
+          // Lookup role
+          const { data: userRole } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", (await supabase.from("profiles").select("user_id").eq("id", profileId).single()).data?.user_id)
+            .single();
+
+          const role = userRole?.role || "seller";
+
+          if (role !== "admin") {
+            // Sellers cannot edit system automations or automations created by others
+            if (existing.is_system) {
+              return respond({ ok: false, message: "Vendedores não podem editar automações do sistema" }, 403);
+            }
+            if (existing.created_by !== profileId) {
+              return respond({ ok: false, message: "Vendedores só podem editar suas próprias automações" }, 403);
+            }
+          }
+        }
 
         // Only allow safe fields
         const allowed = ["name", "description", "channel", "is_active", "trigger_type", "trigger_event_name", "allow_ai_triggers", "allow_human_triggers", "throttle_seconds"];
@@ -120,8 +157,33 @@ serve(async (req) => {
 
       // ─── DELETE AUTOMATION ───
       case "delete": {
-        const { id } = params;
+        const { id, profileId } = params;
         if (!id) return respond({ ok: false, message: "id required" }, 400);
+
+        // Fetch automation to check ownership
+        const { data: existing } = await supabase
+          .from("automations")
+          .select("created_by, is_system")
+          .eq("id", id)
+          .single();
+
+        if (!existing) return respond({ ok: false, message: "Automação não encontrada" }, 404);
+
+        // Check role if profileId provided
+        if (profileId) {
+          const { data: prof } = await supabase.from("profiles").select("user_id").eq("id", profileId).single();
+          const { data: userRole } = await supabase.from("user_roles").select("role").eq("user_id", prof?.user_id).single();
+          const role = userRole?.role || "seller";
+
+          if (role !== "admin") {
+            if (existing.is_system) {
+              return respond({ ok: false, message: "Vendedores não podem excluir automações do sistema" }, 403);
+            }
+            if (existing.created_by !== profileId) {
+              return respond({ ok: false, message: "Vendedores só podem excluir suas próprias automações" }, 403);
+            }
+          }
+        }
 
         const { error } = await supabase.from("automations").delete().eq("id", id);
         if (error) return respond({ ok: false, message: error.message }, 500);

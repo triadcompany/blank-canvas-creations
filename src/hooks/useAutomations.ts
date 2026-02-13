@@ -12,6 +12,7 @@ export interface Automation {
   description: string | null;
   channel: string;
   is_active: boolean;
+  is_system: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -113,7 +114,7 @@ export function useAutomations() {
   };
 
   const updateAutomation = async (id: string, updates: Partial<Automation>): Promise<boolean> => {
-    const result = await apiCall("update", { id, updates });
+    const result = await apiCall("update", { id, updates, profileId: profile?.id });
     if (!result.ok) {
       toast({ title: "Erro", description: result.message, variant: "destructive" });
       return false;
@@ -123,7 +124,7 @@ export function useAutomations() {
   };
 
   const deleteAutomation = async (id: string): Promise<boolean> => {
-    const result = await apiCall("delete", { id });
+    const result = await apiCall("delete", { id, profileId: profile?.id });
     if (!result.ok) {
       toast({ title: "Erro", description: result.message, variant: "destructive" });
       return false;

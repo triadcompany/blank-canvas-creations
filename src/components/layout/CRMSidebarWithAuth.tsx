@@ -153,32 +153,30 @@ export function CRMSidebarWithAuth() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="font-poppins font-medium text-xs text-muted-foreground uppercase tracking-wider">
-              Administração
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminMenuItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={location.pathname === item.url}
-                      className="font-poppins"
-                    >
-                        <NavLink to={item.url} end>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+        <SidebarGroup>
+          <SidebarGroupLabel className="font-poppins font-medium text-xs text-muted-foreground uppercase tracking-wider">
+            Administração
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={location.pathname === item.url}
+                    className="font-poppins"
+                  >
+                      <NavLink to={item.url} end>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
 
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       
       <SidebarFooter className="p-4">

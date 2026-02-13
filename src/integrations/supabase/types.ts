@@ -886,6 +886,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          is_system: boolean | null
           name: string
           organization_id: string
           throttle_seconds: number | null
@@ -902,6 +903,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_system?: boolean | null
           name: string
           organization_id: string
           throttle_seconds?: number | null
@@ -918,6 +920,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_system?: boolean | null
           name?: string
           organization_id?: string
           throttle_seconds?: number | null
