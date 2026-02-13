@@ -30,7 +30,7 @@ interface TestResult {
 const StatusBadge = ({ status }: { status: TestStatus }) => {
   switch (status) {
     case 'pass':
-      return <Badge className="bg-emerald-600 text-white font-poppins gap-1"><CheckCircle2 className="h-3 w-3" /> PASS</Badge>;
+      return <Badge className="bg-primary text-primary-foreground font-poppins gap-1"><CheckCircle2 className="h-3 w-3" /> PASS</Badge>;
     case 'fail':
       return <Badge variant="destructive" className="font-poppins gap-1"><XCircle className="h-3 w-3" /> FAIL</Badge>;
     case 'error':
@@ -59,11 +59,11 @@ export default function AdminDiagnostico() {
     try {
       const { data } = await supabase
         .from('whatsapp_routing_settings')
-        .select('instance_name, connection_status, updated_at')
+        .select('enabled, mode, updated_at')
         .eq('organization_id', orgId)
         .limit(1)
         .maybeSingle();
-      setWaStatus(data ? { instance: data.instance_name, status: data.connection_status, updated: data.updated_at } : { status: 'Nenhuma instância' });
+      setWaStatus(data ? { instance: data.mode || '—', status: data.enabled ? 'connected' : 'disconnected', updated: data.updated_at } : { status: 'Nenhuma configuração' });
     } catch { setWaStatus({ status: 'Erro ao buscar' }); }
     setWaLoading(false);
   }, [orgId]);
@@ -190,7 +190,7 @@ export default function AdminDiagnostico() {
     <div className="space-y-6">
       <PageHeader
         title="Diagnóstico de Permissões"
-        subtitle="Validação de identidade, roles e RLS em tempo real"
+        description="Validação de identidade, roles e RLS em tempo real"
       />
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -221,7 +221,7 @@ export default function AdminDiagnostico() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base font-poppins">
-              {waStatus?.status === 'connected' ? <Wifi className="h-4 w-4 text-emerald-500" /> : <WifiOff className="h-4 w-4 text-muted-foreground" />}
+              {waStatus?.status === 'connected' ? <Wifi className="h-4 w-4 text-primary" /> : <WifiOff className="h-4 w-4 text-muted-foreground" />}
               Estado do WhatsApp
             </CardTitle>
           </CardHeader>

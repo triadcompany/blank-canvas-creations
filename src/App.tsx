@@ -28,6 +28,7 @@ import Onboarding from "./pages/Onboarding";
 import InboxPage from "./pages/Inbox";
 import TreinarAgente from "./pages/TreinarAgente";
 import AdminDebugAutomations from "./pages/AdminDebugAutomations";
+import AdminDiagnostico from "./pages/AdminDiagnostico";
 import { TabBar } from "./components/mobile/TabBar";
 import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
@@ -153,6 +154,13 @@ const App = () => {
               <ProtectedRoute>
                 <CRMLayout>
                   <AdminDebugAutomations />
+                </CRMLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/diagnostico" element={
+              <ProtectedRoute>
+                <CRMLayout>
+                  <AdminDiagnostico />
                 </CRMLayout>
               </ProtectedRoute>
             } />
