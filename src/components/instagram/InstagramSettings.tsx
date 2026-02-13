@@ -64,7 +64,8 @@ interface Profile {
 }
 
 export function InstagramSettings() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId || '';
   const { toast } = useToast();
   
   const [connections, setConnections] = useState<InstagramConnection[]>([]);
@@ -77,12 +78,12 @@ export function InstagramSettings() {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
 
   const fetchConnections = async () => {
-    if (!profile?.organization_id) return;
+    if (!orgId) { setLoading(false); return; }
 
     const { data, error } = await (supabase as any)
       .from('instagram_connections')
       .select('*')
-      .eq('organization_id', profile.organization_id);
+      .eq('organization_id', orgId);
 
     if (!error && data) {
       setConnections(data as InstagramConnection[]);
@@ -110,12 +111,12 @@ export function InstagramSettings() {
   };
 
   const fetchAvailableUsers = async () => {
-    if (!profile?.organization_id || !selectedConnection) return;
+    if (!orgId || !selectedConnection) return;
 
     const { data: allProfiles } = await supabase
       .from('profiles')
       .select('id, user_id, name, email, avatar_url')
-      .eq('organization_id', profile.organization_id);
+      .eq('organization_id', orgId);
 
     const { data: existingPermissions } = await (supabase as any)
       .from('instagram_user_permissions')
@@ -146,7 +147,7 @@ export function InstagramSettings() {
     callbackProcessed.current = true;
     console.log('[InstagramSettings] OAuth callback detected, processing code exchange...');
 
-    if (!profile?.id || !profile?.organization_id) {
+    if (!profile?.id || !orgId) {
       toast({
         title: "Erro no callback",
         description: "Perfil ou organização não encontrados. Faça login novamente.",
@@ -168,7 +169,7 @@ export function InstagramSettings() {
             body: JSON.stringify({
               code,
               state: state || '',
-              organizationId: profile.organization_id,
+              organizationId: orgId,
               profileId: profile.id,
             }),
           }
@@ -228,11 +229,11 @@ export function InstagramSettings() {
     };
 
     processCallback();
-  }, [profile?.id, profile?.organization_id]);
+  }, [profile?.id, orgId]);
 
   useEffect(() => {
     fetchConnections();
-  }, [profile?.organization_id]);
+  }, [orgId]);
 
   useEffect(() => {
     if (selectedConnection) {
@@ -242,7 +243,7 @@ export function InstagramSettings() {
   }, [selectedConnection]);
 
   const handleConnect = async () => {
-    if (!profile?.id || !profile?.organization_id) {
+    if (!profile?.id || !orgId) {
       toast({
         title: "Erro ao conectar",
         description: "Perfil ou organização não encontrados. Faça login novamente.",
@@ -265,7 +266,7 @@ export function InstagramSettings() {
             action: 'get_oauth_url',
             redirectUri: `${window.location.origin}/settings?tab=instagram&callback=true`,
             profileId: profile.id,
-            organizationId: profile.organization_id,
+            organizationId: orgId,
           }),
         }
       );
