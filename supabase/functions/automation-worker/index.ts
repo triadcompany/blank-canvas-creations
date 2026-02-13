@@ -567,7 +567,18 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       .select("created_by")
       .eq("id", job.automation_id)
       .maybeSingle();
-    if (automation) automationCreatedBy = automation.created_by;
+    if (automation && automation.created_by && automation.created_by !== "unknown") {
+      // Validate it's a real profile UUID in this org
+      const { data: creatorProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", automation.created_by)
+        .eq("organization_id", orgId)
+        .maybeSingle();
+      if (creatorProfile) {
+        automationCreatedBy = creatorProfile.id;
+      }
+    }
 
     if (automationCreatedBy) {
       resolvedCreatedBy = automationCreatedBy;
