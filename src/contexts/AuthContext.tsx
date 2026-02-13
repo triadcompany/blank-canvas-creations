@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
-import { useUser, useAuth as useClerkAuth, useClerk } from '@clerk/clerk-react';
+import { useUser, useAuth as useClerkAuth, useClerk, useOrganization } from '@clerk/clerk-react';
 import { useClerkSupabase } from '@/hooks/useClerkSupabase';
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
 import { useClerkAvailable } from '@/providers/ClerkProvider';
@@ -39,6 +39,12 @@ interface AuthContextType {
   isAdmin: boolean;
   orgId: string | null;
   clerkOrgId: string | null;
+  /** User's display name from Clerk (fullName > firstName > email prefix) */
+  userName: string;
+  /** User's email from Clerk */
+  userEmail: string;
+  /** Organization name from Clerk (live) or Supabase (fallback) */
+  orgName: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,6 +54,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
   const { openSignIn, openSignUp } = useClerk();
+  const { organization: clerkOrganization } = useOrganization();
   const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
   const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap } = useAuthBootstrap();
 
@@ -97,6 +104,16 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
 
   const combinedError = error || (bootstrapError ? new Error(bootstrapError) : null);
 
+  // Derive display name from Clerk (source of truth)
+  const userName = clerkUser?.fullName
+    || clerkUser?.firstName
+    || clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0]
+    || '';
+  const userEmail = clerkUser?.primaryEmailAddress?.emailAddress || '';
+
+  // Derive org name: prefer Clerk live data, fallback to profile's org
+  const orgName = clerkOrganization?.name || '';
+
   const value: AuthContextType = useMemo(() => ({
     user,
     session: clerkUser ? { user: clerkUser } : null,
@@ -113,7 +130,10 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     isAdmin,
     orgId: org?.org_id || null,
     clerkOrgId: org?.clerk_org_id || null,
-  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, isAdmin, org]);
+    userName,
+    userEmail,
+    orgName,
+  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, isAdmin, org, userName, userEmail, orgName, clerkOrganization]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -152,6 +172,9 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     isAdmin: false,
     orgId: null,
     clerkOrgId: null,
+    userName: '',
+    userEmail: '',
+    orgName: '',
   }), [signIn, signUp, signOut, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
