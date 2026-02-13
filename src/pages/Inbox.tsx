@@ -706,7 +706,7 @@ export default function InboxPage() {
           </div>
 
           {/* Filters */}
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-0.5">
+          <div className="flex flex-wrap gap-1">
             {filters
               .filter((f) => !f.adminOnly || isAdmin)
               .map((f) => (
@@ -714,7 +714,7 @@ export default function InboxPage() {
                   key={f.key}
                   size="sm"
                   variant={filter === f.key ? 'default' : 'ghost'}
-                  className="h-7 text-xs px-2.5 rounded-full whitespace-nowrap flex-shrink-0"
+                  className="h-7 text-xs px-2.5 rounded-full whitespace-nowrap"
                   onClick={() => setFilter(f.key as any)}
                 >
                   {f.label}
