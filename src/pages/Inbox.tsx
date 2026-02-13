@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useInbox, InboxThread, InboxMessage, ConversationStatus } from '@/hooks/useInbox';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
@@ -468,7 +468,21 @@ export default function InboxPage() {
   } = useInbox();
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messageText, setMessageText] = useState('');
+
+  // Auto-select thread by phone query param (e.g. from Kanban)
+  useEffect(() => {
+    const phoneParam = searchParams.get('phone');
+    if (phoneParam && threads.length > 0 && !loadingThreads) {
+      const match = threads.find(t => t.contact_phone.replace(/\D/g, '').includes(phoneParam));
+      if (match) {
+        selectThread(match.id);
+      }
+      // Clean up the param so it doesn't re-trigger
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, threads, loadingThreads, selectThread, setSearchParams]);
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const [createLeadModalOpen, setCreateLeadModalOpen] = useState(false);
   const [resetFirstTouchOpen, setResetFirstTouchOpen] = useState(false);
