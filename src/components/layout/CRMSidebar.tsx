@@ -20,6 +20,7 @@ import {
   PlayCircle,
   ChevronDown,
   Bug,
+  Stethoscope,
 } from "lucide-react";
 
 import {
@@ -98,6 +99,11 @@ const adminItems = [
     title: "Debug Automações",
     url: "/admin/debug/automations",
     icon: Bug,
+  },
+  {
+    title: "Diagnóstico",
+    url: "/admin/diagnostico",
+    icon: Stethoscope,
   },
 ];
 
