@@ -306,32 +306,36 @@ export function useInbox() {
 
   // ── Fallback polling ──
   useEffect(() => {
-    if (!orgId || !selectedThreadId) return;
+    if (!orgId || !selectedThreadId || !clerkUserId) return;
 
     const interval = setInterval(async () => {
       try {
-        const lastMsg = messages[messages.length - 1];
-        const since = lastMsg?.created_at || new Date(0).toISOString();
-        
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', selectedThreadId)
-          .eq('organization_id', orgId)
-          .gt('created_at', since)
-          .order('created_at', { ascending: true })
-          .limit(50);
+        // Re-fetch all messages for the conversation via RPC
+        const { data, error } = await supabase.rpc('get_conversation_messages' as any, {
+          p_clerk_user_id: clerkUserId,
+          p_org_id: orgId,
+          p_conversation_id: selectedThreadId,
+          p_limit: 200,
+        });
 
-        if (error || !data?.length) return;
+        if (error || !data) return;
+        const parsed = (typeof data === 'string' ? JSON.parse(data) : data) || [];
+        if (parsed.length === 0) return;
 
-        setMessages(prev => dedupeAndSort([...prev, ...(data as InboxMessage[])]));
+        setMessages(prev => {
+          const newMsgs = dedupeAndSort(parsed);
+          if (newMsgs.length === prev.length && newMsgs[newMsgs.length - 1]?.id === prev[prev.length - 1]?.id) {
+            return prev; // No changes
+          }
+          return newMsgs;
+        });
       } catch {
         // silent fallback
       }
     }, 7000);
 
     return () => clearInterval(interval);
-  }, [orgId, selectedThreadId, messages]);
+  }, [orgId, selectedThreadId, clerkUserId]);
 
   // Helper to update conversation via RPC
   const rpcUpdateConversation = useCallback(async (conversationId: string, updates: Record<string, any>) => {
@@ -651,22 +655,8 @@ export function useInbox() {
 
       if (leadError) throw leadError;
 
-      // Link lead to conversation via RPC — update_conversation doesn't handle lead_id,
-      // so we use a simple approach: the lead insert already works via RLS (leads table has its own policies)
-      // For the conversation update, use our RPC
-      await rpcUpdateConversation(conversationId, { unread_count: 0 });
-      // Note: lead_id is not in the update_conversation RPC, so we need to handle it differently
-      // For now, let's try direct update as fallback (it may fail due to RLS)
-      try {
-        await (supabase as any)
-          .from('conversations')
-          .update({ lead_id: newLead.id })
-          .eq('id', conversationId)
-          .eq('organization_id', orgId);
-      } catch {
-        // If RLS blocks this, the lead is still created successfully
-        console.warn('Could not link lead to conversation via direct update');
-      }
+      // Link lead to conversation via RPC
+      await rpcUpdateConversation(conversationId, { lead_id: newLead.id });
 
       setThreads(prev =>
         prev.map(t => t.id === conversationId ? { ...t, lead_id: newLead.id } : t)
@@ -735,13 +725,7 @@ export function useInbox() {
     );
 
     try {
-      const { error } = await supabase
-        .from('conversations')
-        .update(updateData)
-        .eq('id', threadId)
-        .eq('organization_id', orgId);
-
-      if (error) throw error;
+      await rpcUpdateConversation(threadId, updateData);
 
       const modeLabels: Record<string, string> = {
         off: 'IA desativada',
@@ -757,18 +741,13 @@ export function useInbox() {
       const detail = err?.message || err?.code || 'Erro desconhecido';
       toast.error(`Erro ao alterar modo da IA: ${detail}`);
     }
-  }, [orgId]);
+  }, [orgId, rpcUpdateConversation]);
 
   // Resume AI
   const resumeAi = useCallback(async (threadId: string) => {
     if (!orgId) return;
     try {
-      const { error } = await supabase
-        .from('conversations')
-        .update({ ai_state: 'ai_active', ai_reply_count_since_last_lead: 0 } as any)
-        .eq('id', threadId)
-        .eq('organization_id', orgId);
-      if (error) throw error;
+      await rpcUpdateConversation(threadId, { ai_state: 'ai_active', ai_reply_count_since_last_lead: 0 });
 
       setThreads(prev =>
         prev.map(t => t.id === threadId ? { ...t, ai_state: 'ai_active', ai_reply_count_since_last_lead: 0 } : t)
@@ -778,7 +757,7 @@ export function useInbox() {
       console.error('Error resuming AI:', err);
       toast.error('Erro ao retomar IA');
     }
-  }, [orgId]);
+  }, [orgId, rpcUpdateConversation]);
 
   return {
     threads,
