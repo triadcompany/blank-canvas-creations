@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ReadOnlyBanner } from "@/components/auth/ReadOnlyBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,8 @@ import {
   CreditCard,
   ChevronDown,
   MailCheck,
+  ToggleLeft,
+  Inbox,
 } from "lucide-react";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
@@ -50,6 +52,8 @@ import { ClerkMigration } from "@/components/settings/ClerkMigration";
 import BillingSettings from "@/components/settings/BillingSettings";
 import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
 import { DebugPanel } from "@/components/settings/DebugPanel";
+import { useOrgSettings } from "@/hooks/useOrgSettings";
+import { Switch } from "@/components/ui/switch";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
@@ -72,6 +76,7 @@ export function Settings() {
   const { profiles, invitations, updateProfile, deleteProfile, deleteInvitation, loading, refreshProfiles } = useSupabaseProfiles();
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
+  const { settings: orgSettings, updateInboxEnabled } = useOrgSettings();
   const { inviteUser, loading: inviteLoading } = useUserInvites();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || "profile";
@@ -111,6 +116,7 @@ export function Settings() {
   type MenuItem = { id: string; icon: any; label: string; children?: MenuItem[] };
 
   const settingsItems: MenuItem[] = [
+    { id: "modules", icon: ToggleLeft, label: "Módulos" },
     { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
     { id: "profile", icon: User, label: "Meu Perfil" },
     { id: "vendors", icon: Users, label: "Usuários" },
@@ -129,6 +135,42 @@ export function Settings() {
   const renderContent = () => {
     const content = (() => {
     switch (activeTab) {
+      case "modules":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ToggleLeft className="h-5 w-5" />
+                Módulos
+              </CardTitle>
+              <CardDescription>Ative ou desative funcionalidades do sistema</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Inbox className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium text-sm">Inbox (Multiatendimento)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Centraliza conversas do WhatsApp e Instagram em uma caixa de entrada unificada
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={orgSettings.inbox_enabled}
+                  onCheckedChange={async (checked) => {
+                    const error = await updateInboxEnabled(checked);
+                    if (error) {
+                      toast({ title: "Erro", description: "Não foi possível atualizar a configuração", variant: "destructive" });
+                    } else {
+                      toast({ title: checked ? "Inbox ativado" : "Inbox desativado", description: checked ? "O módulo de Inbox está disponível na navegação" : "O módulo de Inbox foi removido da navegação" });
+                    }
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        );
       case "billing":
         return <BillingSettings />;
       case "profile":
