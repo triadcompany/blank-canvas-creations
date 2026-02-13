@@ -1108,6 +1108,36 @@ export type Database = {
           },
         ]
       }
+      clerk_organizations: {
+        Row: {
+          clerk_org_id: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          name: string
+          slug: string | null
+          updated_at: string
+        }
+        Insert: {
+          clerk_org_id: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          name: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clerk_org_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
           ativo: boolean | null
@@ -4742,6 +4772,44 @@ export type Database = {
           },
         ]
       }
+      org_members: {
+        Row: {
+          clerk_org_id: string
+          clerk_user_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          clerk_org_id: string
+          clerk_user_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          clerk_org_id?: string
+          clerk_user_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_members_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "clerk_organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_automation_settings: {
         Row: {
           created_at: string
@@ -6045,6 +6113,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      users_profile: {
+        Row: {
+          clerk_user_id: string
+          created_at: string
+          email: string | null
+          full_name: string | null
+          image_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          clerk_user_id: string
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          image_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clerk_user_id?: string
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          image_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       vehicles: {
         Row: {
