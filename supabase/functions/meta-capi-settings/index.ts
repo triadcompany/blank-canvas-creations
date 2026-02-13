@@ -14,59 +14,23 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
-/** Ensure the organization exists in saas_organizations (auto-heal). */
+/** Ensure the organization exists in organizations (auto-heal). */
 async function ensureOrg(
   supabase: any,
   organizationId: string,
-  profileId: string,
+  _profileId: string,
   prefix: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // Check saas_organizations first
-  const { data: saasOrg } = await supabase
-    .from("saas_organizations")
+  const { data: org } = await supabase
+    .from("organizations")
     .select("id")
     .eq("id", organizationId)
     .maybeSingle();
 
-  if (saasOrg) return { ok: true };
+  if (org) return { ok: true };
 
-  console.log(`${prefix} saas_organizations row missing for ${organizationId}, auto-healing...`);
-
-  // Fetch profile info to populate owner fields
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("id, name, email, clerk_user_id")
-    .eq("id", profileId)
-    .maybeSingle();
-
-  const ownerName = prof?.name || "Admin";
-  const ownerEmail = prof?.email || null;
-  const slug = `org-${organizationId.substring(0, 8)}`;
-
-  const { error: insertErr } = await supabase.from("saas_organizations").insert({
-    id: organizationId,
-    owner_id: profileId,
-    name: `Org ${organizationId.substring(0, 8)}`,
-    slug,
-    owner_name: ownerName,
-    owner_email: ownerEmail,
-  });
-
-  if (insertErr) {
-    // Could be a race condition / duplicate – check again
-    const { data: recheck } = await supabase
-      .from("saas_organizations")
-      .select("id")
-      .eq("id", organizationId)
-      .maybeSingle();
-    if (recheck) return { ok: true };
-
-    console.error(`${prefix} Failed to auto-heal saas_organizations:`, insertErr);
-    return { ok: false, error: insertErr.message };
-  }
-
-  console.log(`${prefix} Auto-healed saas_organizations for ${organizationId}`);
-  return { ok: true };
+  console.error(`${prefix} Organization ${organizationId} not found`);
+  return { ok: false, error: "Organization not found" };
 }
 
 serve(async (req) => {
