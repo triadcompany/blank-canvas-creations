@@ -122,11 +122,18 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
             console.error('❌ Profile auto-provision failed:', insertError);
             // Don't throw - fall through to onboarding
           } else {
-            await supabase.from('user_roles').upsert({
-              clerk_user_id: clerkUserId,
-              organization_id: resolvedOrgId,
-              role: resolvedRole === 'admin' ? 'admin' : 'seller',
-            }, { onConflict: 'clerk_user_id,organization_id' }).select();
+            // Insert role - ignore conflict since unique is on (user_id, organization_id) not clerk_user_id
+            const { error: roleErr } = await supabase
+              .from('user_roles')
+              .insert({
+                clerk_user_id: clerkUserId,
+                organization_id: resolvedOrgId,
+                role: resolvedRole === 'admin' ? 'admin' : 'seller',
+              });
+
+            if (roleErr) {
+              console.warn('⚠️ user_roles insert warning (non-fatal):', roleErr.message);
+            }
 
             setProfile(newProfile as Profile);
             setRole(resolvedRole === 'admin' ? 'admin' : 'seller');
