@@ -16,6 +16,7 @@ import { KanbanColumn, Lead } from "@/hooks/useSupabaseLeads";
 import { AddTaskModal } from "@/components/tasks/AddTaskModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatPhoneDisplay } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 interface KanbanBoardProps {
   columns: KanbanColumn[];
@@ -64,6 +65,7 @@ const getColumnAccent = (index: number) => {
 export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead);
@@ -93,10 +95,10 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
     onEditLead(lead);
   };
 
-  const openWhatsApp = (phone: string, e: React.MouseEvent) => {
+  const openConversation = (phone: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const cleanPhone = phone.replace(/\D/g, '');
-    window.open(`https://wa.me/55${cleanPhone}`, '_blank');
+    navigate(`/inbox?phone=${cleanPhone}`);
   };
 
   return (
@@ -198,7 +200,7 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
                                   variant="ghost" 
                                   size="icon" 
                                   className="h-7 w-7 hover:bg-primary/10"
-                                  onClick={(e) => openWhatsApp(lead.phone, e)}
+                                  onClick={(e) => openConversation(lead.phone, e)}
                                 >
                                   <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
                                 </Button>
