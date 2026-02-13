@@ -139,14 +139,30 @@ export function usePipelines() {
     }
 
     try {
+      // If no pipelines exist yet, use the RPC to seed default pipeline first
+      if (pipelines.length === 0) {
+        const ensured = await ensureDefaultPipeline();
+        if (ensured) {
+          await fetchPipelines();
+          return true;
+        }
+        throw new Error('Falha ao criar pipeline padrão');
+      }
+
+      const createdBy = profile?.id || profile?.clerk_user_id || '';
+      if (!createdBy) {
+        toast({ title: "Erro", description: "Informações de usuário não encontradas", variant: "destructive" });
+        return false;
+      }
+
       const { error } = await supabase
         .from('pipelines')
         .insert({
           name: pipelineData.name,
           description: pipelineData.description,
           organization_id: orgId,
-          created_by: profile?.id || '',
-          is_default: pipelines.length === 0,
+          created_by: createdBy,
+          is_default: false,
         });
 
       if (error) throw error;
@@ -293,12 +309,12 @@ export function usePipelines() {
   };
 
   useEffect(() => {
-    if (orgId) {
+    if (orgId && profile?.clerk_user_id) {
       fetchPipelines().finally(() => setLoading(false));
-    } else {
+    } else if (!orgId) {
       setLoading(false);
     }
-  }, [orgId, fetchPipelines]);
+  }, [orgId, profile?.clerk_user_id, fetchPipelines]);
 
   useEffect(() => {
     if (selectedPipeline) {
