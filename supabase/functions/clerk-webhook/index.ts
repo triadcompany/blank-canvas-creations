@@ -249,12 +249,12 @@ Deno.serve(async (req) => {
           [eventData.first_name, eventData.last_name]
             .filter(Boolean)
             .join(" ") || null;
-        const imageUrl = eventData.image_url || null;
+        const avatarUrl = eventData.image_url || null;
 
         const { error } = await supabase
           .from("users_profile")
           .upsert(
-            { clerk_user_id: clerkUserId, email, full_name: fullName, image_url: imageUrl },
+            { clerk_user_id: clerkUserId, email, full_name: fullName, avatar_url: avatarUrl },
             { onConflict: "clerk_user_id" }
           );
 

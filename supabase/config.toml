@@ -77,3 +77,9 @@ verify_jwt = false
 
 [functions.clerk-webhook]
 verify_jwt = false
+
+[functions.bootstrap-org]
+verify_jwt = false
+
+[functions.sync-login]
+verify_jwt = false
