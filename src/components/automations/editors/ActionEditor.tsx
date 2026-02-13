@@ -155,7 +155,7 @@ export function ActionEditor({ config, onChange }: ActionEditorProps) {
                     </SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="" disabled>
+                  <SelectItem value="__none__" disabled>
                     Nenhuma origem cadastrada
                   </SelectItem>
                 )}
