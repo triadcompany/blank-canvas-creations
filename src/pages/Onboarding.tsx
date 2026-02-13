@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useClerk } from "@clerk/clerk-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,8 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 export default function Onboarding() {
   const { user } = useUser();
-  const { refreshProfile } = useAuth();
+  const { setActive } = useClerk();
+  const { refreshProfile, retryBootstrap } = useAuth();
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [cnpj, setCnpj] = useState("");
@@ -24,7 +25,7 @@ export default function Onboarding() {
   const handleCreateOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user || !companyName.trim()) return;
+    if (!user || !companyName.trim() || isCreating) return;
 
     setIsCreating(true);
 
@@ -60,7 +61,19 @@ export default function Onboarding() {
 
       console.log("✅ Organization bootstrapped:", bootstrapData);
 
-      // 2. Also create the legacy organization + profile for backward compatibility
+      // 2. Set the newly created org as active in Clerk
+      const clerkOrgId = bootstrapData.clerk_org_id;
+      if (clerkOrgId) {
+        console.log("🔄 Setting active org in Clerk:", clerkOrgId);
+        try {
+          await setActive({ organization: clerkOrgId });
+          console.log("✅ Active org set in Clerk");
+        } catch (setActiveErr) {
+          console.warn("⚠️ setActive failed (non-critical):", setActiveErr);
+        }
+      }
+
+      // 3. Create legacy organization + profile for backward compatibility
       const { data: newOrg, error: orgError } = await supabase
         .from("organizations")
         .insert({
@@ -172,12 +185,27 @@ export default function Onboarding() {
         description: `Bem-vindo ao AutoLead, ${name}!`,
       });
 
+      // 4. Refresh auth state so guards see the new org
+      console.log("🔄 Refreshing auth state...");
+      await retryBootstrap();
       await refreshProfile();
-      navigate("/", { replace: true });
+
+      // 5. Small delay to ensure state propagation, then redirect
+      setTimeout(() => {
+        console.log("🚀 Redirecting to dashboard...");
+        navigate("/", { replace: true });
+        // Fallback: force reload if navigate doesn't work
+        setTimeout(() => {
+          if (window.location.pathname === '/onboarding') {
+            console.log("⚠️ Navigate didn't work, forcing reload...");
+            window.location.assign("/");
+          }
+        }, 1000);
+      }, 300);
 
     } catch (error) {
       console.error("❌ Error creating organization:", error);
-      toast.error("Erro ao criar empresa", {
+      toast.error("Falha ao criar empresa", {
         description: error instanceof Error ? error.message : "Tente novamente.",
       });
     } finally {

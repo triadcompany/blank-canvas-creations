@@ -35,8 +35,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string, organizationName?: string) => Promise<{ error: any; data?: any }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  retryBootstrap: () => Promise<void>;
   isAdmin: boolean;
-  // New Phase 2 fields
   orgId: string | null;
   clerkOrgId: string | null;
 }
@@ -49,7 +49,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { signOut: clerkSignOut } = useClerkAuth();
   const { openSignIn, openSignUp } = useClerk();
   const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
-  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding } = useAuthBootstrap();
+  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap } = useAuthBootstrap();
 
   // Converter usuário Clerk para formato compatível
   const user: CompatUser | null = clerkUser ? {
@@ -106,10 +106,11 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     signUp,
     signOut,
     refreshProfile,
+    retryBootstrap,
     isAdmin,
     orgId: org?.org_id || null,
     clerkOrgId: org?.clerk_org_id || null,
-  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, isAdmin, org]);
+  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, isAdmin, org]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -144,6 +145,7 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     signUp,
     signOut,
     refreshProfile,
+    retryBootstrap: refreshProfile,
     isAdmin: false,
     orgId: null,
     clerkOrgId: null,
