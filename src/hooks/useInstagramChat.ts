@@ -466,6 +466,8 @@ export function useInstagramChat() {
 
     if (profile?.organization_id) {
       loadData();
+    } else {
+      setLoading(false);
     }
   }, [profile?.organization_id, fetchConnections, fetchConversations, fetchQuickReplies, fetchTags]);
 

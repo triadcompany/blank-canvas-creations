@@ -46,6 +46,8 @@ export const useLeadDistribution = () => {
   useEffect(() => {
     if (user && profile?.organization_id) {
       fetchDistributionSettings();
+    } else {
+      setLoading(false);
     }
   }, [user, profile?.organization_id]);
 

@@ -35,6 +35,8 @@ export function useMetaIntegration() {
     if (profile?.organization_id) {
       loadConfig();
       loadRecentEvents();
+    } else {
+      setLoading(false);
     }
   }, [profile?.organization_id]);
 

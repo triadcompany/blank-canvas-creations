@@ -192,7 +192,10 @@ export function useAiAgentProfile() {
   const organizationId = userProfile?.organization_id;
 
   const fetchProfile = useCallback(async () => {
-    if (!organizationId) return;
+    if (!organizationId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase

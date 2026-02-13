@@ -218,6 +218,8 @@ export function useProspects() {
   useEffect(() => {
     if (profile?.organization_id) {
       fetchProspects();
+    } else {
+      setLoading(false);
     }
   }, [profile?.organization_id]);
 

@@ -39,6 +39,8 @@ export function useSupabaseProfiles() {
 
     // Se não tiver organization_id, não pode listar ninguém
     if (!organizationId) {
+      setProfiles([]);
+      setInvitations([]);
       setLoading(false);
       return;
     }

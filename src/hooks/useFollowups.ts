@@ -18,7 +18,10 @@ export function useFollowups() {
   const { toast } = useToast();
 
   const fetchFollowups = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!profile?.organization_id) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     

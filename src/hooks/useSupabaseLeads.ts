@@ -163,6 +163,9 @@ export function useSupabaseLeads(pipelineId?: string) {
   useEffect(() => {
     if (profile) {
       Promise.all([fetchStages(), fetchLeads()]).finally(() => setLoading(false));
+    } else {
+      // No profile yet — don't stay stuck in loading
+      setLoading(false);
     }
   }, [profile, isAdmin, pipelineId]);
 

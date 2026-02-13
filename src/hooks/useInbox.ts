@@ -124,7 +124,10 @@ export function useInbox() {
 
   // Fetch conversations with lead info
   const fetchThreads = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLoadingThreads(false);
+      return;
+    }
     setLoadingThreads(true);
 
     try {
