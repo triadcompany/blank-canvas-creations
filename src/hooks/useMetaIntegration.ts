@@ -26,26 +26,27 @@ interface MetaEventLog {
 }
 
 export function useMetaIntegration() {
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
+  const metaOrgId = profile?.organization_id || authOrgId;
   const [config, setConfig] = useState<MetaIntegration | null>(null);
   const [recentEvents, setRecentEvents] = useState<MetaEventLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (profile?.organization_id) {
+    if (metaOrgId) {
       loadConfig();
       loadRecentEvents();
     } else {
       setLoading(false);
     }
-  }, [profile?.organization_id]);
+  }, [metaOrgId]);
 
   const loadConfig = async () => {
     try {
       const { data, error } = await supabase
         .from("meta_integrations")
         .select("*")
-        .eq("organization_id", profile?.organization_id)
+        .eq("organization_id", metaOrgId)
         .maybeSingle();
 
       if (error) throw error;
@@ -63,7 +64,7 @@ export function useMetaIntegration() {
       const { data, error } = await supabase
         .from("meta_events_log")
         .select("*")
-        .eq("organization_id", profile?.organization_id)
+        .eq("organization_id", metaOrgId)
         .order("created_at", { ascending: false })
         .limit(10);
 
@@ -96,7 +97,7 @@ export function useMetaIntegration() {
           .insert([{
             pixel_id: updates.pixel_id,
             access_token: updates.access_token,
-            organization_id: profile?.organization_id!,
+            organization_id: metaOrgId!,
             created_by: profile?.id!,
             track_lead_qualificado: updates.track_lead_qualificado ?? true,
             track_lead_super_qualificado: updates.track_lead_super_qualificado ?? true,

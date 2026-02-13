@@ -18,13 +18,14 @@ interface Organization {
 }
 
 export function useOrganization() {
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
+  const resolvedOrgId = profile?.organization_id || authOrgId;
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchOrganization = async () => {
-      if (!profile?.organization_id) {
+      if (!resolvedOrgId) {
         setLoading(false);
         return;
       }
@@ -33,7 +34,7 @@ export function useOrganization() {
         const { data, error } = await supabase
           .from('organizations')
           .select('*')
-          .eq('id', profile.organization_id)
+          .eq('id', resolvedOrgId)
           .single();
 
         if (error) {
@@ -49,7 +50,7 @@ export function useOrganization() {
     };
 
     fetchOrganization();
-  }, [profile?.organization_id]);
+  }, [resolvedOrgId]);
 
   return { organization, loading };
 }

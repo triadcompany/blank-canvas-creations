@@ -52,12 +52,13 @@ export function useSupabaseLeads(pipelineId?: string) {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const orgId = profile?.organization_id || authOrgId;
   const { toast } = useToast();
 
   // Fetch pipeline stages
   const fetchStages = async () => {
-    if (!profile?.organization_id) {
+    if (!orgId) {
       setStages([]);
       return;
     }
@@ -67,7 +68,7 @@ export function useSupabaseLeads(pipelineId?: string) {
     
     if (!activePipelineId) {
       const { data: orgPipelines } = await supabase.rpc('get_org_pipelines', {
-        p_org_id: profile.organization_id,
+        p_org_id: orgId,
       });
       
       const pipelineList = (orgPipelines || []) as any[];
@@ -75,9 +76,9 @@ export function useSupabaseLeads(pipelineId?: string) {
       
       if (!defaultPipeline) {
         // Tentar seed idempotente
-        if (profile.clerk_user_id) {
+        if (profile?.clerk_user_id) {
           const { data: seededId } = await supabase.rpc('ensure_default_pipeline', {
-            p_org_id: profile.organization_id,
+            p_org_id: orgId,
             p_created_by: profile.clerk_user_id,
           });
           activePipelineId = seededId;
@@ -110,15 +111,15 @@ export function useSupabaseLeads(pipelineId?: string) {
 
   // Fetch leads
   const fetchLeads = async () => {
-    if (!profile) {
-      console.log('❌ useSupabaseLeads: No profile, skipping fetch');
+    if (!orgId) {
+      console.log('❌ useSupabaseLeads: No orgId, skipping fetch');
       return;
     }
     
     console.log('🔍 useSupabaseLeads: Fetching leads...', { 
       isAdmin, 
-      profileId: profile.id,
-      organizationId: profile.organization_id 
+      profileId: profile?.id,
+      organizationId: orgId 
     });
     
     let query = supabase
@@ -130,13 +131,13 @@ export function useSupabaseLeads(pipelineId?: string) {
       `);
 
     // If not admin, only show own leads
-    if (!isAdmin) {
+    if (!isAdmin && profile?.id) {
       query = query.eq('seller_id', profile.id);
       console.log('👤 useSupabaseLeads: Filtering by seller_id:', profile.id);
     } else {
       // Admin vê todos os leads da organização
-      query = query.eq('organization_id', profile.organization_id);
-      console.log('👑 useSupabaseLeads: Admin - Fetching all leads from org:', profile.organization_id);
+      query = query.eq('organization_id', orgId);
+      console.log('👑 useSupabaseLeads: Admin - Fetching all leads from org:', orgId);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -161,13 +162,13 @@ export function useSupabaseLeads(pipelineId?: string) {
   };
 
   useEffect(() => {
-    if (profile) {
+    if (orgId) {
       Promise.all([fetchStages(), fetchLeads()]).finally(() => setLoading(false));
     } else {
-      // No profile yet — don't stay stuck in loading
+      // No org yet — don't stay stuck in loading
       setLoading(false);
     }
-  }, [profile, isAdmin, pipelineId]);
+  }, [orgId, isAdmin, pipelineId]);
 
   // Filter leads based on search term
   const getFilteredLeads = (): Lead[] => {

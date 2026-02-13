@@ -32,7 +32,8 @@ interface N8nConfig {
 }
 
 export function N8nIntegration() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const n8nOrgId = profile?.organization_id || authOrgId;
   const { toast } = useToast();
   const { stages } = usePipelines();
   const [loading, setLoading] = useState(true);
@@ -50,16 +51,16 @@ export function N8nIntegration() {
 
   useEffect(() => {
     fetchConfig();
-  }, [profile?.organization_id]);
+  }, [n8nOrgId]);
 
   const fetchConfig = async () => {
-    if (!profile?.organization_id) return;
+    if (!n8nOrgId) return;
     
     try {
       const { data, error } = await supabase
         .from('n8n_workflows')
         .select('*')
-        .eq('organization_id', profile.organization_id)
+        .eq('organization_id', n8nOrgId)
         .limit(1)
         .maybeSingle();
 
@@ -83,12 +84,12 @@ export function N8nIntegration() {
   };
 
   const handleSave = async () => {
-    if (!profile?.organization_id) return;
+    if (!n8nOrgId) return;
 
     setSaving(true);
     try {
       const payload = {
-        organization_id: profile.organization_id,
+        organization_id: n8nOrgId,
         name: config.name,
         webhook_url: config.webhook_url,
         is_active: config.is_active,

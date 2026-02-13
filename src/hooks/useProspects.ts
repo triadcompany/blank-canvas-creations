@@ -40,18 +40,19 @@ export function useProspects() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchingCnpj, setSearchingCnpj] = useState(false);
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
+  const prospectOrgId = profile?.organization_id || authOrgId;
   const { toast } = useToast();
 
   const fetchProspects = async () => {
-    if (!profile?.organization_id) return;
+    if (!prospectOrgId) return;
 
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('prospects')
         .select('*')
-        .eq('organization_id', profile.organization_id)
+        .eq('organization_id', prospectOrgId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -69,7 +70,7 @@ export function useProspects() {
   };
 
   const searchCnpj = async (cnpj: string) => {
-    if (!profile?.organization_id) return null;
+    if (!prospectOrgId) return null;
 
     try {
       setSearchingCnpj(true);
@@ -104,7 +105,7 @@ export function useProspects() {
   };
 
   const addProspect = async (prospectData: ProspectInsert) => {
-    if (!profile?.organization_id || !profile?.id) return null;
+    if (!prospectOrgId) return null;
 
     try {
       const insertData = {
@@ -120,8 +121,8 @@ export function useProspects() {
         status: prospectData.status,
         main_activity: prospectData.main_activity,
         raw_data: prospectData.raw_data,
-        organization_id: profile.organization_id,
-        created_by: profile.id,
+        organization_id: prospectOrgId,
+        created_by: profile?.id || '',
       };
 
       const { data, error } = await supabase
@@ -216,12 +217,12 @@ export function useProspects() {
   };
 
   useEffect(() => {
-    if (profile?.organization_id) {
+    if (prospectOrgId) {
       fetchProspects();
     } else {
       setLoading(false);
     }
-  }, [profile?.organization_id]);
+  }, [prospectOrgId]);
 
   return {
     prospects,

@@ -37,19 +37,20 @@ export interface LeadDistributionUser {
 }
 
 export const useLeadDistribution = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, orgId: authOrgId } = useAuth();
+  const ldOrgId = profile?.organization_id || authOrgId;
   const [settings, setSettings] = useState<LeadDistributionSettings | null>(null);
   const [rules, setRules] = useState<LeadDistributionRule[]>([]);
   const [users, setUsers] = useState<LeadDistributionUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user && profile?.organization_id) {
+    if (user && ldOrgId) {
       fetchDistributionSettings();
     } else {
       setLoading(false);
     }
-  }, [user, profile?.organization_id]);
+  }, [user, ldOrgId]);
 
   const fetchDistributionSettings = async () => {
     try {
@@ -59,7 +60,7 @@ export const useLeadDistribution = () => {
       const { data: settingsData, error: settingsError } = await supabase
         .from('lead_distribution_settings')
         .select('*')
-        .eq('organization_id', profile?.organization_id)
+        .eq('organization_id', ldOrgId)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') {
@@ -147,7 +148,7 @@ export const useLeadDistribution = () => {
 
   const resetCursor = async () => {
     try {
-      if (!profile?.organization_id) throw new Error('Organization not found');
+      if (!ldOrgId) throw new Error('Organization not found');
 
       const { error } = await (supabase.rpc as any)('reset_distribution_cursor', {
         p_organization_id: profile.organization_id

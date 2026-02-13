@@ -72,11 +72,12 @@ function RoleBadges({
 }
 
 export function InboxRoutingSettings() {
-  const { profile } = useAuth();
+  const { profile, orgId: authOrgId } = useAuth();
+  const routingOrgId = profile?.organization_id || authOrgId;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<RoutingSettings>({
-    organization_id: profile?.organization_id || '',
+    organization_id: routingOrgId || '',
     enabled: false,
     mode: 'round_robin',
     assign_on: 'first_message',
@@ -89,7 +90,7 @@ export function InboxRoutingSettings() {
     non_traffic_roles: ['seller', 'admin'],
   });
 
-  const orgId = profile?.organization_id;
+  const orgId = routingOrgId;
 
   const fetchSettings = useCallback(async () => {
     if (!orgId) return;

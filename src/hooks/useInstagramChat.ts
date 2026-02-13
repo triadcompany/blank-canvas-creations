@@ -95,8 +95,9 @@ export interface InstagramUserPermission {
 }
 
 export function useInstagramChat() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
   const { toast } = useToast();
+  const igOrgId = profile?.organization_id || authOrgId;
   
   const [connections, setConnections] = useState<InstagramConnection[]>([]);
   const [conversations, setConversations] = useState<InstagramConversation[]>([]);
@@ -109,12 +110,12 @@ export function useInstagramChat() {
 
   // Fetch connections
   const fetchConnections = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!igOrgId) return;
 
     const { data, error } = await (supabase as any)
       .from('instagram_connections')
       .select('*')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', igOrgId)
       .eq('is_active', true);
 
     if (error) {
@@ -122,17 +123,17 @@ export function useInstagramChat() {
     } else {
       setConnections((data || []) as InstagramConnection[]);
     }
-  }, [profile?.organization_id]);
+  }, [igOrgId]);
 
   // Fetch conversations
   const fetchConversations = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!igOrgId) return;
 
     // First fetch conversations without the join
     const { data, error } = await (supabase as any)
       .from('instagram_conversations')
       .select('*')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', igOrgId)
       .order('last_message_at', { ascending: false, nullsFirst: false });
 
     if (error) {
@@ -170,7 +171,7 @@ export function useInstagramChat() {
     );
 
     setConversations(conversationsWithData as InstagramConversation[]);
-  }, [profile?.organization_id]);
+  }, [igOrgId]);
 
   // Fetch messages for selected conversation
   const fetchMessages = useCallback(async (conversationId: string) => {
@@ -213,12 +214,12 @@ export function useInstagramChat() {
 
   // Fetch quick replies
   const fetchQuickReplies = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!igOrgId) return;
 
     const { data, error } = await (supabase as any)
       .from('instagram_quick_replies')
       .select('*')
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', igOrgId)
       .order('usage_count', { ascending: false });
 
     if (error) {
@@ -226,23 +227,23 @@ export function useInstagramChat() {
     } else {
       setQuickReplies((data || []) as QuickReply[]);
     }
-  }, [profile?.organization_id]);
+  }, [igOrgId]);
 
   // Fetch tags
   const fetchTags = useCallback(async () => {
-    if (!profile?.organization_id) return;
+    if (!igOrgId) return;
 
     const { data, error } = await (supabase as any)
       .from('instagram_conversation_tags')
       .select('*')
-      .eq('organization_id', profile.organization_id);
+      .eq('organization_id', igOrgId);
 
     if (error) {
       console.error('Error fetching tags:', error);
     } else {
       setTags((data || []) as ConversationTag[]);
     }
-  }, [profile?.organization_id]);
+  }, [igOrgId]);
 
   // Send message
   const sendMessage = async (content: string, quickReplyId?: string) => {
@@ -392,7 +393,7 @@ export function useInstagramChat() {
     const { error } = await (supabase as any)
       .from('instagram_quick_replies')
       .insert({
-        organization_id: profile?.organization_id,
+        organization_id: igOrgId,
         title,
         content,
         shortcut,
@@ -420,7 +421,7 @@ export function useInstagramChat() {
     const { error } = await (supabase as any)
       .from('instagram_conversation_tags')
       .insert({
-        organization_id: profile?.organization_id,
+        organization_id: igOrgId,
         name,
         color,
         created_by: profile?.id,
@@ -464,16 +465,16 @@ export function useInstagramChat() {
       setLoading(false);
     };
 
-    if (profile?.organization_id) {
+    if (igOrgId) {
       loadData();
     } else {
       setLoading(false);
     }
-  }, [profile?.organization_id, fetchConnections, fetchConversations, fetchQuickReplies, fetchTags]);
+  }, [igOrgId, fetchConnections, fetchConversations, fetchQuickReplies, fetchTags]);
 
   // Real-time subscription for new messages
   useEffect(() => {
-    if (!profile?.organization_id) return;
+    if (!igOrgId) return;
 
     const channel = supabase
       .channel('instagram_messages_changes')
@@ -496,7 +497,7 @@ export function useInstagramChat() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile?.organization_id, selectedConversation, fetchMessages, fetchConversations]);
+  }, [igOrgId, selectedConversation, fetchMessages, fetchConversations]);
 
   return {
     connections,
