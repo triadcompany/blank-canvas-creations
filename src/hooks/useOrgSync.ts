@@ -133,6 +133,22 @@ export function useOrgSync() {
           console.warn('⚠️ useOrgSync: profiles upsert warning:', profileErr.message);
         }
 
+        // 4b. Ensure user_roles entry exists
+        const { error: roleErr } = await supabase
+          .from('user_roles')
+          .upsert(
+            {
+              clerk_user_id: clerkUserId,
+              organization_id: supabaseOrgId,
+              role: 'admin',
+            },
+            { onConflict: 'clerk_user_id,organization_id' }
+          );
+
+        if (roleErr) {
+          console.warn('⚠️ useOrgSync: user_roles upsert warning:', roleErr.message);
+        }
+
         // 5. Seed default pipeline & stages for new orgs
         if (needsSeedPipeline) {
           const { data: profileRow } = await supabase
