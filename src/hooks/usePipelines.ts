@@ -156,14 +156,11 @@ export function usePipelines() {
         return false;
       }
 
-      const { error } = await supabase
-        .from('pipelines')
-        .insert({
-          name: pipelineData.name,
-          description: pipelineData.description,
-          organization_id: orgId,
-          created_by: createdBy,
-          is_default: false,
+      const { error } = await supabase.rpc('create_pipeline', {
+          p_name: pipelineData.name,
+          p_description: pipelineData.description || null,
+          p_org_id: orgId,
+          p_created_by: createdBy,
         });
 
       if (error) throw error;
