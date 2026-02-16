@@ -53,13 +53,12 @@ export function useOrgSync() {
 
         const supabaseOrgId = orgData.id;
 
-        // 2. Upsert legacy organizations table (clerk_organization_id column if exists)
-        // This is a best-effort sync for backward compat
+        // 2. Upsert legacy organizations table
         const { error: legacyErr } = await supabase
           .from('organizations')
           .upsert(
             {
-              id: supabaseOrgId, // use same UUID for consistency
+              id: supabaseOrgId,
               name: orgName,
               is_active: true,
             },
@@ -69,6 +68,30 @@ export function useOrgSync() {
         if (legacyErr) {
           console.warn('⚠️ useOrgSync: legacy organizations upsert warning:', legacyErr.message);
         }
+
+        // 2b. Seed default pipeline if none exists
+        const { data: existingPipelines } = await supabase
+          .from('pipelines')
+          .select('id')
+          .eq('organization_id', supabaseOrgId)
+          .limit(1);
+
+        if (!existingPipelines || existingPipelines.length === 0) {
+          console.log('🌱 useOrgSync: seeding default pipeline and lead sources');
+
+          // We need a profile ID for created_by — will be set after profile upsert below
+          // For now, seed pipeline after profile is ensured
+        }
+
+        // 2c. Seed default lead sources if none exist
+        const { data: existingSources } = await supabase
+          .from('lead_sources')
+          .select('id')
+          .eq('organization_id', supabaseOrgId)
+          .limit(1);
+
+        const needsSeedSources = !existingSources || existingSources.length === 0;
+        const needsSeedPipeline = !existingPipelines || existingPipelines.length === 0;
 
         // 3. Ensure org_members entry exists
         const { error: memberErr } = await supabase
@@ -88,30 +111,80 @@ export function useOrgSync() {
           console.warn('⚠️ useOrgSync: org_members upsert warning:', memberErr.message);
         }
 
-        // 4. Update profile's organization_id if it doesn't match
-        if (orgId !== supabaseOrgId) {
-          const email = user.primaryEmailAddress?.emailAddress || '';
-          const name = user.fullName || user.firstName || email.split('@')[0] || 'User';
+        // 4. Upsert profile
+        const email = user.primaryEmailAddress?.emailAddress || '';
+        const userName = user.fullName || user.firstName || email.split('@')[0] || 'User';
 
-          const { error: profileErr } = await supabase
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              clerk_user_id: clerkUserId,
+              email,
+              name: userName,
+              avatar_url: user.imageUrl || null,
+              organization_id: supabaseOrgId,
+              onboarding_completed: true,
+            },
+            { onConflict: 'clerk_user_id' }
+          );
+
+        if (profileErr) {
+          console.warn('⚠️ useOrgSync: profiles upsert warning:', profileErr.message);
+        }
+
+        // 5. Seed default pipeline & stages for new orgs
+        if (needsSeedPipeline) {
+          const { data: profileRow } = await supabase
             .from('profiles')
-            .upsert(
-              {
-                clerk_user_id: clerkUserId,
-                email,
-                name,
-                avatar_url: user.imageUrl || null,
-                organization_id: supabaseOrgId,
-                onboarding_completed: true,
-              },
-              { onConflict: 'clerk_user_id' }
-            );
+            .select('id')
+            .eq('clerk_user_id', clerkUserId)
+            .single();
 
-          if (profileErr) {
-            console.warn('⚠️ useOrgSync: profiles upsert warning:', profileErr.message);
+          if (profileRow) {
+            const { data: newPipeline } = await supabase
+              .from('pipelines')
+              .insert({ organization_id: supabaseOrgId, name: 'Pipeline Principal', is_default: true, created_by: profileRow.id })
+              .select('id')
+              .single();
+
+            if (newPipeline) {
+              const stages = [
+                { name: 'Novo Lead', position: 0, color: '#3B82F6' },
+                { name: 'Andamento', position: 1, color: '#F59E0B' },
+                { name: 'Qualificado', position: 2, color: '#10B981' },
+                { name: 'Agendado', position: 3, color: '#8B5CF6' },
+                { name: 'Visita Realizada', position: 4, color: '#6366F1' },
+                { name: 'Negociando Proposta', position: 5, color: '#EC4899' },
+                { name: 'Venda', position: 6, color: '#22C55E' },
+                { name: 'Follow Up', position: 7, color: '#F97316' },
+                { name: 'Perdido', position: 8, color: '#EF4444' },
+              ];
+              await supabase.from('pipeline_stages').insert(
+                stages.map(s => ({ ...s, pipeline_id: newPipeline.id, created_by: profileRow.id }))
+              );
+              console.log('✅ useOrgSync: seeded default pipeline with 9 stages');
+            }
           }
+        }
 
-          // Refresh auth context to pick up new orgId
+        // 6. Seed default lead sources for new orgs
+        if (needsSeedSources) {
+          const defaultSources = [
+            { name: 'Meta Ads', sort_order: 0 },
+            { name: 'Indicação', sort_order: 1 },
+            { name: 'Instagram Orgânico', sort_order: 2 },
+            { name: 'WhatsApp', sort_order: 3 },
+            { name: 'Marketplace', sort_order: 4 },
+          ];
+          await supabase.from('lead_sources').insert(
+            defaultSources.map(s => ({ ...s, organization_id: supabaseOrgId, is_active: true }))
+          );
+          console.log('✅ useOrgSync: seeded default lead sources');
+        }
+
+        // Refresh auth context to pick up new orgId
+        if (orgId !== supabaseOrgId) {
           await refreshProfile();
         }
 
