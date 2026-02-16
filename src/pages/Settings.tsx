@@ -37,6 +37,7 @@ import {
   MailCheck,
   ToggleLeft,
   Inbox,
+  Construction,
 } from "lucide-react";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
@@ -146,6 +147,13 @@ export function Settings() {
               <CardDescription>Ative ou desative funcionalidades do sistema</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                <Construction className="h-5 w-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-medium text-sm text-amber-800 dark:text-amber-400">Funcionalidade em Desenvolvimento</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">Os módulos estão em fase de desenvolvimento. Algumas funcionalidades podem estar instáveis.</p>
+                </div>
+              </div>
               <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center gap-3">
                   <Inbox className="h-5 w-5 text-muted-foreground" />
