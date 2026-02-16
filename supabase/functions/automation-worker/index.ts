@@ -16,50 +16,54 @@ const respond = (body: Record<string, unknown>, status = 200) =>
   });
 
 /**
- * Ensures a users_profile record also exists in the `profiles` table
+ * Resolves a users_profile ID to the corresponding profiles.id
  * (which is the FK target for leads.seller_id / leads.created_by).
- * Uses upsert so it's safe to call multiple times.
+ * Falls back to creating a profile if needed.
  */
-async function ensureProfileExists(supabase: any, userId: string, orgId: string): Promise<void> {
+async function resolveProfileId(supabase: any, usersProfileId: string, orgId: string): Promise<string | null> {
   try {
-    // Check if already exists
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .maybeSingle();
-    if (existing) return;
-
-    // Fetch from users_profile
+    // 1) Get clerk_user_id from users_profile
     const { data: up } = await supabase
       .from("users_profile")
-      .select("id, full_name, email, clerk_user_id, avatar_url")
-      .eq("id", userId)
+      .select("clerk_user_id, full_name, email, avatar_url")
+      .eq("id", usersProfileId)
       .maybeSingle();
-    if (!up) {
-      console.warn(`[automation-worker] ensureProfileExists: users_profile not found for ${userId}`);
-      return;
+    if (!up?.clerk_user_id) {
+      console.warn(`[automation-worker] resolveProfileId: users_profile not found for ${usersProfileId}`);
+      return null;
     }
 
-    const { error } = await supabase
+    // 2) Find existing profile by clerk_user_id
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("clerk_user_id", up.clerk_user_id)
+      .maybeSingle();
+    if (existingProfile) return existingProfile.id;
+
+    // 3) Create profile if not found
+    const { data: newProfile, error } = await supabase
       .from("profiles")
       .upsert({
-        id: up.id,
         name: up.full_name || "Usuário",
         email: up.email || "no-email@placeholder.com",
         clerk_user_id: up.clerk_user_id,
         avatar_url: up.avatar_url || null,
         organization_id: orgId,
         onboarding_completed: true,
-      }, { onConflict: "id" });
+      }, { onConflict: "clerk_user_id" })
+      .select("id")
+      .single();
 
     if (error) {
-      console.error(`[automation-worker] ensureProfileExists upsert error:`, error);
-    } else {
-      console.log(`[automation-worker] ensureProfileExists: created profile for ${userId} in org ${orgId}`);
+      console.error(`[automation-worker] resolveProfileId upsert error:`, error);
+      return null;
     }
+    console.log(`[automation-worker] resolveProfileId: created profile ${newProfile.id} for clerk ${up.clerk_user_id}`);
+    return newProfile.id;
   } catch (e) {
-    console.error(`[automation-worker] ensureProfileExists exception:`, e);
+    console.error(`[automation-worker] resolveProfileId exception:`, e);
+    return null;
   }
 }
 
@@ -477,9 +481,13 @@ async function resolveSellerOrOwner(
   automationCreatedBy: string | null,
 ): Promise<{ sellerId: string | null; strategy: string; distributionRuleId?: string; distributionCandidates?: number }> {
 
-  // A) Manual selection
+  // A) Manual selection — resolve to profiles.id
   if (ownerId) {
-    return { sellerId: ownerId, strategy: "manual" };
+    const profileId = await resolveProfileId(supabase, ownerId, orgId);
+    if (profileId) return { sellerId: profileId, strategy: "manual" };
+    // If resolution failed, try to use ownerId directly (might already be profiles.id)
+    const { data: directProfile } = await supabase.from("profiles").select("id").eq("id", ownerId).maybeSingle();
+    if (directProfile) return { sellerId: directProfile.id, strategy: "manual" };
   }
 
   // B) Try lead distribution (round-robin)
@@ -492,7 +500,8 @@ async function resolveSellerOrOwner(
 
     if (distSettings?.is_auto_distribution_enabled) {
       if (distSettings.mode === "manual" && distSettings.manual_receiver_id) {
-        return { sellerId: distSettings.manual_receiver_id, strategy: "distribution", distributionRuleId: distSettings.id };
+        const profileId = await resolveProfileId(supabase, distSettings.manual_receiver_id, orgId);
+        return { sellerId: profileId || distSettings.manual_receiver_id, strategy: "distribution", distributionRuleId: distSettings.id };
       }
 
       // Round-robin: get active users
@@ -514,8 +523,9 @@ async function resolveSellerOrOwner(
           .update({ rr_cursor: cursor + 1 })
           .eq("id", distSettings.id);
 
+        const profileId = await resolveProfileId(supabase, chosen.user_id, orgId);
         return {
-          sellerId: chosen.user_id,
+          sellerId: profileId || chosen.user_id,
           strategy: "distribution",
           distributionRuleId: distSettings.id,
           distributionCandidates: distUsers.length,
@@ -526,19 +536,13 @@ async function resolveSellerOrOwner(
     console.warn("[automation-worker] Distribution lookup failed:", e);
   }
 
-  // C) Fallback 1: automation creator
+  // C) Fallback 1: automation creator (already resolved to profiles.id by caller)
   if (automationCreatedBy) {
-    const { data: creatorProfile } = await supabase
-      .from("users_profile")
-      .select("id")
-      .eq("id", automationCreatedBy)
-      .maybeSingle();
-    if (creatorProfile) {
-      return { sellerId: creatorProfile.id, strategy: "fallback_created_by" };
-    }
+    const { data: existing } = await supabase.from("profiles").select("id").eq("id", automationCreatedBy).maybeSingle();
+    if (existing) return { sellerId: existing.id, strategy: "fallback_created_by" };
   }
 
-  // D) Fallback 2: first active seller in org (via org_members + profiles)
+  // D) Fallback 2: first active seller in org
   const { data: sellerMembers } = await supabase
     .from("org_members")
     .select("clerk_user_id")
@@ -550,18 +554,16 @@ async function resolveSellerOrOwner(
   if (sellerMembers && sellerMembers.length > 0) {
     const clerkIds = sellerMembers.map((m: any) => m.clerk_user_id);
     const { data: sellerProfile } = await supabase
-      .from("users_profile")
+      .from("profiles")
       .select("id")
       .in("clerk_user_id", clerkIds)
       .order("created_at")
       .limit(1)
       .maybeSingle();
-    if (sellerProfile) {
-      return { sellerId: sellerProfile.id, strategy: "fallback_first_seller" };
-    }
+    if (sellerProfile) return { sellerId: sellerProfile.id, strategy: "fallback_first_seller" };
   }
 
-  // E) Fallback 3: first active admin (via org_members + profiles)
+  // E) Fallback 3: first active admin
   const { data: adminMembers } = await supabase
     .from("org_members")
     .select("clerk_user_id")
@@ -573,15 +575,13 @@ async function resolveSellerOrOwner(
   if (adminMembers && adminMembers.length > 0) {
     const clerkIds = adminMembers.map((m: any) => m.clerk_user_id);
     const { data: adminProfile } = await supabase
-      .from("users_profile")
+      .from("profiles")
       .select("id")
       .in("clerk_user_id", clerkIds)
       .order("created_at")
       .limit(1)
       .maybeSingle();
-    if (adminProfile) {
-      return { sellerId: adminProfile.id, strategy: "fallback_first_admin" };
-    }
+    if (adminProfile) return { sellerId: adminProfile.id, strategy: "fallback_first_admin" };
   }
 
   return { sellerId: null, strategy: "none_found" };
@@ -624,55 +624,67 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   let createdByStrategy = "none_found";
 
   if (actorUserId) {
-    resolvedCreatedBy = actorUserId;
-    createdByStrategy = "actor_user";
-  } else {
+    // Resolve actor to profiles.id
+    const actorProfileId = await resolveProfileId(supabase, actorUserId, orgId);
+    if (actorProfileId) {
+      resolvedCreatedBy = actorProfileId;
+      createdByStrategy = "actor_user";
+    } else {
+      // Maybe actorUserId is already a profiles.id
+      const { data: directProfile } = await supabase.from("profiles").select("id").eq("id", actorUserId).maybeSingle();
+      if (directProfile) {
+        resolvedCreatedBy = directProfile.id;
+        createdByStrategy = "actor_user_direct";
+      }
+    }
+  }
+  
+  if (!resolvedCreatedBy) {
     // Fallback: automation creator
-    let automationCreatedBy: string | null = null;
     const { data: automation } = await supabase
       .from("automations")
       .select("created_by")
       .eq("id", job.automation_id)
       .maybeSingle();
     if (automation && automation.created_by && automation.created_by !== "unknown") {
-      // Validate it's a real profile UUID
-      const { data: creatorProfile } = await supabase
-        .from("users_profile")
-        .select("id")
-        .eq("id", automation.created_by)
-        .maybeSingle();
-      if (creatorProfile) {
-        automationCreatedBy = creatorProfile.id;
+      const creatorProfileId = await resolveProfileId(supabase, automation.created_by, orgId);
+      if (creatorProfileId) {
+        resolvedCreatedBy = creatorProfileId;
+        createdByStrategy = "automation_creator";
+      } else {
+        // Maybe created_by is already a profiles.id
+        const { data: directProfile } = await supabase.from("profiles").select("id").eq("id", automation.created_by).maybeSingle();
+        if (directProfile) {
+          resolvedCreatedBy = directProfile.id;
+          createdByStrategy = "automation_creator_direct";
+        }
       }
     }
+  }
 
-    if (automationCreatedBy) {
-      resolvedCreatedBy = automationCreatedBy;
-      createdByStrategy = "automation_creator";
-    } else {
-      // Fallback: first admin in org (via org_members + users_profile)
-      const { data: adminMembersForCreatedBy } = await supabase
-        .from("org_members")
-        .select("clerk_user_id")
-        .eq("organization_id", orgId)
-        .eq("role", "admin")
-        .eq("status", "active")
-        .limit(10);
+  if (!resolvedCreatedBy) {
+    // Fallback: first admin in org (via org_members + profiles)
+    const { data: adminMembersForCreatedBy } = await supabase
+      .from("org_members")
+      .select("clerk_user_id")
+      .eq("organization_id", orgId)
+      .eq("role", "admin")
+      .eq("status", "active")
+      .limit(10);
 
-      if (adminMembersForCreatedBy && adminMembersForCreatedBy.length > 0) {
-        const clerkIds = adminMembersForCreatedBy.map((m: any) => m.clerk_user_id);
-        const { data: adminFallback } = await supabase
-          .from("users_profile")
-          .select("id")
-          .in("clerk_user_id", clerkIds)
-          .order("created_at")
-          .limit(1)
-          .maybeSingle();
-        
-        if (adminFallback) {
-          resolvedCreatedBy = adminFallback.id;
-          createdByStrategy = "fallback_first_admin";
-        }
+    if (adminMembersForCreatedBy && adminMembersForCreatedBy.length > 0) {
+      const clerkIds = adminMembersForCreatedBy.map((m: any) => m.clerk_user_id);
+      const { data: adminFallback } = await supabase
+        .from("profiles")
+        .select("id")
+        .in("clerk_user_id", clerkIds)
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      
+      if (adminFallback) {
+        resolvedCreatedBy = adminFallback.id;
+        createdByStrategy = "fallback_first_admin";
       }
     }
   }
@@ -690,15 +702,11 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
   }
 
   // ── Resolve seller_id (fallback chain) ──
-  // Use resolvedCreatedBy as additional fallback for seller
+  // resolvedCreatedBy is already a profiles.id at this point
   const sellerResolution = await resolveSellerOrOwner(supabase, orgId, ownerId, resolvedCreatedBy);
   const resolvedSellerId = sellerResolution.sellerId;
 
   console.log(`[automation-worker] Seller resolved: strategy=${sellerResolution.strategy}, seller_id=${resolvedSellerId}`);
-
-  // ── Ensure profiles exist in FK-target table ──
-  if (resolvedSellerId) await ensureProfileExists(supabase, resolvedSellerId, orgId);
-  if (resolvedCreatedBy && resolvedCreatedBy !== resolvedSellerId) await ensureProfileExists(supabase, resolvedCreatedBy, orgId);
 
   // ── Resolve pipeline + stage ──
   let resolvedPipelineId = pipelineId;
