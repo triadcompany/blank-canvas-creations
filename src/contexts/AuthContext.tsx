@@ -128,7 +128,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     refreshProfile,
     retryBootstrap,
     isAdmin,
-    orgId: org?.org_id || null,
+    orgId: org?.org_id || profile?.organization_id || null,
     clerkOrgId: org?.clerk_org_id || null,
     userName,
     userEmail,
