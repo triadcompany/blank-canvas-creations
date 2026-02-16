@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Instagram, Plus, Trash2, Users, Settings2, Loader2 } from 'lucide-react';
+import { Instagram, Plus, Trash2, Users, Settings2, Loader2, Construction } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -438,6 +439,15 @@ export function InstagramSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Development banner */}
+      <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+        <Construction className="h-5 w-5 text-amber-600" />
+        <AlertTitle className="text-amber-800 dark:text-amber-400">Funcionalidade em Desenvolvimento</AlertTitle>
+        <AlertDescription className="text-amber-700 dark:text-amber-300">
+          A integração com o Instagram Direct está em fase de desenvolvimento. Algumas funcionalidades podem estar instáveis ou indisponíveis.
+        </AlertDescription>
+      </Alert>
+
       {/* Connected accounts */}
       <Card>
         <CardHeader>
