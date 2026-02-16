@@ -150,15 +150,15 @@ export function useOrgSync() {
 
             if (newPipeline) {
               const stages = [
-                { name: 'Novo Lead', position: 0, color: '#3B82F6' },
-                { name: 'Andamento', position: 1, color: '#F59E0B' },
-                { name: 'Qualificado', position: 2, color: '#10B981' },
-                { name: 'Agendado', position: 3, color: '#8B5CF6' },
-                { name: 'Visita Realizada', position: 4, color: '#6366F1' },
-                { name: 'Negociando Proposta', position: 5, color: '#EC4899' },
-                { name: 'Venda', position: 6, color: '#22C55E' },
-                { name: 'Follow Up', position: 7, color: '#F97316' },
-                { name: 'Perdido', position: 8, color: '#EF4444' },
+                { name: 'Novo Lead', position: 1, color: '#3B82F6' },
+                { name: 'Andamento', position: 2, color: '#F59E0B' },
+                { name: 'Qualificado', position: 3, color: '#10B981' },
+                { name: 'Agendado', position: 4, color: '#8B5CF6' },
+                { name: 'Visita Realizada', position: 5, color: '#6366F1' },
+                { name: 'Negociando Proposta', position: 6, color: '#EC4899' },
+                { name: 'Venda', position: 7, color: '#22C55E' },
+                { name: 'Follow Up', position: 8, color: '#F97316' },
+                { name: 'Perdido', position: 9, color: '#EF4444' },
               ];
               await supabase.from('pipeline_stages').insert(
                 stages.map(s => ({ ...s, pipeline_id: newPipeline.id, created_by: profileRow.id }))

@@ -318,7 +318,7 @@ export function useSupabaseLeads(pipelineId?: string) {
     if (!profile || !profile.clerk_user_id) return;
 
     // Use the stage_id passed from the modal, or fall back to the first stage
-    const stageId = (newLeadData as any).stage_id || stages.find(s => s.position === 1)?.id;
+    const stageId = (newLeadData as any).stage_id || stages.sort((a, b) => a.position - b.position)[0]?.id;
     if (!stageId) return;
 
     const { data, error } = await supabase.rpc('create_lead_rpc', {
