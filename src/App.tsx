@@ -101,7 +101,7 @@ const App = () => {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/pipelines" element={<Pipelines />} />
                   <Route path="/tarefas" element={<Tasks />} />
-                  <Route path="/prospeccao" element={<Prospeccao />} />
+                  
                   <Route path="/automacoes" element={<Automacoes />} />
                   <Route path="/inbox" element={<InboxPage />} />
                   <Route path="/treinar-agente" element={<TreinarAgente />} />

@@ -55,11 +55,6 @@ const menuItems = [
     icon: Workflow,
   },
   {
-    title: "Prospecção",
-    url: "/prospeccao",
-    icon: Building2,
-  },
-  {
     title: "Automações",
     url: "/automacoes",
     icon: Zap,

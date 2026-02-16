@@ -70,11 +70,6 @@ const navigationItems = [
     icon: Car,
   },
   {
-    title: "Prospecção",
-    url: "/prospeccao",
-    icon: Building2,
-  },
-  {
     title: "Follow-ups",
     url: "/follow-ups",
     icon: CalendarClock,
