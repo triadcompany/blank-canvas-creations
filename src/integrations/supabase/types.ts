@@ -7970,6 +7970,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_pipeline: {
+        Args: {
+          p_created_by?: string
+          p_description?: string
+          p_name: string
+          p_org_id?: string
+        }
+        Returns: string
+      }
       create_secure_notification: {
         Args: {
           p_mensagem: string
