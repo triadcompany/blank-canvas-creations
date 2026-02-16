@@ -76,7 +76,7 @@ async function apiCall(action: string, params: Record<string, unknown>) {
 export function useAutomations() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
-  const { profile, orgId: authOrgId } = useAuth();
+  const { profile, orgId: authOrgId, user } = useAuth();
   const { toast } = useToast();
 
   const orgId = profile?.organization_id || authOrgId;
@@ -103,7 +103,7 @@ export function useAutomations() {
       toast({ title: "Erro", description: "Organização não encontrada. Verifique suas configurações.", variant: "destructive" });
       return null;
     }
-    const createdBy = profile?.id;
+    const createdBy = profile?.id || user?.id;
     if (!createdBy) {
       toast({ title: "Erro", description: "Perfil ainda não carregado. Aguarde e tente novamente.", variant: "destructive" });
       return null;
@@ -143,9 +143,9 @@ export function useAutomations() {
   };
 
   const duplicateAutomation = async (automation: Automation): Promise<Automation | null> => {
-    if (!orgId || !profile?.id) return null;
+    if (!orgId || !(profile?.id || user?.id)) return null;
     const result = await apiCall("duplicate", {
-      id: automation.id, organization_id: orgId, created_by: profile.id,
+      id: automation.id, organization_id: orgId, created_by: profile?.id || user?.id,
     });
     if (!result.ok) {
       toast({ title: "Erro", description: result.message, variant: "destructive" });
@@ -237,14 +237,15 @@ export function useAutomations() {
   };
 
   const createFromTemplate = async (templateName?: string, extraParams?: Record<string, unknown>): Promise<Automation | null> => {
-    if (!orgId || !profile?.id) {
+    const createdBy = profile?.id || user?.id;
+    if (!orgId || !createdBy) {
       toast({ title: "Erro", description: "Usuário ou organização não encontrados", variant: "destructive" });
       return null;
     }
     const action = templateName === "keyword_lead" ? "create_template_keyword_lead" : "create_template";
     const result = await apiCall(action, {
       organization_id: orgId,
-      created_by: profile.id,
+      created_by: createdBy,
       template_name: templateName,
       ...extraParams,
     });
