@@ -113,20 +113,20 @@ serve(async (req) => {
 
         // Check role if profileId provided
         if (profileId) {
-          const { data: roleData } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("id", profileId)
-            .single();
-
-          // Lookup role
-          const { data: userRole } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", (await supabase.from("profiles").select("user_id").eq("id", profileId).single()).data?.user_id)
-            .single();
-
-          const role = userRole?.role || "seller";
+          // Lookup role via clerk_user_id (Clerk is the identity provider)
+          const { data: prof } = await supabase.from("profiles").select("clerk_user_id").eq("id", profileId).single();
+          let role = "seller";
+          if (prof?.clerk_user_id) {
+            // First check user_roles by clerk_user_id
+            const { data: userRole } = await supabase.from("user_roles").select("role").eq("clerk_user_id", prof.clerk_user_id).maybeSingle();
+            if (userRole?.role) {
+              role = userRole.role;
+            } else {
+              // Fallback: check org_members role
+              const { data: orgMember } = await supabase.from("org_members").select("role").eq("clerk_user_id", prof.clerk_user_id).eq("status", "active").maybeSingle();
+              if (orgMember?.role) role = orgMember.role;
+            }
+          }
 
           if (role !== "admin") {
             // Sellers cannot edit system automations or automations created by others
@@ -171,9 +171,17 @@ serve(async (req) => {
 
         // Check role if profileId provided
         if (profileId) {
-          const { data: prof } = await supabase.from("profiles").select("user_id").eq("id", profileId).single();
-          const { data: userRole } = await supabase.from("user_roles").select("role").eq("user_id", prof?.user_id).single();
-          const role = userRole?.role || "seller";
+          const { data: prof } = await supabase.from("profiles").select("clerk_user_id").eq("id", profileId).single();
+          let role = "seller";
+          if (prof?.clerk_user_id) {
+            const { data: userRole } = await supabase.from("user_roles").select("role").eq("clerk_user_id", prof.clerk_user_id).maybeSingle();
+            if (userRole?.role) {
+              role = userRole.role;
+            } else {
+              const { data: orgMember } = await supabase.from("org_members").select("role").eq("clerk_user_id", prof.clerk_user_id).eq("status", "active").maybeSingle();
+              if (orgMember?.role) role = orgMember.role;
+            }
+          }
 
           if (role !== "admin") {
             if (existing.is_system) {
