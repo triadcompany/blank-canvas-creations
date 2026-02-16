@@ -93,7 +93,16 @@ export function useOrgSync() {
         const needsSeedSources = !existingSources || existingSources.length === 0;
         const needsSeedPipeline = !existingPipelines || existingPipelines.length === 0;
 
-        // 3. Ensure org_members entry exists
+        // 3. Ensure org_members entry exists (preserve existing role for invited users)
+        const { data: existingMember } = await supabase
+          .from('org_members')
+          .select('role')
+          .eq('clerk_org_id', clerkOrgId)
+          .eq('clerk_user_id', clerkUserId)
+          .maybeSingle();
+
+        const memberRole = existingMember?.role || 'admin';
+
         const { error: memberErr } = await supabase
           .from('org_members')
           .upsert(
@@ -101,7 +110,7 @@ export function useOrgSync() {
               organization_id: supabaseOrgId,
               clerk_org_id: clerkOrgId,
               clerk_user_id: clerkUserId,
-              role: 'admin',
+              role: memberRole,
               status: 'active',
             },
             { onConflict: 'clerk_org_id,clerk_user_id' }
@@ -133,20 +142,26 @@ export function useOrgSync() {
           console.warn('⚠️ useOrgSync: profiles upsert warning:', profileErr.message);
         }
 
-        // 4b. Ensure user_roles entry exists
-        const { error: roleErr } = await supabase
+        // 4b. Ensure user_roles entry exists (preserve existing role)
+        const { data: existingRole } = await supabase
           .from('user_roles')
-          .upsert(
-            {
+          .select('role')
+          .eq('clerk_user_id', clerkUserId)
+          .eq('organization_id', supabaseOrgId)
+          .maybeSingle();
+
+        if (!existingRole) {
+          const { error: roleErr } = await supabase
+            .from('user_roles')
+            .insert({
               clerk_user_id: clerkUserId,
               organization_id: supabaseOrgId,
-              role: 'admin',
-            },
-            { onConflict: 'clerk_user_id,organization_id' }
-          );
+              role: (memberRole === 'admin' ? 'admin' : 'seller') as 'admin' | 'seller',
+            });
 
-        if (roleErr) {
-          console.warn('⚠️ useOrgSync: user_roles upsert warning:', roleErr.message);
+          if (roleErr) {
+            console.warn('⚠️ useOrgSync: user_roles insert warning:', roleErr.message);
+          }
         }
 
         // 5. Seed default pipeline & stages for new orgs
