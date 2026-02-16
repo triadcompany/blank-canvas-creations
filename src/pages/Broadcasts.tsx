@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -13,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Radio, Loader2, Eye } from 'lucide-react';
+import { Plus, Radio, Loader2, Eye, Construction } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { NewCampaignWizard } from '@/components/broadcasts/NewCampaignWizard';
@@ -48,6 +49,14 @@ export default function Broadcasts() {
           Nova Campanha
         </Button>
       </div>
+
+      <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+        <Construction className="h-5 w-5 text-amber-600" />
+        <AlertTitle className="text-amber-800 dark:text-amber-400">Funcionalidade em Desenvolvimento</AlertTitle>
+        <AlertDescription className="text-amber-700 dark:text-amber-300">
+          O módulo de Disparos está em fase de desenvolvimento. Algumas funcionalidades podem estar instáveis ou indisponíveis.
+        </AlertDescription>
+      </Alert>
 
       <Card>
         <CardContent className="p-0">
