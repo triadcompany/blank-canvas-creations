@@ -685,6 +685,35 @@ async function processActionCreateLead(supabase: any, config: any, job: any): Pr
       if (adminFallback) {
         resolvedCreatedBy = adminFallback.id;
         createdByStrategy = "fallback_first_admin";
+      } else {
+        // Profile doesn't exist yet — auto-create from users_profile
+        for (const clerkId of clerkIds) {
+          const { data: up } = await supabase
+            .from("users_profile")
+            .select("clerk_user_id, full_name, email, avatar_url")
+            .eq("clerk_user_id", clerkId)
+            .maybeSingle();
+          if (up) {
+            const { data: newP } = await supabase
+              .from("profiles")
+              .upsert({
+                name: up.full_name || "Usuário",
+                email: up.email || "no-email@placeholder.com",
+                clerk_user_id: up.clerk_user_id,
+                avatar_url: up.avatar_url || null,
+                organization_id: orgId,
+                onboarding_completed: true,
+              }, { onConflict: "clerk_user_id" })
+              .select("id")
+              .single();
+            if (newP) {
+              resolvedCreatedBy = newP.id;
+              createdByStrategy = "fallback_admin_auto_created";
+              console.log(`[automation-worker] Auto-created profile ${newP.id} for admin ${clerkId}`);
+              break;
+            }
+          }
+        }
       }
     }
   }
