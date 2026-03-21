@@ -665,6 +665,7 @@ export default function InboxPage() {
     { key: 'all', label: 'Todas' },
     { key: 'mine', label: 'Minhas' },
     { key: 'unassigned', label: 'Não atribuídas' },
+    { key: 'meta_ads', label: 'Meta Ads' },
     { key: 'open', label: 'Abertas' },
     { key: 'in_progress', label: 'Em atendimento' },
     { key: 'waiting_customer', label: 'Aguardando' },
