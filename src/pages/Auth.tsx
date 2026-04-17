@@ -85,9 +85,9 @@ export function Auth() {
         'bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 font-poppins h-12 transition-all duration-300 rounded-xl backdrop-blur-sm',
       socialButtonsBlockButtonText: 'font-poppins font-medium text-white/90',
       socialButtonsProviderIcon: 'w-5 h-5',
-      formFieldLabel: 'font-poppins text-white/60 font-medium text-[11px] uppercase tracking-[0.15em] mb-2',
+      formFieldLabel: 'font-poppins text-white/85 font-semibold text-sm mb-2',
       formFieldInput:
-        'font-poppins bg-transparent border-0 border-b border-white/15 text-white focus:ring-0 focus:border-[hsl(20,100%,60%)] h-12 transition-all duration-200 rounded-none placeholder:text-white/25 px-0 text-base',
+        'font-poppins bg-white/[0.04] border border-white/15 text-white focus:ring-2 focus:ring-[hsl(20,100%,60%)]/30 focus:border-[hsl(20,100%,60%)]/60 hover:border-white/25 h-12 transition-all duration-200 rounded-xl placeholder:text-white/30 px-4 text-base',
       formFieldLabelRow: 'mb-1',
       formFieldInputShowPasswordButton: 'text-white/40 hover:text-white/80',
       footerActionLink:
