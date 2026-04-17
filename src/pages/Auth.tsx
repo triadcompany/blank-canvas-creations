@@ -5,7 +5,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClerkAvailable } from '@/providers/ClerkProvider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { UserPlus, Building2, Mail, ShieldCheck, AlertTriangle, Sparkles, BarChart3, Users, Zap } from 'lucide-react';
+import {
+  UserPlus,
+  Building2,
+  Mail,
+  ShieldCheck,
+  AlertTriangle,
+  Sparkles,
+  TrendingUp,
+  MessageSquare,
+  Bot,
+  CheckCircle2,
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function Auth() {
@@ -15,7 +26,6 @@ export function Auth() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Dados de convite
   const [inviteData, setInviteData] = useState<{
     email: string;
     name: string;
@@ -24,14 +34,10 @@ export function Auth() {
     orgName?: string;
   } | null>(null);
 
-  // Redirect se já estiver logado
   useEffect(() => {
-    if (!loading && user) {
-      navigate('/');
-    }
+    if (!loading && user) navigate('/');
   }, [loading, user, navigate]);
 
-  // Verificar se é um convite aceito
   useEffect(() => {
     const invited = searchParams.get('invited');
     const inviteEmail = searchParams.get('email');
@@ -41,9 +47,7 @@ export function Auth() {
     const orgName = searchParams.get('orgName');
     const signup = searchParams.get('signup');
 
-    if (signup === 'true') {
-      setIsSignUp(true);
-    }
+    if (signup === 'true') setIsSignUp(true);
 
     if (invited === 'true' && inviteEmail) {
       setIsSignUp(true);
@@ -52,19 +56,20 @@ export function Auth() {
         name: inviteName || '',
         role: inviteRole || 'seller',
         orgId: orgId || '',
-        orgName: orgName || 'Organização'
+        orgName: orgName || 'Organização',
       });
     }
   }, [searchParams]);
 
-  // Clerk appearance customizada - visual elegante e moderno
+  // Clerk appearance — dark premium with sunset gradient accents
   const clerkAppearance = {
     variables: {
-      colorPrimary: 'hsl(24, 95%, 53%)',
+      colorPrimary: 'hsl(20, 100%, 60%)',
       colorBackground: 'transparent',
-      colorText: 'hsl(0, 0%, 22%)',
-      colorInputBackground: 'hsl(220, 14%, 96%)',
-      colorInputText: 'hsl(0, 0%, 22%)',
+      colorText: 'hsl(0, 0%, 95%)',
+      colorInputBackground: 'hsl(0, 0%, 8%)',
+      colorInputText: 'hsl(0, 0%, 95%)',
+      colorTextSecondary: 'hsl(0, 0%, 65%)',
       borderRadius: '0.875rem',
       fontFamily: 'Poppins, sans-serif',
       spacingUnit: '1rem',
@@ -74,47 +79,52 @@ export function Auth() {
       card: 'bg-transparent shadow-none p-0 w-full gap-6',
       headerTitle: 'hidden',
       headerSubtitle: 'hidden',
-      formButtonPrimary: 
-        'bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-poppins font-semibold shadow-lg shadow-primary/20 transition-all duration-300 hover:shadow-xl hover:shadow-primary/25 hover:-translate-y-0.5 h-12 text-base rounded-xl',
-      socialButtonsBlockButton: 'bg-card border-2 border-border hover:border-primary/30 hover:bg-accent/30 font-poppins h-12 transition-all duration-200 rounded-xl shadow-sm',
-      socialButtonsBlockButtonText: 'font-poppins font-medium text-foreground',
+      formButtonPrimary:
+        'bg-gradient-to-r from-[hsl(20,100%,60%)] via-[hsl(15,100%,55%)] to-[hsl(330,80%,55%)] hover:opacity-95 text-white font-poppins font-semibold shadow-[0_10px_40px_-10px_hsl(20,100%,60%,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-10px_hsl(20,100%,60%,0.7)] h-12 text-base rounded-xl border-0',
+      socialButtonsBlockButton:
+        'bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] hover:border-white/20 font-poppins h-12 transition-all duration-300 rounded-xl backdrop-blur-sm',
+      socialButtonsBlockButtonText: 'font-poppins font-medium text-white/90',
       socialButtonsProviderIcon: 'w-5 h-5',
-      formFieldLabel: 'font-poppins text-foreground font-semibold text-sm mb-2',
-      formFieldInput: 'font-poppins bg-muted/50 border-2 border-border text-foreground focus:ring-0 focus:border-primary h-12 transition-all duration-200 rounded-xl placeholder:text-muted-foreground',
+      formFieldLabel: 'font-poppins text-white/80 font-medium text-sm mb-2',
+      formFieldInput:
+        'font-poppins bg-white/[0.04] border border-white/10 text-white focus:ring-2 focus:ring-[hsl(20,100%,60%)]/40 focus:border-[hsl(20,100%,60%)]/50 h-12 transition-all duration-200 rounded-xl placeholder:text-white/30 backdrop-blur-sm',
       formFieldLabelRow: 'mb-1',
-      formFieldInputShowPasswordButton: 'text-muted-foreground hover:text-foreground',
-      footerActionLink: 'text-primary hover:text-primary/80 font-poppins font-semibold',
-      identityPreview: 'bg-muted/50 border-2 border-border rounded-xl',
-      identityPreviewText: 'text-foreground font-poppins',
-      identityPreviewEditButton: 'text-primary hover:text-primary/80 font-poppins font-medium',
-      dividerLine: 'bg-border',
-      dividerText: 'text-muted-foreground font-poppins text-sm bg-card px-4',
+      formFieldInputShowPasswordButton: 'text-white/40 hover:text-white/80',
+      footerActionLink:
+        'text-[hsl(20,100%,65%)] hover:text-[hsl(20,100%,75%)] font-poppins font-semibold transition-colors',
+      identityPreview: 'bg-white/[0.04] border border-white/10 rounded-xl backdrop-blur-sm',
+      identityPreviewText: 'text-white/90 font-poppins',
+      identityPreviewEditButton:
+        'text-[hsl(20,100%,65%)] hover:text-[hsl(20,100%,75%)] font-poppins font-medium',
+      dividerLine: 'bg-white/10',
+      dividerText: 'text-white/50 font-poppins text-xs uppercase tracking-wider px-4',
       dividerRow: 'my-6',
-      alertText: 'text-destructive font-poppins',
+      alertText: 'text-red-300 font-poppins',
       footer: 'hidden',
       formFieldRow: 'mb-5',
       form: 'gap-0',
       formHeaderTitle: 'hidden',
       formHeaderSubtitle: 'hidden',
-      otpCodeFieldInput: 'border-2 border-border rounded-xl h-12 font-poppins text-lg',
-      formResendCodeLink: 'text-primary font-poppins font-medium',
-      tagInputContainer: 'bg-muted/50 border-2 border-border rounded-xl',
-      selectButton: 'bg-muted/50 border-2 border-border rounded-xl h-12',
-      badge: 'bg-primary/10 text-primary font-poppins font-medium rounded-lg',
+      otpCodeFieldInput:
+        'border border-white/10 bg-white/[0.04] rounded-xl h-12 font-poppins text-lg text-white',
+      formResendCodeLink: 'text-[hsl(20,100%,65%)] font-poppins font-medium',
+      tagInputContainer: 'bg-white/[0.04] border border-white/10 rounded-xl',
+      selectButton: 'bg-white/[0.04] border border-white/10 rounded-xl h-12',
+      badge:
+        'bg-[hsl(20,100%,60%)]/15 text-[hsl(20,100%,75%)] font-poppins font-medium rounded-lg border border-[hsl(20,100%,60%)]/20',
     },
   };
 
-  // Se Clerk não estiver disponível
   if (!clerkAvailable) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f] p-4">
         <div className="w-full max-w-md animate-fade-in">
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle className="font-poppins">Autenticação não configurada</AlertTitle>
             <AlertDescription className="font-poppins">
-              A chave do Clerk (VITE_CLERK_PUBLISHABLE_KEY) não está configurada. 
-              Entre em contato com o administrador do sistema.
+              A chave do Clerk (VITE_CLERK_PUBLISHABLE_KEY) não está configurada. Entre em contato
+              com o administrador do sistema.
             </AlertDescription>
           </Alert>
         </div>
@@ -123,172 +133,243 @@ export function Auth() {
   }
 
   const features = [
-    { icon: BarChart3, title: 'Dashboard Inteligente', description: 'Visualize métricas em tempo real' },
-    { icon: Users, title: 'Gestão de Leads', description: 'Pipeline de vendas completo' },
-    { icon: Zap, title: 'Automação', description: 'Follow-ups automáticos' },
+    { icon: Bot, title: 'IA que vende por você', description: 'Atendimento autônomo 24/7' },
+    { icon: MessageSquare, title: 'Inbox unificado', description: 'WhatsApp + Instagram em um lugar' },
+    { icon: TrendingUp, title: 'Pipeline inteligente', description: 'Mais conversões, menos esforço' },
+  ];
+
+  const stats = [
+    { value: '+312%', label: 'em conversões' },
+    { value: '24/7', label: 'atendimento' },
+    { value: '<10s', label: 'resposta' },
   ];
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary via-accent to-primary overflow-hidden">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-primary-foreground rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary-foreground rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
-          <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-primary-foreground rounded-full blur-2xl -translate-x-1/2 -translate-y-1/2" />
-        </div>
+    <div className="min-h-screen flex bg-[#0a0a0f] text-white relative overflow-hidden">
+      {/* Ambient background gradients */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[hsl(20,100%,60%)] opacity-20 blur-[120px]" />
+        <div className="absolute top-1/3 -right-40 w-[500px] h-[500px] rounded-full bg-[hsl(330,80%,55%)] opacity-15 blur-[120px]" />
+        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] rounded-full bg-[hsl(260,70%,55%)] opacity-15 blur-[120px]" />
+      </div>
 
-        {/* Grid Pattern */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="h-full w-full" style={{ 
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-            backgroundSize: '50px 50px'
-          }} />
-        </div>
+      {/* Subtle grid */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+        }}
+      />
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-between p-12 text-primary-foreground w-full">
+      {/* Left Panel — Brand & Showcase */}
+      <div className="hidden lg:flex lg:w-1/2 relative z-10">
+        <div className="flex flex-col justify-between p-12 xl:p-16 w-full">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-primary-foreground/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-              <Sparkles className="w-7 h-7 text-primary-foreground" />
+          <div className="flex items-center gap-3 animate-fade-in">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl blur-md opacity-60" />
+              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
             </div>
-            <span className="text-2xl font-bold font-poppins">AutoLead</span>
+            <div>
+              <span className="text-2xl font-bold font-poppins tracking-tight">AutoLead</span>
+              <p className="text-xs text-white/50 font-poppins -mt-0.5">CRM com IA comercial</p>
+            </div>
           </div>
 
-          {/* Main Content */}
-          <div className="space-y-8">
-            <div className="space-y-4">
-              <h1 className="text-4xl xl:text-5xl font-bold font-poppins leading-tight">
-                Transforme seus leads em clientes
+          {/* Hero content */}
+          <div className="space-y-10">
+            <div className="space-y-5 animate-fade-in" style={{ animationDelay: '100ms' }}>
+              <Badge className="bg-white/[0.06] border border-white/10 text-white/80 font-poppins font-medium backdrop-blur-sm hover:bg-white/[0.08]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[hsl(20,100%,60%)] mr-2 animate-pulse" />
+                Plataforma inteligente
+              </Badge>
+              <h1 className="text-4xl xl:text-5xl 2xl:text-6xl font-bold font-poppins leading-[1.1] tracking-tight">
+                Venda mais com{' '}
+                <span className="bg-gradient-to-r from-[hsl(20,100%,65%)] via-[hsl(15,100%,60%)] to-[hsl(330,80%,60%)] bg-clip-text text-transparent">
+                  inteligência artificial
+                </span>
               </h1>
-              <p className="text-lg text-primary-foreground/80 font-poppins max-w-md">
-                A plataforma completa para gerenciar seu funil de vendas e aumentar suas conversões.
+              <p className="text-lg text-white/60 font-poppins max-w-md leading-relaxed">
+                A plataforma completa para gerenciar leads, automatizar atendimentos e fechar mais
+                negócios — tudo em um só lugar.
               </p>
             </div>
 
-            {/* Features */}
-            <div className="space-y-4">
-              {features.map((feature, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center gap-4 p-4 bg-primary-foreground/10 backdrop-blur-sm rounded-xl border border-primary-foreground/10 transition-all duration-300 hover:bg-primary-foreground/15"
-                >
-                  <div className="w-12 h-12 bg-primary-foreground/20 rounded-lg flex items-center justify-center shrink-0">
-                    <feature.icon className="w-6 h-6 text-primary-foreground" />
+            {/* Mockup card — dashboard preview */}
+            <div
+              className="relative animate-fade-in"
+              style={{ animationDelay: '200ms' }}
+            >
+              <div className="absolute -inset-1 bg-gradient-to-r from-[hsl(20,100%,60%)]/30 via-[hsl(330,80%,55%)]/30 to-[hsl(260,70%,55%)]/30 rounded-2xl blur-xl opacity-60" />
+              <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 space-y-4 overflow-hidden">
+                {/* Top bar */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold font-poppins">{feature.title}</h3>
-                    <p className="text-sm text-primary-foreground/70 font-poppins">{feature.description}</p>
-                  </div>
+                  <span className="text-xs text-white/40 font-poppins">autolead.app</span>
                 </div>
-              ))}
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  {stats.map((s, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl bg-white/[0.03] border border-white/5 p-3 hover:bg-white/[0.06] transition-colors"
+                    >
+                      <div className="text-lg xl:text-xl font-bold font-poppins bg-gradient-to-r from-[hsl(20,100%,70%)] to-[hsl(330,80%,65%)] bg-clip-text text-transparent">
+                        {s.value}
+                      </div>
+                      <div className="text-[10px] text-white/50 font-poppins uppercase tracking-wider mt-1">
+                        {s.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Feature rows */}
+                <div className="space-y-2.5">
+                  {features.map((f, i) => (
+                    <div
+                      key={i}
+                      className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-300"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-lg blur-sm opacity-40 group-hover:opacity-70 transition-opacity" />
+                        <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-[hsl(20,100%,60%)]/20 to-[hsl(330,80%,55%)]/20 border border-white/10 flex items-center justify-center">
+                          <f.icon className="w-4 h-4 text-[hsl(20,100%,75%)]" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-poppins font-semibold text-white/90 truncate">
+                          {f.title}
+                        </div>
+                        <div className="text-xs font-poppins text-white/50 truncate">
+                          {f.description}
+                        </div>
+                      </div>
+                      <CheckCircle2 className="w-4 h-4 text-[hsl(20,100%,65%)] opacity-70 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="text-sm text-primary-foreground/60 font-poppins">
-            © 2024 AutoLead. Todos os direitos reservados.
+          <div className="flex items-center justify-between text-xs text-white/40 font-poppins animate-fade-in" style={{ animationDelay: '300ms' }}>
+            <span>© {new Date().getFullYear()} AutoLead</span>
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Sistema online
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Right Panel - Auth Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-gradient-to-b from-background to-muted/20">
-        <div className="w-full max-w-md space-y-8 animate-fade-in">
+      {/* Right Panel — Auth */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative z-10">
+        <div className="w-full max-w-md space-y-7 animate-fade-in" style={{ animationDelay: '150ms' }}>
           {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-lg shadow-primary/25">
-              <Sparkles className="w-7 h-7 text-primary-foreground" />
+          <div className="lg:hidden flex items-center justify-center gap-3 mb-2">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl blur-md opacity-60" />
+              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
             </div>
-            <span className="text-2xl font-bold font-poppins text-foreground">AutoLead</span>
+            <span className="text-2xl font-bold font-poppins">AutoLead</span>
           </div>
 
-          {/* Header de convite */}
+          {/* Invite header */}
           {inviteData && (
-            <div className="bg-card border-2 border-border rounded-2xl p-6 space-y-4 shadow-lg animate-scale-in">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-6 space-y-4 animate-scale-in">
               <div className="flex items-center justify-center gap-2">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <UserPlus className="h-5 w-5 text-primary" />
+                <div className="p-2 bg-[hsl(20,100%,60%)]/15 rounded-lg border border-[hsl(20,100%,60%)]/20">
+                  <UserPlus className="h-4 w-4 text-[hsl(20,100%,75%)]" />
                 </div>
-                <Badge variant="secondary" className="text-sm font-poppins font-medium">
-                  Convite Recebido
+                <Badge className="bg-[hsl(20,100%,60%)]/15 text-[hsl(20,100%,80%)] border-[hsl(20,100%,60%)]/20 font-poppins font-medium">
+                  Convite recebido
                 </Badge>
               </div>
-              <h2 className="text-xl font-poppins font-bold text-center text-foreground">
-                Bem-vindo(a) à equipe!
-              </h2>
-              <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+              <h2 className="text-xl font-poppins font-bold text-center">Bem-vindo(a) à equipe!</h2>
+              <div className="bg-black/20 border border-white/5 rounded-xl p-4 space-y-2.5">
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="p-1.5 bg-background rounded-md">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <span className="font-medium font-poppins text-foreground">{inviteData.orgName}</span>
+                  <Building2 className="h-4 w-4 text-white/40" />
+                  <span className="font-medium font-poppins text-white/90">{inviteData.orgName}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="p-1.5 bg-background rounded-md">
-                    <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <span className="capitalize font-poppins text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-white/40" />
+                  <span className="capitalize font-poppins text-white/90">
                     {inviteData.role === 'admin' ? 'Administrador' : 'Vendedor'}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                  <div className="p-1.5 bg-background rounded-md">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <span className="text-muted-foreground font-poppins">{inviteData.email}</span>
+                  <Mail className="h-4 w-4 text-white/40" />
+                  <span className="text-white/60 font-poppins">{inviteData.email}</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Auth Header */}
+          {/* Header */}
           <div className="text-center space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold font-poppins text-foreground">
+            <h1 className="text-3xl sm:text-4xl font-bold font-poppins tracking-tight">
               {isSignUp ? 'Crie sua conta' : 'Bem-vindo de volta'}
             </h1>
-            <p className="text-muted-foreground font-poppins">
-              {isSignUp 
-                ? 'Comece a gerenciar seus leads hoje mesmo' 
+            <p className="text-white/50 font-poppins text-sm sm:text-base">
+              {isSignUp
+                ? 'Comece a vender com inteligência artificial'
                 : 'Entre para acessar seu painel de controle'}
             </p>
           </div>
 
-          {/* Clerk Components */}
-          <div className="bg-card border-2 border-border rounded-2xl p-6 sm:p-8 shadow-xl">
-            {isSignUp ? (
-              <SignUp 
-                appearance={clerkAppearance}
-                routing="hash"
-                signInUrl="/auth"
-                forceRedirectUrl="/"
-                unsafeMetadata={inviteData ? {
-                  organization_id: inviteData.orgId,
-                  role: inviteData.role,
-                  invited_name: inviteData.name,
-                } : undefined}
-              />
-            ) : (
-              <SignIn 
-                appearance={clerkAppearance}
-                routing="hash"
-                signUpUrl="/auth?signup=true"
-                forceRedirectUrl="/"
-              />
-            )}
+          {/* Auth card with gradient border */}
+          <div className="relative">
+            <div className="absolute -inset-px bg-gradient-to-br from-[hsl(20,100%,60%)]/40 via-[hsl(330,80%,55%)]/30 to-[hsl(260,70%,55%)]/40 rounded-2xl blur-sm opacity-60" />
+            <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 sm:p-8 shadow-2xl">
+              {isSignUp ? (
+                <SignUp
+                  appearance={clerkAppearance}
+                  routing="hash"
+                  signInUrl="/auth"
+                  forceRedirectUrl="/"
+                  unsafeMetadata={
+                    inviteData
+                      ? {
+                          organization_id: inviteData.orgId,
+                          role: inviteData.role,
+                          invited_name: inviteData.name,
+                        }
+                      : undefined
+                  }
+                />
+              ) : (
+                <SignIn
+                  appearance={clerkAppearance}
+                  routing="hash"
+                  signUpUrl="/auth?signup=true"
+                  forceRedirectUrl="/"
+                />
+              )}
+            </div>
           </div>
 
-          {/* Toggle entre login e cadastro */}
+          {/* Toggle */}
           {!inviteData && (
             <div className="text-center">
-              <p className="text-sm text-muted-foreground font-poppins">
+              <p className="text-sm text-white/50 font-poppins">
                 {isSignUp ? 'Já tem uma conta?' : 'Ainda não tem conta?'}
                 <Button
                   variant="link"
                   onClick={() => setIsSignUp(!isSignUp)}
-                  className="font-poppins font-semibold text-primary hover:text-primary/80 px-1.5"
+                  className="font-poppins font-semibold text-[hsl(20,100%,70%)] hover:text-[hsl(20,100%,80%)] px-1.5"
                 >
                   {isSignUp ? 'Fazer login' : 'Criar conta'}
                 </Button>
@@ -296,9 +377,9 @@ export function Auth() {
             </div>
           )}
 
-          {/* Mobile Footer */}
-          <div className="lg:hidden text-center text-xs text-muted-foreground font-poppins pt-4">
-            © 2024 AutoLead. Todos os direitos reservados.
+          {/* Mobile footer */}
+          <div className="lg:hidden text-center text-xs text-white/40 font-poppins pt-2">
+            © {new Date().getFullYear()} AutoLead. Todos os direitos reservados.
           </div>
         </div>
       </div>
