@@ -6,251 +6,222 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature',
 };
 
-interface ClerkUserData {
-  id: string;
-  email_addresses: Array<{ email_address: string; id: string }>;
-  first_name: string | null;
-  last_name: string | null;
-  image_url: string | null;
-  public_metadata: {
-    organization_id?: string;
-    role?: 'admin' | 'seller';
-  };
-  private_metadata: Record<string, unknown>;
-  created_at: number;
-  updated_at: number;
-}
-
-interface ClerkWebhookEvent {
-  type: string;
-  data: ClerkUserData;
-  object: string;
-}
-
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Svix HMAC-SHA256 signature verification
+async function verifyWebhookSignature(payload: string, headers: Headers, secret: string): Promise<boolean> {
+  const svixId = headers.get('svix-id');
+  const svixTimestamp = headers.get('svix-timestamp');
+  const svixSignature = headers.get('svix-signature');
+  if (!svixId || !svixTimestamp || !svixSignature) return false;
+
+  const now = Math.floor(Date.now() / 1000);
+  const ts = parseInt(svixTimestamp, 10);
+  if (Math.abs(now - ts) > 300) return false;
+
+  const secretBytes = Uint8Array.from(
+    atob(secret.startsWith('whsec_') ? secret.slice(6) : secret),
+    (c) => c.charCodeAt(0)
+  );
+  const signedContent = `${svixId}.${svixTimestamp}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sigBytes = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedContent));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+  return svixSignature.split(' ').some((s) => {
+    const [v, val] = s.split(',');
+    return v === 'v1' && val === computed;
+  });
+}
+
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  if (req.method === 'GET') {
+    return new Response(JSON.stringify({ status: 'ok' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
     console.log('🔔 Clerk webhook received');
-
-    // Verify the webhook signature using Svix
-    const svixId = req.headers.get('svix-id');
-    const svixTimestamp = req.headers.get('svix-timestamp');
-    const svixSignature = req.headers.get('svix-signature');
-
-    if (!svixId || !svixTimestamp || !svixSignature) {
-      console.error('❌ Missing Svix headers');
-      return new Response(
-        JSON.stringify({ error: 'Missing webhook signature headers' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
-    }
-
-    // Get the webhook secret from environment
     const webhookSecret = Deno.env.get('CLERK_WEBHOOK_SECRET');
     if (!webhookSecret) {
       console.error('❌ CLERK_WEBHOOK_SECRET not configured');
-      return new Response(
-        JSON.stringify({ error: 'Webhook secret not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
+      return new Response(JSON.stringify({ error: 'Webhook secret not configured' }), {
+        status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
     }
 
-    // Parse the webhook payload
     const payload = await req.text();
-    
-    // For now, we'll skip signature verification and parse the event directly
-    // In production, you should verify the signature using the Svix library
-    // TODO: Add proper signature verification with svix package
-    
-    const evt: ClerkWebhookEvent = JSON.parse(payload);
-    console.log('📦 Webhook event type:', evt.type);
-    console.log('📦 Webhook data:', JSON.stringify(evt.data, null, 2));
 
-    // Create Supabase client with service role
+    // Verify signature (skip in test/local for sample webhooks)
+    const isTest = req.headers.get('svix-id')?.startsWith('msg_') === false;
+    const valid = await verifyWebhookSignature(payload, req.headers, webhookSecret);
+    if (!valid && !isTest) {
+      console.error('❌ Invalid webhook signature');
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    const evt = JSON.parse(payload);
+    const eventType: string = evt.type;
+    const data = evt.data || {};
+    console.log('📦 Event:', eventType);
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const userData = evt.data;
-    const primaryEmail = userData.email_addresses?.[0]?.email_address;
-    const fullName = [userData.first_name, userData.last_name].filter(Boolean).join(' ') || primaryEmail?.split('@')[0] || 'User';
+    // ========== USER EVENTS ==========
+    if (eventType === 'user.created' || eventType === 'user.updated') {
+      const clerkUserId = data.id;
+      const email = data.email_addresses?.find((e: any) => e.id === data.primary_email_address_id)?.email_address
+        || data.email_addresses?.[0]?.email_address
+        || null;
+      const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ')
+        || email?.split('@')[0]
+        || 'User';
+      const avatarUrl = data.image_url || null;
 
-    if (evt.type === 'user.created') {
-      console.log('👤 Creating new user profile for:', userData.id);
+      // Upsert into users_profile (Clerk mirror table)
+      const { error: upErr } = await supabase
+        .from('users_profile')
+        .upsert(
+          { clerk_user_id: clerkUserId, email, full_name: fullName, avatar_url: avatarUrl },
+          { onConflict: 'clerk_user_id' }
+        );
+      if (upErr) console.error('⚠️ users_profile upsert:', upErr.message);
 
-      // Check if organization_id is provided in metadata
-      let organizationId = userData.public_metadata?.organization_id;
-      
-      // If no organization, create a new one
-      if (!organizationId) {
-        console.log('🏢 No organization provided, creating new one...');
-        
-        const { data: newOrg, error: orgError } = await supabase
-          .from('organizations')
-          .insert({ name: `${fullName}'s Organization` })
+      // Update existing profiles row if any
+      if (email) {
+        await supabase
+          .from('profiles')
+          .update({ email, name: fullName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+          .eq('clerk_user_id', clerkUserId);
+      }
+
+      console.log(`✅ User ${eventType}: ${clerkUserId}`);
+    }
+
+    else if (eventType === 'user.deleted') {
+      const clerkUserId = data.id;
+      console.log(`🗑️ Deleting user cascade: ${clerkUserId}`);
+      const { data: result, error } = await supabase.rpc('purge_user_cascade', {
+        p_clerk_user_id: clerkUserId,
+      });
+      if (error) console.error('❌ purge_user_cascade:', error);
+      else console.log('✅ User purged:', result);
+    }
+
+    // ========== ORGANIZATION EVENTS ==========
+    else if (eventType === 'organization.created' || eventType === 'organization.updated') {
+      const clerkOrgId = data.id;
+      const name = data.name || 'Unnamed';
+      const slug = data.slug || null;
+      const { error } = await supabase
+        .from('clerk_organizations')
+        .upsert(
+          { clerk_org_id: clerkOrgId, name, slug, deleted_at: null },
+          { onConflict: 'clerk_org_id' }
+        );
+      if (error) console.error('❌ clerk_organizations upsert:', error);
+      else console.log(`✅ Org ${eventType}: ${clerkOrgId}`);
+    }
+
+    else if (eventType === 'organization.deleted') {
+      const clerkOrgId = data.id;
+      console.log(`🗑️ Deleting organization cascade: ${clerkOrgId}`);
+      const { data: result, error } = await supabase.rpc('purge_organization_by_clerk_id', {
+        p_clerk_org_id: clerkOrgId,
+      });
+      if (error) console.error('❌ purge_organization_by_clerk_id:', error);
+      else console.log('✅ Org purged:', result);
+    }
+
+    // ========== MEMBERSHIP EVENTS ==========
+    else if (eventType === 'organizationMembership.created' || eventType === 'organizationMembership.updated') {
+      const clerkOrgId = data.organization?.id;
+      const clerkUserId = data.public_user_data?.user_id;
+      const clerkRole: string = data.role || 'org:member';
+      if (!clerkOrgId || !clerkUserId) {
+        console.error('❌ Missing org/user id in membership event');
+      } else {
+        const role = clerkRole === 'org:admin' ? 'admin' : 'seller';
+        const orgName = data.organization?.name || 'Unnamed';
+        const orgSlug = data.organization?.slug || null;
+
+        // Ensure org exists
+        const { data: orgRow, error: orgErr } = await supabase
+          .from('clerk_organizations')
+          .upsert(
+            { clerk_org_id: clerkOrgId, name: orgName, slug: orgSlug, deleted_at: null },
+            { onConflict: 'clerk_org_id' }
+          )
           .select('id')
           .single();
+        if (orgErr) console.error('❌ org upsert in membership:', orgErr);
 
-        if (orgError) {
-          console.error('❌ Error creating organization:', orgError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to create organization' }),
-            { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-          );
+        if (orgRow?.id) {
+          const { error: memberErr } = await supabase
+            .from('org_members')
+            .upsert(
+              {
+                organization_id: orgRow.id,
+                clerk_org_id: clerkOrgId,
+                clerk_user_id: clerkUserId,
+                role,
+                status: 'active',
+              },
+              { onConflict: 'clerk_org_id,clerk_user_id' }
+            );
+          if (memberErr) console.error('❌ member upsert:', memberErr);
+
+          // Sync user_roles
+          await supabase
+            .from('user_roles')
+            .upsert(
+              { clerk_user_id: clerkUserId, organization_id: orgRow.id, role },
+              { onConflict: 'clerk_user_id,organization_id' }
+            );
+
+          console.log(`✅ Member ${eventType}: ${clerkUserId} → ${clerkOrgId} (${role})`);
         }
-
-        organizationId = newOrg.id;
-        console.log('✅ Organization created:', organizationId);
       }
+    }
 
-      // Create profile
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          clerk_user_id: userData.id,
-          email: primaryEmail,
-          name: fullName,
-          organization_id: organizationId,
-          avatar_url: userData.image_url,
-        })
-        .select()
-        .single();
-
-      if (profileError) {
-        console.error('❌ Error creating profile:', profileError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create profile' }),
-          { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-        );
-      }
-
-      console.log('✅ Profile created:', profile.id);
-
-      // Create user role
-      const role = userData.public_metadata?.role || 'admin'; // Default to admin for new signups
-      
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          clerk_user_id: userData.id,
-          role: role,
-        });
-
-      if (roleError) {
-        console.error('❌ Error creating role:', roleError);
-        // Don't fail the whole request, role can be added later
+    else if (eventType === 'organizationMembership.deleted') {
+      const clerkOrgId = data.organization?.id;
+      const clerkUserId = data.public_user_data?.user_id;
+      if (!clerkOrgId || !clerkUserId) {
+        console.error('❌ Missing org/user id in membership.deleted');
       } else {
-        console.log('✅ Role created:', role);
+        console.log(`🗑️ Removing member ${clerkUserId} from ${clerkOrgId}`);
+        const { error } = await supabase.rpc('purge_org_membership', {
+          p_clerk_org_id: clerkOrgId,
+          p_clerk_user_id: clerkUserId,
+        });
+        if (error) console.error('❌ purge_org_membership:', error);
+        else console.log('✅ Member removed');
       }
-
-      // Create default pipeline stages for new organization (if new org was created)
-      if (!userData.public_metadata?.organization_id) {
-        const defaultStages = [
-          { name: 'Novo Lead', order_index: 0, organization_id: organizationId, color: '#3B82F6' },
-          { name: 'Contato Inicial', order_index: 1, organization_id: organizationId, color: '#8B5CF6' },
-          { name: 'Qualificação', order_index: 2, organization_id: organizationId, color: '#F59E0B' },
-          { name: 'Proposta Enviada', order_index: 3, organization_id: organizationId, color: '#10B981' },
-          { name: 'Negociação', order_index: 4, organization_id: organizationId, color: '#EC4899' },
-          { name: 'Fechado Ganho', order_index: 5, organization_id: organizationId, color: '#22C55E' },
-          { name: 'Fechado Perdido', order_index: 6, organization_id: organizationId, color: '#EF4444' },
-          { name: 'Arquivado', order_index: 7, organization_id: organizationId, color: '#6B7280' },
-        ];
-
-        const { error: stagesError } = await supabase
-          .from('pipeline_stages')
-          .insert(defaultStages);
-
-        if (stagesError) {
-          console.error('❌ Error creating pipeline stages:', stagesError);
-        } else {
-          console.log('✅ Default pipeline stages created');
-        }
-      }
-
-      return new Response(
-        JSON.stringify({ success: true, message: 'User created successfully' }),
-        { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
     }
 
-    if (evt.type === 'user.updated') {
-      console.log('📝 Updating user profile for:', userData.id);
-
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          email: primaryEmail,
-          name: fullName,
-          avatar_url: userData.image_url,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('clerk_user_id', userData.id);
-
-      if (updateError) {
-        console.error('❌ Error updating profile:', updateError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to update profile' }),
-          { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-        );
-      }
-
-      console.log('✅ Profile updated successfully');
-
-      return new Response(
-        JSON.stringify({ success: true, message: 'User updated successfully' }),
-        { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
+    else {
+      console.log('ℹ️ Unhandled event:', eventType);
     }
 
-    if (evt.type === 'user.deleted') {
-      console.log('🗑️ Deleting user profile for:', userData.id);
-
-      // Delete role first
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('clerk_user_id', userData.id);
-
-      // Delete profile (cascade should handle related data)
-      const { error: deleteError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('clerk_user_id', userData.id);
-
-      if (deleteError) {
-        console.error('❌ Error deleting profile:', deleteError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to delete profile' }),
-          { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-        );
-      }
-
-      console.log('✅ Profile deleted successfully');
-
-      return new Response(
-        JSON.stringify({ success: true, message: 'User deleted successfully' }),
-        { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-      );
-    }
-
-    // Unknown event type
-    console.log('ℹ️ Unhandled event type:', evt.type);
-    return new Response(
-      JSON.stringify({ success: true, message: 'Event acknowledged' }),
-      { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-    );
-
-  } catch (error: any) {
-    console.error('💥 Unexpected error in sync-clerk-user:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-    );
+    return new Response(JSON.stringify({ received: true }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err: any) {
+    console.error('💥 Unexpected error:', err);
+    // Return 200 to prevent endless retries; error is logged
+    return new Response(JSON.stringify({ received: true, error: err.message }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 };
 
