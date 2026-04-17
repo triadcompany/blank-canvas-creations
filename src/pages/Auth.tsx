@@ -330,10 +330,11 @@ export function Auth() {
             </p>
           </div>
 
-          {/* Auth card with gradient border */}
+          {/* Auth form — open layout, no card */}
           <div className="relative">
-            <div className="absolute -inset-px bg-gradient-to-br from-[hsl(20,100%,60%)]/40 via-[hsl(330,80%,55%)]/30 to-[hsl(260,70%,55%)]/40 rounded-2xl blur-sm opacity-60" />
-            <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 sm:p-8 shadow-2xl">
+            {/* Soft ambient glow behind the form */}
+            <div className="pointer-events-none absolute -inset-8 bg-gradient-to-br from-[hsl(20,100%,60%)]/10 via-transparent to-[hsl(330,80%,55%)]/10 blur-3xl opacity-70" />
+            <div className="relative px-1 sm:px-2">
               {isSignUp ? (
                 <SignUp
                   appearance={clerkAppearance}
