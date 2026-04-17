@@ -10,7 +10,6 @@ import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useUserInvites } from "@/hooks/useUserInvites";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Link, useSearchParams } from "react-router-dom";
 import { 
   Users, 
@@ -82,7 +81,7 @@ export function Settings() {
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
   const { settings: orgSettings, updateInboxEnabled } = useOrgSettings();
-  const { inviteUser, loading: inviteLoading } = useUserInvites();
+  const { inviteUser, resendInvitation, revokeInvitation, loading: inviteLoading } = useUserInvites();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || "profile";
   const [activeTab, setActiveTabState] = useState(initialTab);
