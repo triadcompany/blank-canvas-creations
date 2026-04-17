@@ -82,12 +82,12 @@ export function Auth() {
       formButtonPrimary:
         'bg-gradient-to-r from-[hsl(20,100%,60%)] via-[hsl(15,100%,55%)] to-[hsl(330,80%,55%)] hover:opacity-95 text-white font-poppins font-semibold shadow-[0_10px_40px_-10px_hsl(20,100%,60%,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-10px_hsl(20,100%,60%,0.7)] h-12 text-base rounded-xl border-0',
       socialButtonsBlockButton:
-        'bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] hover:border-white/20 font-poppins h-12 transition-all duration-300 rounded-xl backdrop-blur-sm',
+        'bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 font-poppins h-12 transition-all duration-300 rounded-xl backdrop-blur-sm',
       socialButtonsBlockButtonText: 'font-poppins font-medium text-white/90',
       socialButtonsProviderIcon: 'w-5 h-5',
-      formFieldLabel: 'font-poppins text-white/80 font-medium text-sm mb-2',
+      formFieldLabel: 'font-poppins text-white/60 font-medium text-[11px] uppercase tracking-[0.15em] mb-2',
       formFieldInput:
-        'font-poppins bg-white/[0.04] border border-white/10 text-white focus:ring-2 focus:ring-[hsl(20,100%,60%)]/40 focus:border-[hsl(20,100%,60%)]/50 h-12 transition-all duration-200 rounded-xl placeholder:text-white/30 backdrop-blur-sm',
+        'font-poppins bg-transparent border-0 border-b border-white/15 text-white focus:ring-0 focus:border-[hsl(20,100%,60%)] h-12 transition-all duration-200 rounded-none placeholder:text-white/25 px-0 text-base',
       formFieldLabelRow: 'mb-1',
       formFieldInputShowPasswordButton: 'text-white/40 hover:text-white/80',
       footerActionLink:
@@ -330,10 +330,11 @@ export function Auth() {
             </p>
           </div>
 
-          {/* Auth card with gradient border */}
+          {/* Auth form — open layout, no card */}
           <div className="relative">
-            <div className="absolute -inset-px bg-gradient-to-br from-[hsl(20,100%,60%)]/40 via-[hsl(330,80%,55%)]/30 to-[hsl(260,70%,55%)]/40 rounded-2xl blur-sm opacity-60" />
-            <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 sm:p-8 shadow-2xl">
+            {/* Soft ambient glow behind the form */}
+            <div className="pointer-events-none absolute -inset-8 bg-gradient-to-br from-[hsl(20,100%,60%)]/10 via-transparent to-[hsl(330,80%,55%)]/10 blur-3xl opacity-70" />
+            <div className="relative px-1 sm:px-2">
               {isSignUp ? (
                 <SignUp
                   appearance={clerkAppearance}
