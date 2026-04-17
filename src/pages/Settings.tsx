@@ -286,9 +286,9 @@ export function Settings() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle className="font-poppins">Criar Novo Usuário</DialogTitle>
+                <DialogTitle className="font-poppins">Convidar Usuário</DialogTitle>
                 <DialogDescription className="font-poppins">
-                  Após criar, o usuário poderá se cadastrar no sistema usando este email e criando sua própria senha.
+                  O usuário receberá um email com um link para se cadastrar e entrar automaticamente nesta organização.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -329,7 +329,7 @@ export function Settings() {
                   <Button variant="outline" onClick={() => setDialogOpen(false)} className="font-poppins">
                     Cancelar
                   </Button>
-                  <Button 
+                  <Button
                     onClick={async () => {
                       if (!newUserEmail || !newUserName) {
                         toast({
@@ -340,37 +340,67 @@ export function Settings() {
                         return;
                       }
 
-                      const result = await inviteUser({
-                        email: newUserEmail,
-                        name: newUserName,
-                        role: newUserRole,
-                      });
+                      const submit = async (forceResend = false) => {
+                        const result = await inviteUser({
+                          email: newUserEmail,
+                          name: newUserName,
+                          role: newUserRole,
+                          forceResend,
+                        });
 
-                      if (result.success) {
-                        // If we have an actionLink, show it for manual sharing (Clerk dev mode may not send emails)
-                        if (result.actionLink) {
-                          toast({
-                            title: '🔗 Link de convite',
-                            description: 'O convite foi criado. Copie o link abaixo e envie ao usuário.',
-                            duration: 15000,
-                          });
-                          await navigator.clipboard.writeText(result.actionLink);
-                          toast({
-                            title: '✅ Link copiado!',
-                            description: 'O link de convite foi copiado para a área de transferência.',
-                          });
+                        if (result.success) {
+                          if (result.inviteUrl) {
+                            try {
+                              await navigator.clipboard.writeText(result.inviteUrl);
+                              toast({
+                                title: "✅ Link copiado",
+                                description: "O link de convite foi copiado para sua área de transferência.",
+                              });
+                            } catch {
+                              /* clipboard pode falhar em http; ignorar */
+                            }
+                          }
+                          setNewUserEmail("");
+                          setNewUserName("");
+                          setNewUserRole("seller");
+                          setDialogOpen(false);
+                          refreshProfiles();
+                          return;
                         }
-                        setNewUserEmail('');
-                        setNewUserName('');
-                        setNewUserRole('seller');
-                        setDialogOpen(false);
-                        refreshProfiles();
-                      }
+
+                        // Tratamento dos erros estruturados
+                        if (result.code === "ALREADY_MEMBER") {
+                          toast({
+                            title: "Usuário já é membro",
+                            description: "Este email já pertence a um membro desta organização.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+
+                        if (result.code === "INVITE_PENDING") {
+                          const ok = window.confirm(
+                            "Já existe um convite pendente para este email. Deseja reenviar com um novo link?"
+                          );
+                          if (ok) {
+                            await submit(true);
+                          }
+                          return;
+                        }
+
+                        toast({
+                          title: "Erro ao enviar convite",
+                          description: result.error || "Tente novamente.",
+                          variant: "destructive",
+                        });
+                      };
+
+                      await submit(false);
                     }}
                     className="btn-gradient text-white font-poppins"
                     disabled={inviteLoading}
                   >
-                    {inviteLoading ? 'Criando...' : 'Criar Usuário'}
+                    {inviteLoading ? "Enviando..." : "Enviar Convite"}
                   </Button>
                 </div>
               </div>
