@@ -8163,6 +8163,16 @@ export type Database = {
         }
         Returns: number
       }
+      purge_org_membership: {
+        Args: { p_clerk_org_id: string; p_clerk_user_id: string }
+        Returns: Json
+      }
+      purge_organization_by_clerk_id: {
+        Args: { p_clerk_org_id: string }
+        Returns: Json
+      }
+      purge_organization_cascade: { Args: { p_org_id: string }; Returns: Json }
+      purge_user_cascade: { Args: { p_clerk_user_id: string }; Returns: Json }
       reprocess_failed_automation_events: {
         Args: { p_organization_id: string }
         Returns: Json
