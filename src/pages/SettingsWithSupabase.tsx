@@ -132,9 +132,9 @@ export function Settings() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-poppins">Criar Novo Usuário</DialogTitle>
+              <DialogTitle className="font-poppins">Convidar Usuário</DialogTitle>
                <DialogDescription className="font-poppins">
-                Após criar, o usuário poderá se cadastrar no sistema usando este email e criando sua própria senha.
+                Um email de convite será enviado para o endereço informado. O usuário terá 7 dias para aceitar.
                </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
