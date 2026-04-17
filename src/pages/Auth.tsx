@@ -80,7 +80,7 @@ export function Auth() {
       headerTitle: 'hidden',
       headerSubtitle: 'hidden',
       formButtonPrimary:
-        'bg-gradient-to-r from-[hsl(20,100%,60%)] via-[hsl(15,100%,55%)] to-[hsl(330,80%,55%)] hover:opacity-95 text-white font-poppins font-semibold shadow-[0_10px_40px_-10px_hsl(20,100%,60%,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-10px_hsl(20,100%,60%,0.7)] h-12 text-base rounded-xl border-0',
+        'bg-gradient-to-r from-[hsl(20,100%,60%)] via-[hsl(15,100%,55%)] to-[hsl(15,100%,45%)] hover:opacity-95 text-white font-poppins font-semibold shadow-[0_10px_40px_-10px_hsl(20,100%,60%,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_50px_-10px_hsl(20,100%,60%,0.7)] h-12 text-base rounded-xl border-0',
       socialButtonsBlockButton:
         'bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] hover:border-white/20 font-poppins h-12 transition-all duration-300 rounded-xl backdrop-blur-sm',
       socialButtonsBlockButtonText: 'font-poppins font-medium text-white/90',
@@ -149,8 +149,8 @@ export function Auth() {
       {/* Ambient background gradients */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[hsl(20,100%,60%)] opacity-20 blur-[120px]" />
-        <div className="absolute top-1/3 -right-40 w-[500px] h-[500px] rounded-full bg-[hsl(330,80%,55%)] opacity-15 blur-[120px]" />
-        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] rounded-full bg-[hsl(260,70%,55%)] opacity-15 blur-[120px]" />
+        <div className="absolute top-1/3 -right-40 w-[500px] h-[500px] rounded-full bg-[hsl(15,100%,45%)] opacity-15 blur-[120px]" />
+        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] rounded-full bg-[hsl(25,100%,55%)] opacity-15 blur-[120px]" />
       </div>
 
       {/* Subtle grid */}
@@ -169,8 +169,8 @@ export function Auth() {
           {/* Logo */}
           <div className="flex items-center gap-3 animate-fade-in">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl blur-md opacity-60" />
-              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(15,100%,45%)] rounded-xl blur-md opacity-60" />
+              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(15,100%,45%)] rounded-xl flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
             </div>
@@ -204,7 +204,7 @@ export function Auth() {
               className="relative animate-fade-in"
               style={{ animationDelay: '200ms' }}
             >
-              <div className="absolute -inset-1 bg-gradient-to-r from-[hsl(20,100%,60%)]/30 via-[hsl(330,80%,55%)]/30 to-[hsl(260,70%,55%)]/30 rounded-2xl blur-xl opacity-60" />
+              <div className="absolute -inset-1 bg-gradient-to-r from-[hsl(20,100%,60%)]/30 via-[hsl(15,100%,45%)]/30 to-[hsl(25,100%,55%)]/30 rounded-2xl blur-xl opacity-60" />
               <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-6 space-y-4 overflow-hidden">
                 {/* Top bar */}
                 <div className="flex items-center justify-between pb-3 border-b border-white/5">
@@ -223,7 +223,7 @@ export function Auth() {
                       key={i}
                       className="rounded-xl bg-white/[0.03] border border-white/5 p-3 hover:bg-white/[0.06] transition-colors"
                     >
-                      <div className="text-lg xl:text-xl font-bold font-poppins bg-gradient-to-r from-[hsl(20,100%,70%)] to-[hsl(330,80%,65%)] bg-clip-text text-transparent">
+                      <div className="text-lg xl:text-xl font-bold font-poppins bg-gradient-to-r from-[hsl(20,100%,70%)] to-[hsl(15,100%,50%)] bg-clip-text text-transparent">
                         {s.value}
                       </div>
                       <div className="text-[10px] text-white/50 font-poppins uppercase tracking-wider mt-1">
@@ -241,8 +241,8 @@ export function Auth() {
                       className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-300"
                     >
                       <div className="relative shrink-0">
-                        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-lg blur-sm opacity-40 group-hover:opacity-70 transition-opacity" />
-                        <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-[hsl(20,100%,60%)]/20 to-[hsl(330,80%,55%)]/20 border border-white/10 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(15,100%,45%)] rounded-lg blur-sm opacity-40 group-hover:opacity-70 transition-opacity" />
+                        <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-[hsl(20,100%,60%)]/20 to-[hsl(15,100%,45%)]/20 border border-white/10 flex items-center justify-center">
                           <f.icon className="w-4 h-4 text-[hsl(20,100%,75%)]" />
                         </div>
                       </div>
@@ -279,8 +279,8 @@ export function Auth() {
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-2">
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl blur-md opacity-60" />
-              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(330,80%,55%)] rounded-xl flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(15,100%,45%)] rounded-xl blur-md opacity-60" />
+              <div className="relative w-12 h-12 bg-gradient-to-br from-[hsl(20,100%,60%)] to-[hsl(15,100%,45%)] rounded-xl flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
             </div>
@@ -333,7 +333,7 @@ export function Auth() {
           {/* Auth form — open layout, no card */}
           <div className="relative">
             {/* Soft ambient glow behind the form */}
-            <div className="pointer-events-none absolute -inset-8 bg-gradient-to-br from-[hsl(20,100%,60%)]/10 via-transparent to-[hsl(330,80%,55%)]/10 blur-3xl opacity-70" />
+            <div className="pointer-events-none absolute -inset-8 bg-gradient-to-br from-[hsl(20,100%,60%)]/10 via-transparent to-[hsl(15,100%,45%)]/10 blur-3xl opacity-70" />
             <div className="relative px-1 sm:px-2">
               {isSignUp ? (
                 <SignUp
