@@ -189,7 +189,7 @@ export function Auth() {
               </Badge>
               <h1 className="text-4xl xl:text-5xl 2xl:text-6xl font-bold font-poppins leading-[1.1] tracking-tight">
                 Venda mais com{' '}
-                <span className="bg-gradient-to-r from-[hsl(20,100%,65%)] via-[hsl(15,100%,60%)] to-[hsl(330,80%,60%)] bg-clip-text text-transparent">
+                <span className="text-[hsl(20,100%,60%)]">
                   inteligência artificial
                 </span>
               </h1>
