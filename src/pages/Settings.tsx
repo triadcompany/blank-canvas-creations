@@ -10,6 +10,7 @@ import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useUserInvites } from "@/hooks/useUserInvites";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Link, useSearchParams } from "react-router-dom";
 import { 
   Users, 
@@ -24,6 +25,9 @@ import {
   UserCheck,
   Trash2,
   Clock,
+  AlertCircle,
+  Send,
+  Copy,
   ExternalLink,
   MapPin,
   Play,
