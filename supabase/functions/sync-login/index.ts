@@ -60,6 +60,90 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    // ── Auto-accept pending invitation by email (no profile.org_id needed) ──
+    // Runs right after email verification: if user has a pending invitation,
+    // create org_members + accept invitation, skipping the create-company screen.
+    if (!membership && email) {
+      const { data: pendingInvite } = await supabase
+        .from("user_invitations")
+        .select("id, organization_id, role, name, expires_at")
+        .eq("email", email)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingInvite?.organization_id) {
+        console.log(`📨 sync-login: pending invitation found for ${email} → org ${pendingInvite.organization_id}`);
+
+        const { data: clerkOrgRecord } = await supabase
+          .from("clerk_organizations")
+          .select("clerk_org_id")
+          .eq("id", pendingInvite.organization_id)
+          .maybeSingle();
+
+        // Ensure profile exists with the org_id (so AppGate sees orgId)
+        await supabase
+          .from("profiles")
+          .upsert(
+            {
+              clerk_user_id,
+              email: email || null,
+              name: pendingInvite.name || full_name || null,
+              avatar_url: avatar_url || null,
+              organization_id: pendingInvite.organization_id,
+              onboarding_completed: true,
+            },
+            { onConflict: "clerk_user_id" }
+          );
+
+        const { error: memberErr } = await supabase
+          .from("org_members")
+          .upsert(
+            {
+              organization_id: pendingInvite.organization_id,
+              clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+              clerk_user_id,
+              role: pendingInvite.role || "seller",
+              status: "active",
+            },
+            { onConflict: "clerk_org_id,clerk_user_id" }
+          );
+
+        if (memberErr) {
+          console.warn("⚠️ sync-login: invite auto-accept org_members failed:", memberErr.message);
+        } else {
+          // Mark invitation accepted
+          await supabase
+            .from("user_invitations")
+            .update({ status: "accepted", accepted_at: new Date().toISOString() })
+            .eq("id", pendingInvite.id);
+
+          // Best-effort user_roles insert
+          await supabase
+            .from("user_roles")
+            .insert({
+              clerk_user_id,
+              organization_id: pendingInvite.organization_id,
+              role: pendingInvite.role || "seller",
+            })
+            .then(({ error }) => {
+              if (error && !error.message.includes("duplicate")) {
+                console.warn("⚠️ sync-login: user_roles insert warning:", error.message);
+              }
+            });
+
+          membership = {
+            role: pendingInvite.role || "seller",
+            clerk_org_id: clerkOrgRecord?.clerk_org_id || "unknown",
+            organization_id: pendingInvite.organization_id,
+          };
+          console.log("✅ sync-login: invitation auto-accepted, user joined org");
+        }
+      }
+    }
+
     // Fallback: if no org_members record, check profiles table for organization_id
     // (for invited users whose profile was created with org_id but no org_members)
     if (!membership) {
