@@ -491,49 +491,141 @@ export function Settings() {
                 </Card>
               ))}
               
-              {invitations.map((invitation) => (
-                <Card key={invitation.id} className="card-gradient border-0 border-l-4 border-l-orange-500">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-orange-500/10 rounded-full flex items-center justify-center">
-                          <Clock className="h-5 w-5 text-orange-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-poppins font-semibold text-foreground">
-                            {invitation.name}
-                          </h4>
-                          <div className="flex items-center space-x-2">
-                            <Mail className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground font-poppins">
-                              {invitation.email}
-                            </span>
+              {invitations.map((invitation) => {
+                const isExpired =
+                  invitation.expires_at && new Date(invitation.expires_at) < new Date();
+                const isRevoked = invitation.status === "revoked";
+                const isAccepted = invitation.status === "accepted";
+                if (isAccepted) return null;
+
+                return (
+                  <Card
+                    key={invitation.id}
+                    className={`card-gradient border-0 border-l-4 ${
+                      isRevoked
+                        ? "border-l-muted-foreground"
+                        : isExpired
+                        ? "border-l-destructive"
+                        : "border-l-orange-500"
+                    }`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between flex-wrap gap-3">
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                              isRevoked
+                                ? "bg-muted"
+                                : isExpired
+                                ? "bg-destructive/10"
+                                : "bg-orange-500/10"
+                            }`}
+                          >
+                            <Clock
+                              className={`h-5 w-5 ${
+                                isRevoked
+                                  ? "text-muted-foreground"
+                                  : isExpired
+                                  ? "text-destructive"
+                                  : "text-orange-500"
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <h4 className="font-poppins font-semibold text-foreground">
+                              {invitation.name || invitation.email}
+                            </h4>
+                            <div className="flex items-center space-x-2">
+                              <Mail className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground font-poppins">
+                                {invitation.email}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+                          {isRevoked ? (
+                            <Badge variant="outline" className="font-poppins text-muted-foreground">
+                              Revogado
+                            </Badge>
+                          ) : isExpired ? (
+                            <Badge
+                              variant="outline"
+                              className="font-poppins text-destructive border-destructive/40"
+                            >
+                              Expirado
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="font-poppins text-orange-600 border-orange-200"
+                            >
+                              Aguardando
+                            </Badge>
+                          )}
+                          <Badge
+                            variant={invitation.role === "admin" ? "default" : "secondary"}
+                            className="font-poppins"
+                          >
+                            {invitation.role === "admin" ? "Administrador" : "Vendedor"}
+                          </Badge>
+                          {!isRevoked && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={inviteLoading}
+                              onClick={async () => {
+                                const result = await resendInvitation(invitation.id);
+                                if (result.success) {
+                                  if (result.inviteUrl) {
+                                    try {
+                                      await navigator.clipboard.writeText(result.inviteUrl);
+                                    } catch {
+                                      /* noop */
+                                    }
+                                  }
+                                  refreshProfiles();
+                                }
+                              }}
+                              className="font-poppins"
+                              title="Reenviar convite"
+                            >
+                              Reenviar
+                            </Button>
+                          )}
+                          {!isRevoked && !isExpired && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={inviteLoading}
+                              onClick={async () => {
+                                if (!window.confirm("Revogar este convite? O link deixará de funcionar.")) return;
+                                const result = await revokeInvitation(invitation.id);
+                                if (result.success) refreshProfiles();
+                              }}
+                              className="font-poppins text-destructive hover:text-destructive"
+                              title="Revogar convite"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {(isRevoked || isExpired) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteInvitation(invitation.id)}
+                              className="font-poppins text-destructive hover:text-destructive"
+                              title="Remover registro"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="font-poppins text-orange-600 border-orange-200">
-                          Aguardando Cadastro
-                        </Badge>
-                        <Badge 
-                          variant={invitation.role === 'admin' ? 'default' : 'secondary'}
-                          className="font-poppins"
-                        >
-                          {invitation.role === 'admin' ? 'Administrador' : 'Vendedor'}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteInvitation(invitation.id)}
-                          className="font-poppins text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </>
           )}
         </div>
