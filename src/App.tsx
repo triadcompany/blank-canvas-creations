@@ -18,6 +18,7 @@ import { Auth } from "@/pages/Auth";
 import { SellerAuth } from "@/pages/SellerAuth";
 import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
+import Invite from "@/pages/Invite";
 import Tasks from "./pages/Tasks";
 import NotFound from "./pages/NotFound";
 
@@ -86,6 +87,7 @@ const App = () => {
               <Route path="/seller-auth" element={<SellerAuth />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/invite" element={<Invite />} />
 
               {/* ── Private routes — all under AppGate ── */}
               <Route element={<AppGate />}>
