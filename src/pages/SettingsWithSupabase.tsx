@@ -210,7 +210,7 @@ export function Settings() {
                   className="btn-gradient text-white font-poppins"
                   disabled={inviteLoading}
                 >
-                  {inviteLoading ? 'Criando...' : 'Criar Usuário'}
+                  {inviteLoading ? 'Enviando...' : 'Enviar Convite'}
                 </Button>
               </div>
             </div>
