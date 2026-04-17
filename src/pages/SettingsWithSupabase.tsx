@@ -139,7 +139,7 @@ export function Settings() {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="userName" className="font-poppins">Nome Completo</Label>
+                <Label htmlFor="userName" className="font-poppins">Nome (para identificação)</Label>
                 <Input
                   id="userName"
                   value={newUserName}
@@ -147,6 +147,9 @@ export function Settings() {
                   placeholder="Nome do usuário"
                   className="font-poppins"
                 />
+                <p className="text-xs text-muted-foreground font-poppins mt-1">
+                  Usado apenas para identificar o convite. Não altera o nome da conta do usuário.
+                </p>
               </div>
               <div>
                 <Label htmlFor="userEmail" className="font-poppins">Email</Label>
