@@ -47,9 +47,8 @@ export function Auth() {
     const orgName = searchParams.get('orgName');
     const signup = searchParams.get('signup');
 
-    // Only force signup mode when explicitly requested via ?signup=true.
-    // Convites podem direcionar tanto para login quanto para cadastro.
-    if (signup === 'true') setIsSignUp(true);
+    // Keep auth mode deterministic from the URL so invite flows never reuse stale state.
+    setIsSignUp(signup === 'true');
 
     if (invited === 'true' && inviteEmail) {
       setInviteData({
