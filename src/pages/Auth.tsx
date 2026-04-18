@@ -47,10 +47,11 @@ export function Auth() {
     const orgName = searchParams.get('orgName');
     const signup = searchParams.get('signup');
 
+    // Only force signup mode when explicitly requested via ?signup=true.
+    // Convites podem direcionar tanto para login quanto para cadastro.
     if (signup === 'true') setIsSignUp(true);
 
     if (invited === 'true' && inviteEmail) {
-      setIsSignUp(true);
       setInviteData({
         email: inviteEmail,
         name: inviteName || '',
