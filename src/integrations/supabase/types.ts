@@ -6599,35 +6599,7 @@ export type Database = {
             foreignKeyName: "user_invitations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
-            referencedRelation: "crm_funnel"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "user_invitations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "dashboard_stats"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "user_invitations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_dashboard"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "user_invitations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "financial_summary"
-            referencedColumns: ["organization_id"]
-          },
-          {
-            foreignKeyName: "user_invitations_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
+            referencedRelation: "clerk_organizations"
             referencedColumns: ["id"]
           },
         ]
