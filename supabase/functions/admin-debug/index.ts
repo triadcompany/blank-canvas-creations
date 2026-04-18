@@ -17,19 +17,48 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
+    // ──── AUTH: validate JWT and require admin membership of the requested org ────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return respond({ error: "Unauthorized" }, 401);
+    }
+
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      return respond({ error: "Invalid token" }, 401);
+    }
+    const clerkUserId = claimsData.claims.sub as string;
+
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
-    const body = req.method === "POST" ? await req.json() : {};
+    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const orgId = url.searchParams.get("org_id") || body.organization_id;
 
     if (!orgId) {
       return respond({ error: "org_id query param or organization_id in body required" }, 400);
+    }
+
+    // Verify caller is an active admin of the requested org
+    const { data: member, error: memberError } = await supabase
+      .from("org_members")
+      .select("role, status, organization_id")
+      .eq("clerk_user_id", clerkUserId)
+      .eq("organization_id", orgId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (memberError || !member || member.role !== "admin") {
+      return respond({ error: "Forbidden: admin membership required for this organization" }, 403);
     }
 
     // ──── ACTION: org-context ────
@@ -211,6 +240,6 @@ serve(async (req) => {
     return respond({ error: `Unknown action: ${action}. Use org-context, inbox-stats, last-evolution-events, or automation-events` }, 400);
   } catch (err) {
     console.error("[admin-debug] Error:", err);
-    return respond({ error: String(err) }, 500);
+    return respond({ error: "Internal server error" }, 500);
   }
 });
