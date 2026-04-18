@@ -101,7 +101,20 @@ export function useOrgSync() {
           .eq('clerk_user_id', clerkUserId)
           .maybeSingle();
 
-        const memberRole = existingMember?.role || 'admin';
+        // Determine if this user is the org creator (admin) or a joiner (default seller).
+        // - If they already have a row → preserve role.
+        // - Else if the org has zero members yet → they're the creator → admin.
+        // - Else → they're joining an existing org without a prior row → default to seller
+        //   (prevents privilege escalation when sync-login race hasn't created the row yet).
+        let memberRole = existingMember?.role;
+        if (!memberRole) {
+          const { count: memberCount } = await supabase
+            .from('org_members')
+            .select('clerk_user_id', { count: 'exact', head: true })
+            .eq('clerk_org_id', clerkOrgId);
+
+          memberRole = (memberCount ?? 0) === 0 ? 'admin' : 'seller';
+        }
 
         const { error: memberErr } = await supabase
           .from('org_members')
