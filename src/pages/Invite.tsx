@@ -94,9 +94,14 @@ export default function Invite() {
 
   const handleSignIn = () => {
     if (state.status !== "valid") return;
+    // Preserve token + org context so the user is auto-attached after login
     const params = new URLSearchParams({
       invited: "true",
       email: state.invitation.email,
+      orgId: state.invitation.organization_id,
+      orgName: state.invitation.organization_name,
+      role: state.invitation.role,
+      invitation_token: token || "",
     });
     navigate(`/auth?${params.toString()}`);
   };
