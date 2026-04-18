@@ -46,9 +46,20 @@ export function Auth() {
     const orgId = searchParams.get('orgId');
     const orgName = searchParams.get('orgName');
     const signup = searchParams.get('signup');
+    const invitationToken = searchParams.get('invitation_token');
 
     // Keep auth mode deterministic from the URL so invite flows never reuse stale state.
     setIsSignUp(signup === 'true');
+
+    // Persist invitation token across the Clerk auth flow (OTP, email verification, etc.)
+    // so sync-login can match it directly even if Clerk email differs in casing/alias.
+    if (invitationToken) {
+      try {
+        sessionStorage.setItem('pending_invitation_token', invitationToken);
+      } catch {
+        /* sessionStorage may be unavailable */
+      }
+    }
 
     if (invited === 'true' && inviteEmail) {
       setInviteData({

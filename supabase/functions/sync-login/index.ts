@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { clerk_user_id, email, full_name, avatar_url } = await req.json();
+    const { clerk_user_id, email, full_name, avatar_url, invitation_token } = await req.json();
 
     if (!clerk_user_id) {
       return new Response(JSON.stringify({ error: "clerk_user_id is required" }), {
@@ -60,16 +60,26 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // ── Auto-accept pending invitation by email (no profile.org_id needed) ──
+    // ── Auto-accept pending invitation ──
     // Runs right after email verification: if user has a pending invitation,
     // create org_members + accept invitation, skipping the create-company screen.
-    if (!membership && email) {
-      const { data: pendingInvite } = await supabase
+    // Priority: 1) explicit invitation_token (survives email casing/alias differences)
+    //           2) fallback to email match
+    if (!membership && (invitation_token || email)) {
+      let pendingInviteQuery = supabase
         .from("user_invitations")
-        .select("id, organization_id, role, name, expires_at")
-        .eq("email", email)
+        .select("id, organization_id, role, name, expires_at, email")
         .eq("status", "pending")
-        .gt("expires_at", new Date().toISOString())
+        .gt("expires_at", new Date().toISOString());
+
+      if (invitation_token) {
+        console.log(`🔑 sync-login: looking up invitation by token`);
+        pendingInviteQuery = pendingInviteQuery.eq("token", invitation_token);
+      } else {
+        pendingInviteQuery = pendingInviteQuery.eq("email", email);
+      }
+
+      const { data: pendingInvite } = await pendingInviteQuery
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();

@@ -63,7 +63,16 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       const fullName = clerkUser.fullName || clerkUser.firstName || email.split('@')[0] || 'User';
       const avatarUrl = clerkUser.imageUrl || undefined;
 
-      console.log('🔄 useAuthBootstrap: syncing login for', clerkUserId);
+      // Pull pending invitation token saved during /invite → /auth handoff.
+      // This guarantees auto-accept even if Clerk email casing differs from invitation email.
+      let invitationToken: string | undefined;
+      try {
+        invitationToken = sessionStorage.getItem('pending_invitation_token') || undefined;
+      } catch {
+        /* sessionStorage unavailable */
+      }
+
+      console.log('🔄 useAuthBootstrap: syncing login for', clerkUserId, invitationToken ? '(with invitation token)' : '');
 
       const syncResult = await withTimeout(
         callEdgeFunction('sync-login', {
@@ -71,6 +80,7 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
           email,
           full_name: fullName,
           avatar_url: avatarUrl,
+          invitation_token: invitationToken,
         }),
         8000,
         'sync-login'
@@ -78,6 +88,12 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
 
       if (syncResult.membership) {
         console.log('✅ User has existing org membership');
+        // Token consumed successfully — clear it so it doesn't leak into future sessions.
+        try {
+          sessionStorage.removeItem('pending_invitation_token');
+        } catch {
+          /* noop */
+        }
         setOrg({
           org_id: syncResult.membership.organization_id,
           clerk_org_id: syncResult.membership.clerk_org_id,
@@ -101,6 +117,7 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
             email,
             full_name: fullName,
             avatar_url: avatarUrl,
+            invitation_token: invitationToken,
           }),
           8000,
           'sync-login recheck'
