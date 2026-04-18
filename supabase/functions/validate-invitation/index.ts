@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
           name: invite.name,
           role: invite.role,
           organization_id: invite.organization_id,
-          organization_name: org?.name || "Organização",
+          organization_name: orgName || "Organização",
           expires_at: invite.expires_at,
         },
       }),
