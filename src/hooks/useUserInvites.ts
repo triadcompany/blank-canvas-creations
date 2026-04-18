@@ -59,9 +59,20 @@ export function useUserInvites() {
       }
 
       if (inviteResult?.success) {
+        let clipboardOk = false;
+        if (inviteResult.inviteUrl) {
+          try {
+            await navigator.clipboard.writeText(inviteResult.inviteUrl);
+            clipboardOk = true;
+          } catch (e) {
+            console.warn('Falha ao copiar link para a área de transferência', e);
+          }
+        }
         toast({
           title: 'Convite enviado!',
-          description: inviteResult.message || `Convite enviado para ${userData.email}.`,
+          description: clipboardOk
+            ? `Um email foi enviado para ${userData.email} com o link de convite. O link também foi copiado para sua área de transferência.`
+            : `Um email foi enviado para ${userData.email} com o link de convite.`,
         });
         return {
           success: true,
