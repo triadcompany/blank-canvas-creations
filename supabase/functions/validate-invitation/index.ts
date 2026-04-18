@@ -62,11 +62,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: org } = await supabase
-      .from("organizations")
+    // Org name lives in clerk_organizations (Clerk-managed). Fallback to legacy organizations table.
+    let orgName: string | null = null;
+    const { data: clerkOrg } = await supabase
+      .from("clerk_organizations")
       .select("name")
       .eq("id", invite.organization_id)
       .maybeSingle();
+    orgName = clerkOrg?.name ?? null;
+
+    if (!orgName) {
+      const { data: legacyOrg } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", invite.organization_id)
+        .maybeSingle();
+      orgName = legacyOrg?.name ?? null;
+    }
 
     return new Response(
       JSON.stringify({
