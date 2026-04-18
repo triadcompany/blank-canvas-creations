@@ -138,16 +138,15 @@ export function useSubscription() {
     }
 
     try {
+      // Identity is derived server-side from the Clerk JWT and verified against
+      // org_members. clerk_org_id is only a *requested* org id the server validates.
       const { data, error: fnError } = await supabase.functions.invoke('create-checkout', {
-        headers: {
-          'x-clerk-user-id': user.id,
-          'x-clerk-org-id': organizationId,
-        },
         body: {
           plan,
           billingCycle,
           userEmail: user.primaryEmailAddress?.emailAddress,
           userName: user.fullName || user.firstName || 'Usuário',
+          clerk_org_id: organizationId,
         },
       });
 
