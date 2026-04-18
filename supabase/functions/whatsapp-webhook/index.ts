@@ -27,8 +27,13 @@ serve(async (req) => {
     
     let body;
     const requestText = await req.text();
-    console.log('Raw request body:', requestText);
-    
+    const debugWebhook = Deno.env.get('DEBUG_WEBHOOK') === 'true';
+    if (debugWebhook) {
+      console.log('Raw request body:', requestText);
+    } else {
+      console.log('Webhook body received', { bytes: requestText.length });
+    }
+
     if (!requestText || requestText.trim() === '') {
       console.log('Empty request body');
       return new Response(JSON.stringify({ error: 'Empty request body' }), {
@@ -36,7 +41,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    
+
     try {
       body = JSON.parse(requestText);
     } catch (parseError) {
@@ -46,8 +51,12 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    
-    console.log('Webhook payload:', JSON.stringify(body, null, 2));
+
+    if (debugWebhook) {
+      console.log('Webhook payload:', JSON.stringify(body, null, 2));
+    } else {
+      console.log('Webhook event', { event: body?.event, instance: body?.instance });
+    }
 
     // Extrair informações da mensagem WhatsApp
     let contactName, contactPhone, messageText;
