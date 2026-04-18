@@ -32,17 +32,73 @@ serve(async (req) => {
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     logStep("Stripe key verified");
 
-    // Get Clerk user info from headers
-    const clerkUserId = req.headers.get("x-clerk-user-id");
-    const clerkOrgId = req.headers.get("x-clerk-org-id");
-    
-    if (!clerkUserId || !clerkOrgId) {
-      throw new Error("Missing Clerk user or organization ID");
+    // ──── AUTH: validate JWT, derive identity from claims and org_members ────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-    logStep("Clerk IDs received", { clerkUserId, clerkOrgId });
 
-    // Parse request body
-    const { plan, billingCycle, userEmail, userName } = await req.json();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const clerkUserId = claimsData.claims.sub as string;
+
+    // Parse request body (org id is taken from server-side membership lookup, not client)
+    const { plan, billingCycle, userEmail, userName, clerk_org_id: requestedOrgId } = await req.json();
+
+    // Resolve the user's active org membership server-side
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    const memberQuery = supabaseAdmin
+      .from("org_members")
+      .select("clerk_org_id, role, status")
+      .eq("clerk_user_id", clerkUserId)
+      .eq("status", "active");
+
+    const { data: memberships, error: memberError } = await memberQuery;
+    if (memberError || !memberships || memberships.length === 0) {
+      return new Response(JSON.stringify({ error: "No active organization membership" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // If client suggested an org id, verify it; otherwise pick the first active membership
+    let clerkOrgId: string | undefined;
+    if (requestedOrgId) {
+      const match = memberships.find((m: any) => m.clerk_org_id === requestedOrgId);
+      if (!match) {
+        return new Response(JSON.stringify({ error: "Forbidden: not a member of requested organization" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      clerkOrgId = match.clerk_org_id;
+    } else {
+      clerkOrgId = memberships[0].clerk_org_id;
+    }
+
+    if (!clerkOrgId) {
+      return new Response(JSON.stringify({ error: "Could not resolve organization" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    logStep("Identity verified", { clerkUserId, clerkOrgId });
     
     if (!plan || !billingCycle) {
       throw new Error("Missing plan or billingCycle in request body");
