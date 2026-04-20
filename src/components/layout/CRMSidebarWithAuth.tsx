@@ -37,6 +37,7 @@ import {
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const menuItems = [
   {
@@ -223,6 +224,7 @@ export function CRMSidebarWithAuth() {
               </div>
             </div>
           </Button>
+          <ThemeToggle variant="full" />
           <Button 
             variant="ghost" 
             size="sm" 
