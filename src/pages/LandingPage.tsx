@@ -236,8 +236,8 @@ export default function LandingPage() {
       </section>
 
       {/* Problems Section */}
-      <section className="py-20 md:py-28 bg-muted/30 relative overflow-hidden">
-        <AnimatedBackground showGrid={false} />
+      <section className="py-20 md:py-28 relative">
+        {/* sem fundo: o ContinuousBackground global cuida da continuidade */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -275,8 +275,8 @@ export default function LandingPage() {
       </section>
 
       {/* Solution Section */}
-      <section id="solucao" className="py-20 md:py-28 relative overflow-hidden">
-        <AnimatedBackground />
+      <section id="solucao" className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -335,8 +335,8 @@ export default function LandingPage() {
       </section>
 
       {/* For Who Section */}
-      <section className="py-20 md:py-28 bg-gradient-to-b from-muted/30 to-background relative overflow-hidden">
-        <AnimatedBackground showGrid={false} />
+      <section className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -382,8 +382,8 @@ export default function LandingPage() {
       </section>
 
       {/* Differentials Section */}
-      <section className="py-20 md:py-28 relative overflow-hidden">
-        <AnimatedBackground />
+      <section className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -426,8 +426,8 @@ export default function LandingPage() {
       </section>
 
       {/* Security Section */}
-      <section id="seguranca" className="py-20 md:py-28 bg-foreground text-background relative overflow-hidden">
-        <AnimatedBackground variant="dark" />
+      <section id="seguranca" className="py-20 md:py-28 relative">
+        {/* fundo global */}
         {/* Animated grid */}
         <div 
           className="absolute inset-0 opacity-[0.05]"
@@ -490,8 +490,8 @@ export default function LandingPage() {
       <PricingSection />
 
       {/* Final CTA Section */}
-      <section className="py-24 md:py-32 relative overflow-hidden">
-        <AnimatedBackground parallax />
+      <section className="py-24 md:py-32 relative">
+        {/* fundo global */}
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
@@ -540,7 +540,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t bg-muted/30">
+      <footer className="py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div className="md:col-span-2">
