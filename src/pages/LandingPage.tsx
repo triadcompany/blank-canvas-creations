@@ -286,11 +286,12 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6"
+              className="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 text-primary px-6 py-3 rounded-full text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
+              <Sparkles className="w-5 h-5" />
               A solução
             </motion.div>
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
@@ -445,12 +446,12 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-foreground/10 backdrop-blur border border-foreground/20 text-foreground px-4 py-2 rounded-full text-sm font-medium mb-6"
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/30 text-primary px-6 py-3 rounded-full text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
-              <Shield className="w-4 h-4" />
+              <Shield className="w-5 h-5" />
               Segurança
             </motion.div>
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
