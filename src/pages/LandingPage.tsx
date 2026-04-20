@@ -11,6 +11,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import PricingSection from "@/components/landing/PricingSection";
 import { AnimatedBackground, ScrollProgressBar } from "@/components/landing/AnimatedBackground";
+import { ContinuousBackground } from "@/components/landing/ContinuousBackground";
 import { TextReveal, TextRevealOnScroll } from "@/components/landing/TextReveal";
 import { TiltCard } from "@/components/landing/TiltCard";
 
