@@ -510,6 +510,5 @@ export default function Automacoes() {
           </DialogContent>
         </Dialog>
       </div>
-    </CRMLayout>
   );
 }
