@@ -64,7 +64,8 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden relative">
+      <ContinuousBackground />
       <ScrollProgressBar />
 
       {/* Header */}
