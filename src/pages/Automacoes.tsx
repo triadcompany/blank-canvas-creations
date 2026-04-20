@@ -193,7 +193,7 @@ export default function Automacoes() {
   if (editingAutomation) {
     return (
       <CRMLayout>
-        <div className="space-y-4">
+        <div className="p-4 md:p-6 space-y-4">
           {/* Header */}
           <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="sm" onClick={() => setEditingAutomation(null)}>
@@ -346,8 +346,8 @@ export default function Automacoes() {
   // ─── List view ───
   return (
     <CRMLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <PageHeader
             title="Automações"
             description="Crie fluxos automáticos de mensagens e ações para seus leads"
