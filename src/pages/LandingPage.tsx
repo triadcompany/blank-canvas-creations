@@ -11,6 +11,7 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import PricingSection from "@/components/landing/PricingSection";
 import { AnimatedBackground, ScrollProgressBar } from "@/components/landing/AnimatedBackground";
+import { ContinuousBackground } from "@/components/landing/ContinuousBackground";
 import { TextReveal, TextRevealOnScroll } from "@/components/landing/TextReveal";
 import { TiltCard } from "@/components/landing/TiltCard";
 
@@ -63,7 +64,8 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden relative">
+      <ContinuousBackground />
       <ScrollProgressBar />
 
       {/* Header */}
@@ -185,7 +187,7 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="h-14 px-8 text-base font-semibold group backdrop-blur bg-background/50 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1"
+                className="h-14 px-8 text-base font-semibold group backdrop-blur bg-foreground/50 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1"
               >
                 <Play className="mr-2 h-5 w-5 group-hover:text-primary group-hover:scale-125 transition-all" />
                 Ver como funciona
@@ -234,8 +236,8 @@ export default function LandingPage() {
       </section>
 
       {/* Problems Section */}
-      <section className="py-20 md:py-28 bg-muted/30 relative overflow-hidden">
-        <AnimatedBackground showGrid={false} />
+      <section className="py-20 md:py-28 relative">
+        {/* sem fundo: o ContinuousBackground global cuida da continuidade */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -273,8 +275,8 @@ export default function LandingPage() {
       </section>
 
       {/* Solution Section */}
-      <section id="solucao" className="py-20 md:py-28 relative overflow-hidden">
-        <AnimatedBackground />
+      <section id="solucao" className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -333,8 +335,8 @@ export default function LandingPage() {
       </section>
 
       {/* For Who Section */}
-      <section className="py-20 md:py-28 bg-gradient-to-b from-muted/30 to-background relative overflow-hidden">
-        <AnimatedBackground showGrid={false} />
+      <section className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -380,8 +382,8 @@ export default function LandingPage() {
       </section>
 
       {/* Differentials Section */}
-      <section className="py-20 md:py-28 relative overflow-hidden">
-        <AnimatedBackground />
+      <section className="py-20 md:py-28 relative">
+        {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
@@ -424,8 +426,8 @@ export default function LandingPage() {
       </section>
 
       {/* Security Section */}
-      <section id="seguranca" className="py-20 md:py-28 bg-foreground text-background relative overflow-hidden">
-        <AnimatedBackground variant="dark" />
+      <section id="seguranca" className="py-20 md:py-28 relative">
+        {/* fundo global */}
         {/* Animated grid */}
         <div 
           className="absolute inset-0 opacity-[0.05]"
@@ -443,7 +445,7 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-background/10 backdrop-blur border border-background/20 text-background px-4 py-2 rounded-full text-sm font-medium mb-6"
+              className="inline-flex items-center gap-2 bg-foreground/10 backdrop-blur border border-foreground/20 text-foreground px-4 py-2 rounded-full text-sm font-medium mb-6"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
@@ -454,7 +456,7 @@ export default function LandingPage() {
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
               <TextRevealOnScroll text="Seus dados protegidos" as="span" />
             </h2>
-            <p className="text-lg text-background/70">
+            <p className="text-lg text-muted-foreground">
               Segurança de nível empresarial para você focar no que importa: vender
             </p>
           </motion.div>
@@ -463,21 +465,21 @@ export default function LandingPage() {
             {securities.map((security, index) => (
               <motion.div
                 key={index}
-                className="group text-center p-6 rounded-2xl bg-background/5 backdrop-blur border border-background/10 hover:border-primary/40 hover:bg-background/10 transition-all duration-500 hover:-translate-y-2"
+                className="group text-center p-6 rounded-2xl bg-foreground/5 backdrop-blur border border-foreground/10 hover:border-primary/40 hover:bg-foreground/10 transition-all duration-500 hover:-translate-y-2"
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.6 }}
               >
                 <div className="relative w-14 h-14 mx-auto mb-4">
-                  <div className="absolute inset-0 bg-background/10 rounded-2xl group-hover:bg-primary/20 transition-colors" />
+                  <div className="absolute inset-0 bg-foreground/10 rounded-2xl group-hover:bg-primary/20 transition-colors" />
                   <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/40 rounded-2xl blur-xl transition-all duration-500" />
                   <div className="relative w-14 h-14 flex items-center justify-center">
-                    <security.icon className="h-7 w-7 text-background group-hover:text-primary group-hover:scale-110 transition-all" />
+                    <security.icon className="h-7 w-7 text-foreground group-hover:text-primary group-hover:scale-110 transition-all" />
                   </div>
                 </div>
                 <h3 className="font-semibold text-lg mb-2">{security.title}</h3>
-                <p className="text-sm text-background/60">{security.description}</p>
+                <p className="text-sm text-muted-foreground">{security.description}</p>
               </motion.div>
             ))}
           </div>
@@ -488,8 +490,8 @@ export default function LandingPage() {
       <PricingSection />
 
       {/* Final CTA Section */}
-      <section className="py-24 md:py-32 relative overflow-hidden">
-        <AnimatedBackground parallax />
+      <section className="py-24 md:py-32 relative">
+        {/* fundo global */}
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
@@ -538,7 +540,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t bg-muted/30">
+      <footer className="py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div className="md:col-span-2">
