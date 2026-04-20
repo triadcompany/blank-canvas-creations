@@ -7,11 +7,22 @@ import {
   ChevronRight, Sparkles, Play
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
 import PricingSection from "@/components/landing/PricingSection";
+import { AnimatedBackground, ScrollProgressBar } from "@/components/landing/AnimatedBackground";
+import { TextReveal, TextRevealOnScroll } from "@/components/landing/TextReveal";
+import { TiltCard } from "@/components/landing/TiltCard";
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const heroRef = useRef<HTMLElement>(null);
+  const { scrollYProgress: heroScroll } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const heroY = useTransform(heroScroll, [0, 1], [0, 200]);
+  const heroOpacity = useTransform(heroScroll, [0, 0.8], [1, 0]);
 
   const problems = [
     { icon: XCircle, text: "Leads chegam e se perdem em planilhas ou WhatsApp" },
@@ -21,36 +32,12 @@ export default function LandingPage() {
   ];
 
   const features = [
-    {
-      icon: Target,
-      title: "Gestão de Leads",
-      description: "Capture, organize e acompanhe cada lead do primeiro contato até a venda."
-    },
-    {
-      icon: TrendingUp,
-      title: "Funil de Vendas",
-      description: "Visualize todas as oportunidades em um quadro intuitivo e fácil de gerenciar."
-    },
-    {
-      icon: Clock,
-      title: "Atividades e Follow-ups",
-      description: "Agende tarefas, ligações e lembretes automáticos para nunca perder um contato."
-    },
-    {
-      icon: Users,
-      title: "Gestão de Equipe",
-      description: "Distribua leads, acompanhe a performance e mantenha o time alinhado."
-    },
-    {
-      icon: Eye,
-      title: "Histórico Centralizado",
-      description: "Todo o histórico de interações em um só lugar, acessível por toda a equipe."
-    },
-    {
-      icon: BarChart3,
-      title: "Relatórios Inteligentes",
-      description: "Dashboards e métricas para decisões baseadas em dados reais."
-    },
+    { icon: Target, title: "Gestão de Leads", description: "Capture, organize e acompanhe cada lead do primeiro contato até a venda." },
+    { icon: TrendingUp, title: "Funil de Vendas", description: "Visualize todas as oportunidades em um quadro intuitivo e fácil de gerenciar." },
+    { icon: Clock, title: "Atividades e Follow-ups", description: "Agende tarefas, ligações e lembretes automáticos para nunca perder um contato." },
+    { icon: Users, title: "Gestão de Equipe", description: "Distribua leads, acompanhe a performance e mantenha o time alinhado." },
+    { icon: Eye, title: "Histórico Centralizado", description: "Todo o histórico de interações em um só lugar, acessível por toda a equipe." },
+    { icon: BarChart3, title: "Relatórios Inteligentes", description: "Dashboards e métricas para decisões baseadas em dados reais." },
   ];
 
   const audiences = [
@@ -75,187 +62,237 @@ export default function LandingPage() {
     { icon: Server, title: "Infraestrutura confiável", description: "Servidores com 99.9% de disponibilidade" },
   ];
 
-  const fadeInUp = {
-    initial: { opacity: 0, y: 30 },
-    whileInView: { opacity: 1, y: 0 },
-    viewport: { once: true },
-    transition: { duration: 0.5 }
-  };
-
-  const staggerContainer = {
-    initial: {},
-    whileInView: { transition: { staggerChildren: 0.1 } },
-    viewport: { once: true }
-  };
-
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
+      <ScrollProgressBar />
+
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
+      <motion.header 
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="fixed top-0 left-0 right-0 z-50 bg-background/70 backdrop-blur-xl border-b border-border/50"
+      >
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-16 md:h-20 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-primary-foreground" />
+            <motion.div 
+              className="flex items-center gap-2"
+              whileHover={{ scale: 1.05 }}
+              transition={{ type: "spring", stiffness: 400 }}
+            >
+              <div className="relative w-9 h-9 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary to-accent animate-gradient-x bg-200%" />
+                <Sparkles className="w-5 h-5 text-primary-foreground relative z-10" />
               </div>
               <span className="font-bold text-xl">AutoLead</span>
-            </div>
+            </motion.div>
             <nav className="hidden md:flex items-center gap-8">
-              <a href="#solucao" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                Solução
-              </a>
-              <a href="#funcionalidades" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                Funcionalidades
-              </a>
-              <a href="#planos" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                Planos
-              </a>
-              <a href="#seguranca" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                Segurança
-              </a>
+              {[
+                { href: "#solucao", label: "Solução" },
+                { href: "#funcionalidades", label: "Funcionalidades" },
+                { href: "#planos", label: "Planos" },
+                { href: "#seguranca", label: "Segurança" },
+              ].map((item) => (
+                <a 
+                  key={item.href}
+                  href={item.href} 
+                  className="relative text-sm font-medium text-muted-foreground hover:text-foreground transition-colors group"
+                >
+                  {item.label}
+                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-primary to-accent group-hover:w-full transition-all duration-300" />
+                </a>
+              ))}
             </nav>
             <div className="flex items-center gap-3">
               <Button variant="ghost" onClick={() => navigate("/auth")} className="hidden sm:flex">
                 Entrar
               </Button>
-              <Button onClick={() => navigate("/auth")} className="font-semibold">
-                Começar agora
+              <Button 
+                onClick={() => navigate("/auth")} 
+                className="font-semibold relative overflow-hidden group"
+              >
+                <span className="relative z-10">Começar agora</span>
+                <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x opacity-0 group-hover:opacity-100 transition-opacity" />
               </Button>
             </div>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 md:pt-40 md:pb-32 relative">
-        {/* Background decorations */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-accent/5 rounded-full blur-3xl" />
-        </div>
+      <section ref={heroRef} className="pt-32 pb-20 md:pt-40 md:pb-32 relative min-h-screen flex items-center">
+        <AnimatedBackground variant="hero" parallax />
 
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <motion.div 
-            className="max-w-4xl mx-auto text-center"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+        <motion.div 
+          style={{ y: heroY, opacity: heroOpacity }}
+          className="container mx-auto px-4 sm:px-6 lg:px-8 relative"
+        >
+          <div className="max-w-4xl mx-auto text-center">
             {/* Badge */}
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/20 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8 relative overflow-hidden group"
+              initial={{ opacity: 0, scale: 0.9, y: -20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
             >
-              <Sparkles className="w-4 h-4" />
-              CRM para times que querem vender mais
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent animate-shine" />
+              <Sparkles className="w-4 h-4 relative z-10" />
+              <span className="relative z-10">CRM para times que querem vender mais</span>
             </motion.div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 tracking-tight">
-              <span className="text-foreground">Organize suas vendas.</span>
-              <br />
-              <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                Feche mais negócios.
-              </span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 tracking-tight leading-[1.1]">
+              <TextReveal text="Organize suas vendas." className="text-foreground block" delay={0.3} as="span" />
+              <TextReveal 
+                text="Feche mais negócios." 
+                className="block mt-2"
+                delay={0.7}
+                gradient
+                as="span"
+              />
             </h1>
 
             {/* Subheadline */}
-            <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
+            <motion.p 
+              className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.2, duration: 0.6 }}
+            >
               O CRM simples e poderoso para pequenas e médias empresas. 
               Gerencie leads, acompanhe o funil de vendas e aumente sua conversão — tudo em um só lugar.
-            </p>
+            </motion.p>
 
             {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <motion.div 
+              className="flex flex-col sm:flex-row gap-4 justify-center"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.4, duration: 0.6 }}
+            >
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth")} 
-                className="h-14 px-8 text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
+                className="h-14 px-8 text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
               >
-                Começar agora
-                <ArrowRight className="ml-2 h-5 w-5" />
+                <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <span className="relative z-10 flex items-center">
+                  Começar agora
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </span>
               </Button>
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="h-14 px-8 text-base font-semibold group"
+                className="h-14 px-8 text-base font-semibold group backdrop-blur bg-background/50 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1"
               >
-                <Play className="mr-2 h-5 w-5 group-hover:text-primary transition-colors" />
+                <Play className="mr-2 h-5 w-5 group-hover:text-primary group-hover:scale-125 transition-all" />
                 Ver como funciona
               </Button>
-            </div>
+            </motion.div>
 
             {/* Trust indicators */}
-            <div className="flex flex-wrap items-center justify-center gap-6 mt-12 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-                <span>Teste grátis</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-                <span>Sem cartão de crédito</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-                <span>Pronto em minutos</span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+            <motion.div 
+              className="flex flex-wrap items-center justify-center gap-6 mt-12 text-sm text-muted-foreground"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.7, duration: 0.6 }}
+            >
+              {["Teste grátis", "Sem cartão de crédito", "Pronto em minutos"].map((text, i) => (
+                <motion.div 
+                  key={text}
+                  className="flex items-center gap-2"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 1.7 + i * 0.1 }}
+                >
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  <span>{text}</span>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+
+          {/* Floating decorative elements */}
+          <motion.div
+            className="absolute top-20 left-10 w-2 h-2 bg-primary rounded-full hidden lg:block"
+            animate={{ y: [0, -20, 0], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 3, repeat: Infinity }}
+          />
+          <motion.div
+            className="absolute top-40 right-20 w-3 h-3 bg-accent rounded-full hidden lg:block"
+            animate={{ y: [0, -30, 0], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 4, repeat: Infinity, delay: 0.5 }}
+          />
+          <motion.div
+            className="absolute bottom-20 left-1/4 w-2 h-2 bg-primary-glow rounded-full hidden lg:block"
+            animate={{ y: [0, -25, 0], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 3.5, repeat: Infinity, delay: 1 }}
+          />
+        </motion.div>
       </section>
 
       {/* Problems Section */}
-      <section className="py-20 md:py-28 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-20 md:py-28 bg-muted/30 relative overflow-hidden">
+        <AnimatedBackground showGrid={false} />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
-            {...fadeInUp}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Você conhece esses problemas?
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Você conhece esses problemas?" as="span" />
             </h2>
             <p className="text-lg text-muted-foreground">
               Se sua equipe comercial enfrenta algum desses desafios, o AutoLead foi feito para você.
             </p>
           </motion.div>
 
-          <motion.div 
-            className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto"
-            {...staggerContainer}
-          >
+          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
             {problems.map((problem, index) => (
               <motion.div
                 key={index}
-                className="flex items-start gap-4 p-6 bg-background rounded-2xl border border-border/50 shadow-sm"
-                initial={{ opacity: 0, x: index % 2 === 0 ? -20 : 20 }}
+                className="group flex items-start gap-4 p-6 bg-background/80 backdrop-blur rounded-2xl border border-border/50 shadow-sm hover:shadow-xl hover:shadow-destructive/5 hover:border-destructive/30 transition-all duration-500 hover:-translate-y-1"
+                initial={{ opacity: 0, x: index % 2 === 0 ? -30 : 30 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <div className="p-2 bg-destructive/10 rounded-lg shrink-0">
+                <div className="p-2 bg-destructive/10 rounded-lg shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
                   <problem.icon className="h-5 w-5 text-destructive" />
                 </div>
                 <p className="text-foreground font-medium">{problem.text}</p>
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Solution Section */}
-      <section id="solucao" className="py-20 md:py-28">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="solucao" className="py-20 md:py-28 relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
-            {...fadeInUp}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
           >
-            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6">
+            <motion.div 
+              className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-6"
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+            >
               A solução
-            </div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Um CRM que sua equipe vai usar de verdade
+            </motion.div>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Um CRM que sua equipe vai usar de verdade" as="span" />
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
               Interface intuitiva, implementação em minutos e tudo que você precisa para 
@@ -263,152 +300,187 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
-          <motion.div 
-            id="funcionalidades"
-            className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6"
-            {...staggerContainer}
-          >
+          <div id="funcionalidades" className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ delay: index * 0.1, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
               >
-                <Card className="h-full border-2 border-border/50 hover:border-primary/30 transition-all duration-300 hover:shadow-lg group">
-                  <CardContent className="p-6">
-                    <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-5 group-hover:bg-primary/20 transition-colors">
-                      <feature.icon className="h-7 w-7 text-primary" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
-                    <p className="text-muted-foreground">{feature.description}</p>
-                  </CardContent>
-                </Card>
+                <TiltCard intensity={6}>
+                  <Card className="h-full border-2 border-border/50 hover:border-primary/40 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 group bg-gradient-to-br from-background to-muted/30 relative overflow-hidden">
+                    {/* Shine effect */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
+                    <CardContent className="p-6 relative">
+                      <div className="relative w-14 h-14 mb-5">
+                        <div className="absolute inset-0 bg-primary/10 rounded-2xl group-hover:bg-primary/20 transition-colors" />
+                        <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-500" />
+                        <div className="relative w-14 h-14 flex items-center justify-center">
+                          <feature.icon className="h-7 w-7 text-primary group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300" />
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-semibold mb-3 group-hover:text-primary transition-colors">{feature.title}</h3>
+                      <p className="text-muted-foreground">{feature.description}</p>
+                    </CardContent>
+                  </Card>
+                </TiltCard>
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* For Who Section */}
-      <section className="py-20 md:py-28 bg-gradient-to-b from-muted/30 to-background">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-20 md:py-28 bg-gradient-to-b from-muted/30 to-background relative overflow-hidden">
+        <AnimatedBackground showGrid={false} />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
-            {...fadeInUp}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Para quem é o AutoLead?
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Para quem é o AutoLead?" as="span" />
             </h2>
             <p className="text-lg text-muted-foreground">
               Feito para quem precisa organizar vendas sem burocracia
             </p>
           </motion.div>
 
-          <motion.div 
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto"
-            {...staggerContainer}
-          >
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {audiences.map((audience, index) => (
               <motion.div
                 key={index}
-                className="text-center p-6 rounded-2xl bg-background border border-border/50 hover:border-primary/30 transition-all duration-300 hover:shadow-lg"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.1, duration: 0.6 }}
               >
-                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <audience.icon className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">{audience.title}</h3>
-                <p className="text-sm text-muted-foreground">{audience.description}</p>
+                <TiltCard intensity={8}>
+                  <div className="text-center p-6 rounded-2xl bg-background/80 backdrop-blur border border-border/50 hover:border-primary/40 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/10 group h-full">
+                    <div className="relative w-16 h-16 mx-auto mb-4">
+                      <div className="absolute inset-0 bg-primary/10 rounded-2xl group-hover:bg-primary/20 transition-colors" />
+                      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/40 rounded-2xl blur-xl transition-all duration-500" />
+                      <div className="relative w-16 h-16 flex items-center justify-center">
+                        <audience.icon className="h-8 w-8 text-primary group-hover:scale-110 transition-transform" />
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-lg mb-2 group-hover:text-primary transition-colors">{audience.title}</h3>
+                    <p className="text-sm text-muted-foreground">{audience.description}</p>
+                  </div>
+                </TiltCard>
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Differentials Section */}
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-20 md:py-28 relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
-            {...fadeInUp}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Por que escolher o AutoLead?
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Por que escolher o AutoLead?" as="span" />
             </h2>
             <p className="text-lg text-muted-foreground">
               Diferenciais que fazem a diferença no seu dia a dia
             </p>
           </motion.div>
 
-          <motion.div 
-            className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 max-w-6xl mx-auto"
-            {...staggerContainer}
-          >
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 max-w-6xl mx-auto">
             {differentials.map((diff, index) => (
               <motion.div
                 key={index}
-                className="flex flex-col items-center text-center p-6 rounded-2xl bg-gradient-to-b from-muted/50 to-background border border-border/50"
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                className="group flex flex-col items-center text-center p-6 rounded-2xl bg-gradient-to-b from-muted/50 to-background border border-border/50 hover:border-primary/40 transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary/10"
+                initial={{ opacity: 0, y: 40, rotateX: -15 }}
+                whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.1, duration: 0.6 }}
               >
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
-                  <diff.icon className="h-6 w-6 text-primary" />
+                <div className="relative w-12 h-12 mb-4">
+                  <div className="absolute inset-0 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors" />
+                  <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/30 rounded-xl blur-lg transition-all" />
+                  <div className="relative w-12 h-12 flex items-center justify-center">
+                    <diff.icon className="h-6 w-6 text-primary group-hover:rotate-12 group-hover:scale-110 transition-transform" />
+                  </div>
                 </div>
-                <h3 className="font-semibold mb-2">{diff.title}</h3>
+                <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors">{diff.title}</h3>
                 <p className="text-sm text-muted-foreground">{diff.description}</p>
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Security Section */}
-      <section id="seguranca" className="py-20 md:py-28 bg-foreground text-background">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="seguranca" className="py-20 md:py-28 bg-foreground text-background relative overflow-hidden">
+        <AnimatedBackground variant="dark" />
+        {/* Animated grid */}
+        <div 
+          className="absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage: `linear-gradient(hsl(var(--background)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--background)) 1px, transparent 1px)`,
+            backgroundSize: "50px 50px",
+          }}
+        />
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
             className="max-w-3xl mx-auto text-center mb-16"
-            {...fadeInUp}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
           >
-            <div className="inline-flex items-center gap-2 bg-background/10 text-background px-4 py-2 rounded-full text-sm font-medium mb-6">
+            <motion.div 
+              className="inline-flex items-center gap-2 bg-background/10 backdrop-blur border border-background/20 text-background px-4 py-2 rounded-full text-sm font-medium mb-6"
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+            >
               <Shield className="w-4 h-4" />
               Segurança
-            </div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Seus dados protegidos
+            </motion.div>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Seus dados protegidos" as="span" />
             </h2>
             <p className="text-lg text-background/70">
               Segurança de nível empresarial para você focar no que importa: vender
             </p>
           </motion.div>
 
-          <motion.div 
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto"
-            {...staggerContainer}
-          >
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {securities.map((security, index) => (
               <motion.div
                 key={index}
-                className="text-center p-6 rounded-2xl bg-background/5 border border-background/10"
-                initial={{ opacity: 0, y: 20 }}
+                className="group text-center p-6 rounded-2xl bg-background/5 backdrop-blur border border-background/10 hover:border-primary/40 hover:bg-background/10 transition-all duration-500 hover:-translate-y-2"
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                transition={{ delay: index * 0.1, duration: 0.6 }}
               >
-                <div className="w-14 h-14 bg-background/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <security.icon className="h-7 w-7 text-background" />
+                <div className="relative w-14 h-14 mx-auto mb-4">
+                  <div className="absolute inset-0 bg-background/10 rounded-2xl group-hover:bg-primary/20 transition-colors" />
+                  <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/40 rounded-2xl blur-xl transition-all duration-500" />
+                  <div className="relative w-14 h-14 flex items-center justify-center">
+                    <security.icon className="h-7 w-7 text-background group-hover:text-primary group-hover:scale-110 transition-all" />
+                  </div>
                 </div>
                 <h3 className="font-semibold text-lg mb-2">{security.title}</h3>
                 <p className="text-sm text-background/60">{security.description}</p>
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
@@ -417,8 +489,7 @@ export default function LandingPage() {
 
       {/* Final CTA Section */}
       <section className="py-24 md:py-32 relative overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/5" />
+        <AnimatedBackground parallax />
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
@@ -428,20 +499,37 @@ export default function LandingPage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6">
-              Pronto para organizar suas vendas?
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              <TextRevealOnScroll text="Pronto para organizar suas vendas?" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto">
-              Comece agora e veja como é fácil gerenciar leads e fechar mais negócios com o AutoLead.
-            </p>
-            <Button 
-              size="lg" 
-              onClick={() => navigate("/auth")} 
-              className="h-14 px-10 text-base font-semibold shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/30 transition-all hover:-translate-y-1"
+            <motion.p 
+              className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.4 }}
             >
-              Criar conta gratuita
-              <ChevronRight className="ml-2 h-5 w-5" />
-            </Button>
+              Comece agora e veja como é fácil gerenciar leads e fechar mais negócios com o AutoLead.
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+            >
+              <Button 
+                size="lg" 
+                onClick={() => navigate("/auth")} 
+                className="h-14 px-10 text-base font-semibold shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
+              >
+                <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <span className="relative z-10 flex items-center">
+                  Criar conta gratuita
+                  <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </span>
+              </Button>
+            </motion.div>
             <p className="text-sm text-muted-foreground mt-6">
               Sem compromisso. Cancele quando quiser.
             </p>
