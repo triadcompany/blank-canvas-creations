@@ -347,53 +347,50 @@ export default function Automacoes() {
   return (
     <CRMLayout>
       <div className="p-4 md:p-6 space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-          <PageHeader
-            title="Automações"
-            description="Crie fluxos automáticos de mensagens e ações para seus leads"
-          />
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <Button
-                variant="outline" size="sm" onClick={async () => {
-                  setWorkerRunning(true);
-                  await triggerWorker();
-                  getRunStats().then(setGlobalStats);
-                  setWorkerRunning(false);
-                }}
-                disabled={workerRunning} className="font-poppins gap-1.5"
-              >
-                {workerRunning
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Worker...</>
-                  : <><Play className="h-3.5 w-3.5" /> Executar worker</>
-                }
-              </Button>
-            )}
+        <PageHeader
+          title="Automações"
+          description="Crie fluxos automáticos de mensagens e ações para seus leads"
+        >
+          {isAdmin && (
             <Button
-              variant="outline"
-              className="font-poppins gap-2"
-              onClick={async () => {
-                const result = await createFromTemplate("keyword_lead");
-                if (result) setEditingAutomation(result);
+              variant="outline" size="sm" onClick={async () => {
+                setWorkerRunning(true);
+                await triggerWorker();
+                getRunStats().then(setGlobalStats);
+                setWorkerRunning(false);
               }}
+              disabled={workerRunning} className="font-poppins gap-1.5"
             >
-              <Megaphone className="h-4 w-4" /> Template Palavra-chave
+              {workerRunning
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Worker...</>
+                : <><Play className="h-3.5 w-3.5" /> Executar worker</>
+              }
             </Button>
-            <Button
-              variant="outline"
-              className="font-poppins gap-2"
-              onClick={async () => {
-                const result = await createFromTemplate();
-                if (result) setEditingAutomation(result);
-              }}
-            >
-              <FileText className="h-4 w-4" /> Template Follow-up
-            </Button>
-            <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
-              <Plus className="h-4 w-4" /> Nova Automação
-            </Button>
-          </div>
-        </div>
+          )}
+          <Button
+            variant="outline"
+            className="font-poppins gap-2"
+            onClick={async () => {
+              const result = await createFromTemplate("keyword_lead");
+              if (result) setEditingAutomation(result);
+            }}
+          >
+            <Megaphone className="h-4 w-4" /> Template Palavra-chave
+          </Button>
+          <Button
+            variant="outline"
+            className="font-poppins gap-2"
+            onClick={async () => {
+              const result = await createFromTemplate();
+              if (result) setEditingAutomation(result);
+            }}
+          >
+            <FileText className="h-4 w-4" /> Template Follow-up
+          </Button>
+          <Button className="btn-gradient text-white font-poppins gap-2" onClick={() => setCreateDialog(true)}>
+            <Plus className="h-4 w-4" /> Nova Automação
+          </Button>
+        </PageHeader>
 
         <Tabs value={activeListTab} onValueChange={setActiveListTab} className="w-full">
           <TabsList className="font-poppins">
