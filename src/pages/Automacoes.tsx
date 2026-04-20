@@ -164,36 +164,31 @@ export default function Automacoes() {
   // ─── Auth loading / no org guard ───
   if (authLoading) {
     return (
-      <CRMLayout>
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </CRMLayout>
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (!hasOrg) {
     return (
-      <CRMLayout>
-        <div className="flex flex-col items-center justify-center py-16 space-y-4">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground/50" />
-          <h3 className="text-lg font-poppins font-semibold">Nenhuma organização encontrada</h3>
-          <p className="text-muted-foreground text-sm text-center max-w-md">
-            Complete o onboarding para criar sua empresa e acessar as automações.
-          </p>
-          <Button onClick={() => navigate('/onboarding')} className="btn-gradient text-white">
-            Ir para Onboarding
-          </Button>
-        </div>
-      </CRMLayout>
+      <div className="flex flex-col items-center justify-center py-16 space-y-4">
+        <AlertTriangle className="h-12 w-12 text-muted-foreground/50" />
+        <h3 className="text-lg font-poppins font-semibold">Nenhuma organização encontrada</h3>
+        <p className="text-muted-foreground text-sm text-center max-w-md">
+          Complete o onboarding para criar sua empresa e acessar as automações.
+        </p>
+        <Button onClick={() => navigate('/onboarding')} className="btn-gradient text-white">
+          Ir para Onboarding
+        </Button>
+      </div>
     );
   }
 
   // ─── Detail view ───
   if (editingAutomation) {
     return (
-      <CRMLayout>
-        <div className="p-4 md:p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
           {/* Header */}
           <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="sm" onClick={() => setEditingAutomation(null)}>
