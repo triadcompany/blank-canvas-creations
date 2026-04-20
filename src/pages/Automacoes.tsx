@@ -334,13 +334,11 @@ export default function Automacoes() {
             </TabsContent>
           </Tabs>
         </div>
-      </CRMLayout>
     );
   }
 
   // ─── List view ───
   return (
-    <CRMLayout>
       <div className="p-4 md:p-6 space-y-6">
         <PageHeader
           title="Automações"
