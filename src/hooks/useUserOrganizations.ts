@@ -18,7 +18,7 @@ export interface UserOrganization {
  * the active Clerk organization, then reloads the app context.
  */
 export function useUserOrganizations() {
-  const { user, orgId, refreshProfile } = useAuth();
+  const { user, orgId } = useAuth();
   const { setActive } = useClerk();
   const { toast } = useToast();
   const [organizations, setOrganizations] = useState<UserOrganization[]>([]);
