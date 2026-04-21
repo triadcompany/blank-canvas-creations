@@ -384,36 +384,40 @@ export function PipelineManagement() {
         <div className="space-y-1">
           <h3 className="text-lg font-semibold">Gerenciar Pipelines</h3>
           <p className="text-sm text-muted-foreground">
-            Configure os funis de vendas da sua organização (máximo 10)
+            {isAdmin
+              ? 'Configure os funis de vendas da sua organização (máximo 10)'
+              : 'Visualize os funis de vendas aos quais você tem acesso'}
           </p>
         </div>
-        
-        <Dialog open={isPipelineDialogOpen} onOpenChange={setIsPipelineDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              onClick={() => setEditingPipeline(null)}
-              disabled={pipelines.length >= 10}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Pipeline
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPipeline ? 'Editar Pipeline' : 'Novo Pipeline'}
-              </DialogTitle>
-            </DialogHeader>
-            <PipelineForm
-              pipeline={editingPipeline}
-              onSave={handleSavePipeline}
-              onCancel={() => {
-                setIsPipelineDialogOpen(false);
-                setEditingPipeline(null);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+
+        {isAdmin && (
+          <Dialog open={isPipelineDialogOpen} onOpenChange={setIsPipelineDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => setEditingPipeline(null)}
+                disabled={pipelines.length >= 10}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Pipeline
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingPipeline ? 'Editar Pipeline' : 'Novo Pipeline'}
+                </DialogTitle>
+              </DialogHeader>
+              <PipelineForm
+                pipeline={editingPipeline}
+                onSave={handleSavePipeline}
+                onCancel={() => {
+                  setIsPipelineDialogOpen(false);
+                  setEditingPipeline(null);
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Pipeline Selection */}
