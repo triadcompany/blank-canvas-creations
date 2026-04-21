@@ -59,14 +59,6 @@ export function useUserInvites() {
       }
 
       if (inviteResult?.success) {
-        // Copia o link silenciosamente como fallback, sem mencionar no toast
-        if (inviteResult.inviteUrl) {
-          try {
-            await navigator.clipboard.writeText(inviteResult.inviteUrl);
-          } catch (e) {
-            console.warn('Falha ao copiar link para a área de transferência', e);
-          }
-        }
         toast({
           title: '✅ Convite enviado!',
           description: `O convite foi enviado para o email ${userData.email}.`,
