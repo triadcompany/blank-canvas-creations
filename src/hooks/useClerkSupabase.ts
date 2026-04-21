@@ -179,16 +179,32 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
       setProfile(finalProfile);
 
-      const { data: roleData } = await supabase
+      // Resolve role for the CURRENT organization (a user can be admin in
+      // one org and seller in another). We scope the query by the profile's
+      // organization_id so switching organizations updates permissions.
+      const currentOrgId = finalProfile.organization_id;
+      const roleQuery = supabase
         .from('user_roles')
         .select('role')
-        .eq('clerk_user_id', clerkUserId)
-        .maybeSingle();
+        .eq('clerk_user_id', clerkUserId);
+
+      const { data: roleData } = currentOrgId
+        ? await roleQuery.eq('organization_id', currentOrgId).maybeSingle()
+        : await roleQuery.maybeSingle();
 
       if (roleData?.role) {
         setRole(roleData.role as 'admin' | 'seller');
       } else {
-        setRole('admin');
+        // No row for this org → fall back to org_members (source of truth
+        // for membership-based permissions).
+        const { data: member } = await supabase
+          .from('org_members')
+          .select('role')
+          .eq('clerk_user_id', clerkUserId)
+          .eq('organization_id', currentOrgId)
+          .eq('status', 'active')
+          .maybeSingle();
+        setRole((member?.role as 'admin' | 'seller') || 'seller');
       }
 
       return finalProfile;
