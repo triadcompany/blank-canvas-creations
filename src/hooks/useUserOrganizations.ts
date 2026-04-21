@@ -55,19 +55,29 @@ export function useUserOrganizations() {
         return;
       }
 
-      // 2) Resolve org names in a separate query (no FK between the tables)
-      const { data: orgs, error: orgErr } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .in('id', orgIds);
+      // 2) Resolve org names. The canonical source for org names in this project
+      //    is `clerk_organizations` (its `id` matches `org_members.organization_id`).
+      //    We also look up `organizations` as a fallback for any legacy rows.
+      const [{ data: clerkOrgs, error: clerkOrgErr }, { data: orgs, error: orgErr }] = await Promise.all([
+        supabase.from('clerk_organizations').select('id, name').in('id', orgIds),
+        supabase.from('organizations').select('id, name').in('id', orgIds),
+      ]);
 
+      if (clerkOrgErr) {
+        console.error('useUserOrganizations: clerk_organizations error', clerkOrgErr);
+      }
       if (orgErr) {
         console.error('useUserOrganizations: organizations error', orgErr);
       }
 
-      const nameById = new Map<string, string>(
-        (orgs || []).map((o: any) => [o.id as string, o.name as string])
-      );
+      const nameById = new Map<string, string>();
+      (orgs || []).forEach((o: any) => {
+        if (o?.id && o?.name) nameById.set(o.id as string, o.name as string);
+      });
+      // clerk_organizations takes precedence (matches what Clerk shows live)
+      (clerkOrgs || []).forEach((o: any) => {
+        if (o?.id && o?.name) nameById.set(o.id as string, o.name as string);
+      });
 
       const list: UserOrganization[] = (memberships || [])
         .filter((row: any) => row.organization_id)
