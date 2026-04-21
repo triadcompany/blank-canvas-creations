@@ -18,7 +18,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useClerk } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +26,7 @@ import { useNavigate } from "react-router-dom";
 export function UserProfile() {
   const { profile, user, refreshProfile, isAdmin, userName, userEmail } = useAuth();
   const { openUserProfile } = useClerk();
+  const { user: clerkUser } = useUser();
   const { toast } = useToast();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   const navigate = useNavigate();
