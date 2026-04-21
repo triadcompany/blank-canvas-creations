@@ -16,7 +16,6 @@ import { Pipelines } from "@/pages/Pipelines";
 
 import { Auth } from "@/pages/Auth";
 import { SellerAuth } from "@/pages/SellerAuth";
-import { ForgotPassword } from "@/pages/ForgotPassword";
 import { ResetPassword } from "@/pages/ResetPassword";
 import Invite from "@/pages/Invite";
 import Tasks from "./pages/Tasks";
@@ -85,7 +84,6 @@ const App = () => {
               <Route path="/landing" element={<LandingPage />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/seller-auth" element={<SellerAuth />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/invite" element={<Invite />} />
 
