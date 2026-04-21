@@ -60,7 +60,7 @@ const parseCurrency = (value: string): number => {
 };
 
 export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) {
-  const { user, role, profile } = useAuth();
+  const { user, role, profile, orgId } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -87,10 +87,15 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
 
   // Fetch pipelines on mount
   const fetchPipelines = useCallback(async () => {
-    if (!profile?.organization_id) return;
-    const { data } = await supabase.rpc('get_org_pipelines', {
-      p_org_id: profile.organization_id,
+    const targetOrgId = orgId || profile?.organization_id;
+    if (!targetOrgId) return;
+    const { data, error } = await supabase.rpc('get_org_pipelines', {
+      p_org_id: targetOrgId,
     });
+    if (error) {
+      console.error('[AddLeadModal] get_org_pipelines error:', error);
+      return;
+    }
     const list = ((data || []) as any[]).map(p => ({
       id: p.id,
       name: p.name,
@@ -103,7 +108,7 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
     if (defaultPipeline) {
       setSelectedPipelineId(defaultPipeline.id);
     }
-  }, [profile?.organization_id]);
+  }, [orgId, profile?.organization_id]);
 
   // Fetch stages when pipeline changes
   const fetchStages = useCallback(async (pipelineId: string) => {
