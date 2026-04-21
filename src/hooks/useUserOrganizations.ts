@@ -108,6 +108,13 @@ export function useUserOrganizations() {
     load();
   }, [load]);
 
+  // Reload when organization details (name/logo) are updated elsewhere
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener('org-details-updated', handler);
+    return () => window.removeEventListener('org-details-updated', handler);
+  }, [load]);
+
   const switchOrg = useCallback(
     async (target: UserOrganization) => {
       if (!user?.id) return;
