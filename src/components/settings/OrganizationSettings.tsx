@@ -256,10 +256,21 @@ export function OrganizationSettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/svg+xml"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
-                      if (f) handleLogoUpload(f);
                       e.target.value = '';
+                      if (!f) return;
+                      // SVG cannot be cropped on canvas reliably — upload as-is
+                      if (f.type === 'image/svg+xml') {
+                        handleLogoUpload(f);
+                        return;
+                      }
+                      try {
+                        const url = await fileToDataUrl(f);
+                        setCropSrc(url);
+                      } catch {
+                        toast({ title: 'Erro ao ler imagem', variant: 'destructive' });
+                      }
                     }}
                   />
                   <div className="flex gap-2">
