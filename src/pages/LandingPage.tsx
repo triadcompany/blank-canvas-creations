@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { 
   Target, Users, TrendingUp, BarChart3, Zap, Shield, 
   ArrowRight, CheckCircle2, XCircle, Building2, Smartphone,
   Lock, Server, UserCheck, Layers, Clock, Eye, MessageSquare,
-  ChevronRight, Sparkles, Play
+  ChevronRight, Sparkles, Play, Menu
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
