@@ -22,6 +22,7 @@ import { useClerk, useUser } from "@clerk/clerk-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "react-router-dom";
+import { resizeAndCropToSquare } from "@/lib/image";
 
 export function UserProfile() {
   const { profile, user, refreshProfile, isAdmin, userName, userEmail } = useAuth();
