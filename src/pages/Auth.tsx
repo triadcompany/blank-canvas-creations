@@ -375,25 +375,45 @@ export function Auth() {
 
           {/* Forgot password — only on sign-in mode */}
           {!isSignUp && !inviteData && (
-            <div className="text-center -mt-2">
+            <div className="text-center -mt-2 space-y-2">
+              <p className="text-xs text-white/40 font-poppins">
+                Dica: digite seu e-mail acima e clique em "Continuar" para ver a opção de recuperar senha.
+              </p>
               <button
                 type="button"
                 onClick={() => {
-                  // Trigger Clerk's native "forgot password" flow
-                  const link = document.querySelector<HTMLAnchorElement>(
-                    'a[data-localization-key="signIn.start.actionLink__use_email"], button[data-localization-key="formFieldAction__forgotPassword"], a[href*="forgot"]'
+                  // Try multiple strategies to trigger Clerk's forgot password flow
+                  const selectors = [
+                    'button[data-localization-key="formFieldAction__forgotPassword"]',
+                    'a[data-localization-key="formFieldAction__forgotPassword"]',
+                    '.cl-formFieldAction__password',
+                    '.cl-formFieldAction',
+                    'button[class*="forgotPassword" i]',
+                    'a[class*="forgotPassword" i]',
+                  ];
+                  for (const sel of selectors) {
+                    const el = document.querySelector<HTMLElement>(sel);
+                    if (el) {
+                      el.click();
+                      return;
+                    }
+                  }
+                  // Fallback: focus the password field so Clerk reveals the "Forgot password?" link
+                  const pwd = document.querySelector<HTMLInputElement>(
+                    'input[type="password"], input[name="password"]'
                   );
-                  if (link) {
-                    link.click();
+                  if (pwd) {
+                    pwd.focus();
+                    pwd.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   } else {
-                    // Fallback: focus password field and click "forgot password" trigger
-                    const forgotBtn = document.querySelector<HTMLButtonElement>(
-                      '.cl-formFieldAction, [class*="forgotPassword" i]'
+                    // No password field visible yet — focus email and prompt user
+                    const email = document.querySelector<HTMLInputElement>(
+                      'input[type="email"], input[name="identifier"]'
                     );
-                    forgotBtn?.click();
+                    email?.focus();
                   }
                 }}
-                className="text-sm font-poppins text-white/60 hover:text-[hsl(20,100%,70%)] underline-offset-4 hover:underline transition-colors"
+                className="text-sm font-poppins text-[hsl(20,100%,70%)] hover:text-[hsl(20,100%,80%)] underline-offset-4 hover:underline transition-colors font-semibold"
               >
                 Esqueci minha senha
               </button>
