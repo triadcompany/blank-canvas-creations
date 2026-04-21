@@ -108,7 +108,7 @@ export default function Invite() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+    <div className="dark min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4 text-foreground">
       <Card className="w-full max-w-md border-border/50 shadow-xl">
         {state.status === "loading" && (
           <CardContent className="py-16 text-center space-y-4">
