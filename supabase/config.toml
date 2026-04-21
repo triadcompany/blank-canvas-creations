@@ -161,3 +161,6 @@ verify_jwt = false
 
 [functions.upload-org-logo]
 verify_jwt = false
+
+[functions.update-clerk-org]
+verify_jwt = false
