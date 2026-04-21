@@ -26,6 +26,9 @@ interface UseAuthBootstrapReturn {
   error: string | null;
   needsOnboarding: boolean;
   retryBootstrap: () => Promise<void>;
+  /** Update the active org in memory after the user switches organizations.
+   *  Avoids a full page reload while keeping AuthContext.orgId in sync. */
+  setActiveOrg: (next: OrgInfo) => void;
 }
 
 export function useAuthBootstrap(): UseAuthBootstrapReturn {
