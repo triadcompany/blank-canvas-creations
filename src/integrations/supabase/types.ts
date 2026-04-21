@@ -8264,6 +8264,33 @@ export type Database = {
         }
         Returns: number
       }
+      provision_profile_from_membership: {
+        Args: {
+          p_avatar_url?: string
+          p_clerk_user_id: string
+          p_email: string
+          p_name: string
+        }
+        Returns: {
+          avatar_url: string | null
+          clerk_user_id: string
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          onboarding_completed: boolean
+          organization_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          whatsapp_e164: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       purge_org_membership: {
         Args: { p_clerk_org_id: string; p_clerk_user_id: string }
         Returns: Json
