@@ -172,22 +172,22 @@ export default function LandingPage() {
           <div className="max-w-4xl mx-auto text-center">
             {/* Badge */}
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/20 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8 relative overflow-hidden group"
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/20 text-primary px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium mb-5 sm:mb-8 relative overflow-hidden group"
               initial={{ opacity: 0, scale: 0.9, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
             >
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent animate-shine" />
-              <Sparkles className="w-4 h-4 relative z-10" />
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 relative z-10" />
               <span className="relative z-10">CRM para times que querem vender mais</span>
             </motion.div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 tracking-tight leading-[1.1]">
+            <h1 className="text-[2.25rem] leading-[1.05] sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-5 sm:mb-6 tracking-tight">
               <TextReveal text="Organize suas vendas." className="text-foreground block" delay={0.3} as="span" />
               <TextReveal 
                 text="Feche mais negócios." 
-                className="block mt-2"
+                className="block mt-1 sm:mt-2"
                 delay={0.7}
                 gradient
                 as="span"
@@ -196,7 +196,7 @@ export default function LandingPage() {
 
             {/* Subheadline */}
             <motion.p 
-              className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
+              className="text-base sm:text-xl text-muted-foreground mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.2, duration: 0.6 }}
@@ -207,7 +207,7 @@ export default function LandingPage() {
 
             {/* CTAs */}
             <motion.div 
-              className="flex flex-col sm:flex-row gap-4 justify-center"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-2 sm:px-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.4, duration: 0.6 }}
@@ -215,11 +215,11 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth")} 
-                className="h-14 px-8 text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
+                className="h-12 sm:h-14 px-6 sm:px-8 text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group w-full sm:w-auto"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <span className="relative z-10 flex items-center">
+                <span className="relative z-10 flex items-center justify-center">
                   Começar agora
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </span>
@@ -227,7 +227,7 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="h-14 px-8 text-base font-semibold group backdrop-blur bg-foreground/50 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1"
+                className="h-12 sm:h-14 px-6 sm:px-8 text-base font-semibold group backdrop-blur bg-foreground/5 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1 w-full sm:w-auto"
               >
                 <Play className="mr-2 h-5 w-5 group-hover:text-primary group-hover:scale-125 transition-all" />
                 Ver como funciona
@@ -236,7 +236,7 @@ export default function LandingPage() {
 
             {/* Trust indicators */}
             <motion.div 
-              className="flex flex-wrap items-center justify-center gap-6 mt-12 text-sm text-muted-foreground"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-6 mt-8 sm:mt-12 text-xs sm:text-sm text-muted-foreground"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.7, duration: 0.6 }}
@@ -244,12 +244,12 @@ export default function LandingPage() {
               {["Teste grátis", "Sem cartão de crédito", "Pronto em minutos"].map((text, i) => (
                 <motion.div 
                   key={text}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-1.5 sm:gap-2"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 1.7 + i * 0.1 }}
                 >
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   <span>{text}</span>
                 </motion.div>
               ))}
