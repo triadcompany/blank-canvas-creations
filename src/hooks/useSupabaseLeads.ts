@@ -53,7 +53,9 @@ export function useSupabaseLeads(pipelineId?: string) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { profile, isAdmin, orgId: authOrgId } = useAuth();
-  const orgId = profile?.organization_id || authOrgId;
+  // Always prefer the ACTIVE org from AuthContext (kept in sync on org switch).
+  // profile.organization_id can be stale right after switching organizations.
+  const orgId = authOrgId || profile?.organization_id;
   const { toast } = useToast();
 
   // Fetch pipeline stages
@@ -340,7 +342,7 @@ export function useSupabaseLeads(pipelineId?: string) {
       return;
     }
 
-    console.log('🆕 addLead calling create_lead_rpc with stage_id:', stageId);
+    console.log('🆕 addLead calling create_lead_rpc with stage_id:', stageId, 'org:', orgId);
     const { data, error } = await supabase.rpc('create_lead_rpc', {
       p_clerk_user_id: profile.clerk_user_id,
       p_name: newLeadData.name,
@@ -355,7 +357,8 @@ export function useSupabaseLeads(pipelineId?: string) {
       p_estado: (newLeadData as any).estado || '',
       p_seller_id: (newLeadData as any).seller_id || null,
       p_stage_id: stageId,
-    });
+      p_org_id: orgId || null,
+    } as any);
 
     if (error) {
       console.error('❌ Error creating lead:', error);
@@ -371,37 +374,21 @@ export function useSupabaseLeads(pipelineId?: string) {
 
     const createdLead = data as any;
 
-    // Chamar distribuição automática
-    try {
-      const { error: distributionError } = await (supabase.rpc as any)('distribute_lead', {
-        p_lead_id: createdLead.id,
-        p_organization_id: profile.organization_id
-      });
-
-      if (distributionError) {
-        console.error('Error distributing lead:', distributionError);
-      } else {
-        console.log('Lead distributed successfully');
-      }
-    } catch (err) {
-      console.error('Exception during lead distribution:', err);
-    }
-
     // Refresh leads to get full data with joins
     await fetchLeads();
 
     toast({
       title: "Sucesso",
-      description: "Lead criado e distribuído com sucesso",
+      description: "Lead criado com sucesso",
     });
 
     // Fire automation trigger (non-blocking)
-    if (profile.organization_id) {
+    if (orgId) {
       fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organization_id: profile.organization_id,
+          organization_id: orgId,
           trigger_type: "lead_created",
           entity_type: "lead",
           entity_id: createdLead.id,
