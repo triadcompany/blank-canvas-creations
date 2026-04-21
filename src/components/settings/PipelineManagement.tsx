@@ -336,7 +336,7 @@ export function PipelineManagement() {
   const [isPipelineDialogOpen, setIsPipelineDialogOpen] = useState(false);
   const [isStageDialogOpen, setIsStageDialogOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
-  const { orgId } = useAuth();
+  const { orgId, isAdmin } = useAuth();
 
   const handleSavePipeline = async (data: { name: string; description?: string }) => {
     let success = false;
