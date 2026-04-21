@@ -38,29 +38,25 @@ const getSourceBadgeColor = (source: string) => {
   return colors[source] || "bg-gray-100 text-gray-700 border-gray-200";
 };
 
-const getColumnGradient = (index: number) => {
-  const gradients = [
-    "from-blue-500/5 to-blue-500/0",
-    "from-violet-500/5 to-violet-500/0",
-    "from-amber-500/5 to-amber-500/0",
-    "from-emerald-500/5 to-emerald-500/0",
-    "from-rose-500/5 to-rose-500/0",
-    "from-cyan-500/5 to-cyan-500/0",
-  ];
-  return gradients[index % gradients.length];
+// Build a soft top→bottom gradient from the stage's own color (hex).
+// Falls back to a neutral gradient when no color is provided.
+const getColumnGradientStyle = (color?: string): React.CSSProperties => {
+  if (!color) return { background: "linear-gradient(to bottom, hsl(var(--muted) / 0.3), transparent)" };
+  return {
+    background: `linear-gradient(to bottom, ${hexToRgba(color, 0.12)}, ${hexToRgba(color, 0)})`,
+  };
 };
 
-const getColumnAccent = (index: number) => {
-  const accents = [
-    "bg-blue-500",
-    "bg-violet-500",
-    "bg-amber-500",
-    "bg-emerald-500",
-    "bg-rose-500",
-    "bg-cyan-500",
-  ];
-  return accents[index % accents.length];
-};
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace("#", "").trim();
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return `rgba(148,163,184,${alpha})`;
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
@@ -115,13 +111,19 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, column.id)}
           >
-            <Card className={`h-full border-0 shadow-sm bg-gradient-to-b ${getColumnGradient(columnIndex)} transition-all duration-300 ${
-              dragOverColumn === column.id ? 'ring-2 ring-primary/50 shadow-lg' : ''
-            }`}>
+            <Card
+              className={`h-full border-0 shadow-sm transition-all duration-300 ${
+                dragOverColumn === column.id ? 'ring-2 ring-primary/50 shadow-lg' : ''
+              }`}
+              style={getColumnGradientStyle(column.color)}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`w-1 h-6 rounded-full ${getColumnAccent(columnIndex)}`} />
+                    <div
+                      className="w-1 h-6 rounded-full"
+                      style={{ backgroundColor: column.color || 'hsl(var(--muted-foreground))' }}
+                    />
                     <CardTitle className="font-semibold text-sm">
                       {column.title}
                     </CardTitle>
