@@ -8067,6 +8067,15 @@ export type Database = {
         }
       }
       get_org_profiles_with_roles: { Args: { p_org_id: string }; Returns: Json }
+      get_organization_details: {
+        Args: { p_clerk_user_id: string; p_organization_id?: string }
+        Returns: {
+          out_cnpj: string
+          out_id: string
+          out_logo_url: string
+          out_name: string
+        }[]
+      }
       get_pipeline_stages: {
         Args: { p_pipeline_id: string }
         Returns: {
