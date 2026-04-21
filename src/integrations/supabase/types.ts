@@ -8144,6 +8144,18 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_org_profile_members: {
+        Args: { p_org_id: string }
+        Returns: {
+          avatar_url: string
+          clerk_user_id: string
+          email: string
+          is_owner: boolean
+          name: string
+          profile_id: string
+          role: string
+        }[]
+      }
       get_org_profiles_with_roles: { Args: { p_org_id: string }; Returns: Json }
       get_organization_details: {
         Args: { p_clerk_user_id: string; p_organization_id?: string }
