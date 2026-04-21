@@ -22,7 +22,7 @@ export interface UserOrganization {
  * the active Clerk organization, then reloads the app context.
  */
 export function useUserOrganizations() {
-  const { user, orgId, switchActiveOrg } = useAuth();
+  const { user, orgId, switchActiveOrg, refreshProfile } = useAuth();
   const { setActive } = useClerk();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -136,7 +136,21 @@ export function useUserOrganizations() {
           role: target.role,
         });
 
-        // 4) Invalidate every react-query cache so leads, pipeline, inbox,
+        // Make sure subsequent PostgREST calls carry the active org so
+        // RLS-scoped policies pick up the new tenant immediately.
+        dynamicHeaders['x-organization-id'] = target.organization_id;
+
+        // 4) Refresh the profile object so AuthContext.profile reflects the
+        // new organization_id, and re-resolve the role for that org via
+        // user_roles. This keeps `isAdmin` and any UI bound to `profile`
+        // (avatar, name, plan badge) consistent with the active org.
+        try {
+          await refreshProfile();
+        } catch (e) {
+          console.warn('switchOrg: refreshProfile failed (non-critical)', e);
+        }
+
+        // 5) Invalidate every react-query cache so leads, pipeline, inbox,
         // automations, etc. refetch under the new organization_id. They all
         // include orgId in their query keys, so the new context drives a
         // fresh fetch.
@@ -147,7 +161,7 @@ export function useUserOrganizations() {
           description: `Você está agora em ${target.name}.`,
         });
 
-        // 5) Navigate to the dashboard. Use `replace` so the user can't
+        // 6) Navigate to the dashboard. Use `replace` so the user can't
         // back-button into a stale URL from the previous org.
         navigate('/dashboard', { replace: true });
       } catch (err: any) {
