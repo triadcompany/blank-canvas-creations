@@ -10,7 +10,6 @@ import {
   Calendar,
   DollarSign,
   ArrowUpRight,
-  Sparkles
 } from "lucide-react";
 import heroImage from "@/assets/crm-hero.jpg";
 import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
@@ -125,7 +124,6 @@ export function Dashboard() {
   }, [leads, stages, loading]);
 
   const displayName = userName || 'Usuário';
-  const displayOrg = orgName || 'AutoLead CRM';
 
   return (
     <div className="p-6 space-y-8">
