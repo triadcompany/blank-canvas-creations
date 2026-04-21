@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClerk } from '@clerk/clerk-react';
@@ -18,9 +20,11 @@ export interface UserOrganization {
  * the active Clerk organization, then reloads the app context.
  */
 export function useUserOrganizations() {
-  const { user, orgId } = useAuth();
+  const { user, orgId, switchActiveOrg } = useAuth();
   const { setActive } = useClerk();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [organizations, setOrganizations] = useState<UserOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
