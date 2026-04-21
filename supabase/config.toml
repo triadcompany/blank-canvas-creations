@@ -164,3 +164,7 @@ verify_jwt = false
 
 [functions.update-clerk-org]
 verify_jwt = false
+
+[functions.update-user-profile]
+verify_jwt = false
+
