@@ -516,7 +516,7 @@ export function PipelineManagement() {
           <TabsContent value="visualization" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 dark:text-primary">
                   <GitBranch className="h-5 w-5" />
                   {selectedPipeline.name}
                 </CardTitle>
