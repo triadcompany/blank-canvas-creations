@@ -93,10 +93,33 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Deletar roles primeiro (evitar constraint)
-    await supabase
-      .from('user_roles')
-      .delete()
-      .eq('clerk_user_id', clerkId);
+    if (clerkId) {
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('clerk_user_id', clerkId);
+
+      // Remover membership(s) da organização — sem isso o usuário continua aparecendo
+      // na listagem de "Gerenciar Usuários", que é construída a partir de org_members.
+      const { error: orgMemberError } = await supabase
+        .from('org_members')
+        .delete()
+        .eq('clerk_user_id', clerkId);
+
+      if (orgMemberError) {
+        console.warn("⚠️ Erro ao remover org_members:", orgMemberError);
+      }
+
+      // Remover users_profile (espelho do Clerk usado pelas listagens)
+      const { error: usersProfileError } = await supabase
+        .from('users_profile')
+        .delete()
+        .eq('clerk_user_id', clerkId);
+
+      if (usersProfileError) {
+        console.warn("⚠️ Erro ao remover users_profile:", usersProfileError);
+      }
+    }
 
     // Deletar o perfil do banco de dados
     const { error: profileDeleteError } = await supabase
