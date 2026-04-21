@@ -180,6 +180,7 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     signOut,
     refreshProfile,
     retryBootstrap: refreshProfile,
+    switchActiveOrg: () => {},
     isAdmin: false,
     orgId: null,
     clerkOrgId: null,
