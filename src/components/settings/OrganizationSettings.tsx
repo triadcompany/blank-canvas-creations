@@ -152,6 +152,23 @@ export function OrganizationSettings() {
         setCnpj(row.out_cnpj ? formatCnpj(row.out_cnpj) : '');
         setLogoUrl(row.out_logo_url || null);
       }
+
+      // Sync the name to Clerk (best-effort; do not block the success message)
+      try {
+        const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
+        await fetch(`${SUPABASE_URL}/functions/v1/update-clerk-org`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clerk_user_id: user.id,
+            organization_id: orgId,
+            name: name.trim(),
+          }),
+        });
+      } catch {
+        // ignore — local DB is the source of truth for the UI
+      }
+
       toast({ title: 'Organização atualizada' });
       // Refresh org switcher list (reads from clerk_organizations)
       await queryClient.invalidateQueries();
