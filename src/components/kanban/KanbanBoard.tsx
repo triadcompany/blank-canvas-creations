@@ -111,13 +111,19 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, column.id)}
           >
-            <Card className={`h-full border-0 shadow-sm bg-gradient-to-b ${getColumnGradient(columnIndex)} transition-all duration-300 ${
-              dragOverColumn === column.id ? 'ring-2 ring-primary/50 shadow-lg' : ''
-            }`}>
+            <Card
+              className={`h-full border-0 shadow-sm transition-all duration-300 ${
+                dragOverColumn === column.id ? 'ring-2 ring-primary/50 shadow-lg' : ''
+              }`}
+              style={getColumnGradientStyle(column.color)}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className={`w-1 h-6 rounded-full ${getColumnAccent(columnIndex)}`} />
+                    <div
+                      className="w-1 h-6 rounded-full"
+                      style={{ backgroundColor: column.color || 'hsl(var(--muted-foreground))' }}
+                    />
                     <CardTitle className="font-semibold text-sm">
                       {column.title}
                     </CardTitle>
