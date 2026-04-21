@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import {
   Edit, 
   User,
   Clock,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { KanbanColumn, Lead } from "@/hooks/useSupabaseLeads";
 import { AddTaskModal } from "@/components/tasks/AddTaskModal";
@@ -63,6 +65,36 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    window.addEventListener("resize", updateScrollState);
+    return () => {
+      el.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState, columns.length]);
+
+  const scrollByAmount = (direction: "left" | "right") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = Math.max(320, Math.round(el.clientWidth * 0.8));
+    el.scrollBy({ left: direction === "left" ? -amount : amount, behavior: "smooth" });
+  };
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead);
     e.dataTransfer.effectAllowed = "move";
@@ -98,8 +130,35 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
   };
 
   return (
-    <div className="overflow-x-scroll overflow-y-hidden pb-4 scrollbar-always">
-      <div className="flex gap-4" style={{ minWidth: "fit-content" }}>
+    <div className="relative group/kanban">
+      {/* Left scroll button */}
+      <button
+        type="button"
+        aria-label="Rolar para esquerda"
+        onClick={() => scrollByAmount("left")}
+        disabled={!canScrollLeft}
+        className={`hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-20 h-10 w-10 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur shadow-lg text-foreground hover:bg-background hover:scale-105 transition-all ${
+          canScrollLeft ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+
+      {/* Right scroll button */}
+      <button
+        type="button"
+        aria-label="Rolar para direita"
+        onClick={() => scrollByAmount("right")}
+        disabled={!canScrollRight}
+        className={`hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-20 h-10 w-10 items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur shadow-lg text-foreground hover:bg-background hover:scale-105 transition-all ${
+          canScrollRight ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+
+      <div ref={scrollRef} className="overflow-x-scroll overflow-y-hidden pb-4 scrollbar-always">
+        <div className="flex gap-4" style={{ minWidth: "fit-content" }}>
         {columns.map((column, columnIndex) => (
           <motion.div 
             key={column.id} 
@@ -251,6 +310,7 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
             </Card>
           </motion.div>
         ))}
+        </div>
       </div>
     </div>
   );
