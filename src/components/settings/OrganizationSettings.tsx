@@ -100,6 +100,7 @@ export function OrganizationSettings() {
       const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
       const fd = new FormData();
       fd.append('clerk_user_id', user.id);
+      fd.append('organization_id', orgId);
       fd.append('file', file);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-org-logo`, {
         method: 'POST',
