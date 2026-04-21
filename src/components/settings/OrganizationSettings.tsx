@@ -355,6 +355,21 @@ export function OrganizationSettings() {
           </>
         )}
       </CardContent>
+
+      <ImageCropDialog
+        open={!!cropSrc}
+        imageSrc={cropSrc}
+        aspect={1}
+        cropShape="rect"
+        outputSize={512}
+        title="Ajustar logo da organização"
+        description="Arraste, gire e use o zoom para enquadrar o logo."
+        onCancel={() => setCropSrc(null)}
+        onConfirm={async (cropped) => {
+          await handleLogoUpload(cropped);
+          setCropSrc(null);
+        }}
+      />
     </Card>
   );
 }
