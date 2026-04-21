@@ -382,7 +382,7 @@ export function PipelineManagement() {
       {/* Pipeline Selection Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Gerenciar Pipelines</h3>
+          <h3 className="text-lg font-semibold dark:text-primary">Gerenciar Pipelines</h3>
           <p className="text-sm text-muted-foreground">
             {isAdmin
               ? 'Configure os funis de vendas da sua organização (máximo 10)'
