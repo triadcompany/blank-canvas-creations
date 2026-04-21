@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ReadOnlyBanner } from "@/components/auth/ReadOnlyBanner";
+import React, { useState, useEffect, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,12 +9,10 @@ import { useSupabaseProfiles } from "@/hooks/useSupabaseProfiles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useUserInvites } from "@/hooks/useUserInvites";
-import { Link, useSearchParams } from "react-router-dom";
-import { 
-  Users, 
-  Workflow, 
+import { useSearchParams } from "react-router-dom";
+import {
+  Users,
   Bell,
-  Shield,
   User,
   Mail,
   UserPlus,
@@ -24,23 +21,12 @@ import {
   UserCheck,
   Trash2,
   Clock,
-  AlertCircle,
-  Send,
-  Copy,
-  ExternalLink,
   MapPin,
-  Play,
   Zap,
   Webhook,
   MessageSquare,
-  PlayCircle,
   Instagram,
   CreditCard,
-  ChevronDown,
-  MailCheck,
-  ToggleLeft,
-  Inbox,
-  Construction,
   Building2,
 } from "lucide-react";
 import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
@@ -52,19 +38,13 @@ import { LeadSourcesManagement } from "@/components/settings/LeadSourcesManageme
 import { TestLeadDistribution } from "@/components/settings/TestLeadDistribution";
 import { N8nIntegration } from "@/components/settings/N8nIntegration";
 import { WebhookIntegration } from "@/components/settings/WebhookIntegration";
-import { FollowupTemplatesManagement } from "@/components/settings/FollowupTemplatesManagement";
-import { FollowupCadencesManagement } from "@/components/settings/FollowupCadencesManagement";
-import { ClerkMigration } from "@/components/settings/ClerkMigration";
 import BillingSettings from "@/components/settings/BillingSettings";
 import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
-import { DebugPanel } from "@/components/settings/DebugPanel";
-import { useOrgSettings } from "@/hooks/useOrgSettings";
-import { Switch } from "@/components/ui/switch";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Dialog,
-  DialogContent, 
+  DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -78,14 +58,69 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+type MenuItem = { id: string; icon: React.ComponentType<{ className?: string }>; label: string };
+type MenuGroup = { id: string; label: string; items: MenuItem[] };
+
 export function Settings() {
   const { profiles, invitations, updateProfile, deleteProfile, deleteInvitation, loading, refreshProfiles } = useSupabaseProfiles();
   const { profile, isAdmin } = useAuth();
   const { toast } = useToast();
-  const { settings: orgSettings, updateInboxEnabled } = useOrgSettings();
   const { inviteUser, resendInvitation, revokeInvitation, loading: inviteLoading } = useUserInvites();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') || "profile";
+
+  // Build groups based on role — sellers only see "Minha Conta"
+  const groups: MenuGroup[] = useMemo(() => {
+    const base: MenuGroup[] = [
+      {
+        id: "account",
+        label: "Minha Conta",
+        items: [
+          { id: "profile", icon: User, label: "Meu Perfil" },
+          { id: "notifications", icon: Bell, label: "Notificações" },
+        ],
+      },
+    ];
+    if (isAdmin) {
+      base.push(
+        {
+          id: "team",
+          label: "Equipe",
+          items: [
+            { id: "vendors", icon: Users, label: "Usuários" },
+            { id: "distribution", icon: Users, label: "Distribuição de Leads" },
+          ],
+        },
+        {
+          id: "integrations",
+          label: "Integrações",
+          items: [
+            { id: "whatsapp-evolution", icon: MessageSquare, label: "WhatsApp (Evolution)" },
+            { id: "instagram", icon: Instagram, label: "Instagram" },
+            { id: "webhooks", icon: Webhook, label: "Webhooks" },
+            { id: "sources", icon: MapPin, label: "Origens de Leads" },
+            { id: "meta-ads", icon: Zap, label: "Meta Ads (CAPI)" },
+          ],
+        },
+        {
+          id: "plan",
+          label: "Plano",
+          items: [
+            { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
+            { id: "organization", icon: Building2, label: "Organização" },
+          ],
+        },
+      );
+    }
+    return base;
+  }, [isAdmin]);
+
+  const allowedTabs = useMemo(
+    () => new Set(groups.flatMap((g) => g.items.map((i) => i.id))),
+    [groups],
+  );
+
+  const requestedTab = searchParams.get("tab") || "profile";
+  const initialTab = allowedTabs.has(requestedTab) ? requestedTab : "profile";
   const [activeTab, setActiveTabState] = useState(initialTab);
 
   const setActiveTab = (tab: string) => {
@@ -93,13 +128,19 @@ export function Settings() {
     setSearchParams({ tab }, { replace: true });
   };
 
-  // Sync from URL on mount/back-nav
+  // If URL contains a tab the current role can't access, silently fall back to profile
   useEffect(() => {
-    const tab = searchParams.get('tab');
+    const tab = searchParams.get("tab");
+    if (tab && !allowedTabs.has(tab)) {
+      setActiveTabState("profile");
+      setSearchParams({ tab: "profile" }, { replace: true });
+      return;
+    }
     if (tab && tab !== activeTab) {
       setActiveTabState(tab);
     }
-  }, [searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, allowedTabs]);
 
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
@@ -112,34 +153,7 @@ export function Settings() {
     setEditingProfile(null);
   };
 
-  const isFollowupTab = activeTab === "templates" || activeTab === "cadences";
-  const [followupOpen, setFollowupOpen] = useState(isFollowupTab);
-
-  useEffect(() => {
-    if (isFollowupTab) setFollowupOpen(true);
-  }, [isFollowupTab]);
-
-  type MenuItem = { id: string; icon: any; label: string; children?: MenuItem[] };
-
-  const settingsItems: MenuItem[] = [
-    { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
-    { id: "profile", icon: User, label: "Meu Perfil" },
-    ...(isAdmin ? [{ id: "organization", icon: Building2, label: "Organização" }] : []),
-    { id: "vendors", icon: Users, label: "Usuários" },
-    { id: "instagram", icon: Instagram, label: "Instagram" },
-    { id: "whatsapp-evolution", icon: MessageSquare, label: "WhatsApp (Evolution)" },
-    { id: "webhooks", icon: Webhook, label: "Webhooks" },
-    { id: "distribution", icon: Users, label: "Distribuição de Leads" },
-    { id: "sources", icon: MapPin, label: "Origens de Leads" },
-    { id: "meta-ads", icon: Zap, label: "Meta Ads (CAPI)" },
-    { id: "notifications", icon: Bell, label: "Notificações" },
-    ...(isAdmin ? [{ id: "debug", icon: Shield, label: "Debug (Admin)" }] : []),
-  ];
-
-  const isReadonly = !isAdmin;
-
   const renderContent = () => {
-    const content = (() => {
     switch (activeTab) {
       case "billing":
         return <BillingSettings />;
@@ -149,11 +163,6 @@ export function Settings() {
         return <OrganizationSettings />;
       case "vendors":
         return renderVendorsContent();
-      case "templates":
-      case "templates":
-        return <FollowupTemplatesManagement />;
-      case "cadences":
-        return <FollowupCadencesManagement />;
       case "whatsapp-evolution":
         return <EvolutionIntegration />;
       case "instagram":
@@ -178,8 +187,6 @@ export function Settings() {
         return <LeadSourcesManagement />;
       case "meta-ads":
         return <MetaAdsSettings />;
-      case "debug":
-        return <DebugPanel />;
       case "notifications":
         return (
           <Card className="card-gradient border-0">
@@ -192,41 +199,11 @@ export function Settings() {
           </Card>
         );
       default:
-        return <BillingSettings />;
+        return <UserProfile />;
     }
-    })();
-
-    if (isReadonly && activeTab !== "profile") {
-      return (
-        <div>
-          <ReadOnlyBanner />
-          <div className="pointer-events-none opacity-80 select-none">
-            {content}
-          </div>
-        </div>
-      );
-    }
-
-    return content;
   };
 
   const renderVendorsContent = () => {
-    if (!isAdmin) {
-      return (
-        <Card className="card-gradient border-0">
-          <CardContent className="p-8 text-center">
-            <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-xl font-poppins font-bold text-foreground mb-2">
-              Acesso Restrito
-            </h2>
-            <p className="text-muted-foreground font-poppins">
-              Apenas administradores podem gerenciar usuários.
-            </p>
-          </CardContent>
-        </Card>
-      );
-    }
-
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -332,7 +309,6 @@ export function Settings() {
                           return;
                         }
 
-                        // Tratamento dos erros estruturados
                         if (result.code === "ALREADY_MEMBER") {
                           toast({
                             title: "Usuário já é membro",
@@ -411,7 +387,7 @@ export function Settings() {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Badge 
+                        <Badge
                           variant={userProfile.role === 'admin' ? 'default' : 'secondary'}
                           className="font-poppins"
                         >
@@ -460,7 +436,7 @@ export function Settings() {
                   </CardContent>
                 </Card>
               ))}
-              
+
               {invitations.map((invitation) => {
                 const isExpired =
                   invitation.expires_at && new Date(invitation.expires_at) < new Date();
@@ -603,113 +579,39 @@ export function Settings() {
     );
   };
 
-  const renderPipelineContent = () => {
-    return (
-      <Card className="card-gradient border-0">
-        <CardHeader>
-          <CardTitle className="font-poppins font-semibold flex items-center space-x-2">
-            <Workflow className="h-5 w-5 text-primary" />
-            <span>Pipeline Personalizado</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground font-poppins">
-              Personalize as etapas do seu funil de vendas
-            </p>
-            
-            <div className="text-center py-8">
-              <Workflow className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h4 className="text-lg font-poppins font-semibold mb-2">
-                Gerenciamento de Pipeline
-              </h4>
-              <p className="text-muted-foreground font-poppins mb-4">
-                Configure os estágios do funil de vendas da sua organização na página dedicada de pipelines.
-              </p>
-              <Button asChild className="btn-gradient text-white font-poppins">
-                <Link to="/pipelines" className="flex items-center gap-2">
-                  <Workflow className="h-4 w-4" />
-                  Acessar Gerenciamento de Pipelines
-                  <ExternalLink className="h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <PageHeader 
-        title="Configurações" 
+      <PageHeader
+        title="Configurações"
         description="Gerencie as configurações do seu CRM e personalize sua experiência"
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sidebar de configurações */}
+        {/* Sidebar de configurações — agrupada por seção */}
         <div className="space-y-2">
           <Card className="card-gradient border-0">
-            <CardContent className="p-4">
-              <div className="space-y-1">
-                {settingsItems.map((item) => {
-                  if (item.children) {
-                    return (
-                      <div key={item.id}>
-                        <button
-                          onClick={() => setFollowupOpen(!followupOpen)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all duration-200 ${
-                            isFollowupTab
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "hover:bg-accent hover:text-accent-foreground"
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3">
-                            <item.icon className="h-4 w-4" />
-                            <span className="font-poppins text-sm">{item.label}</span>
-                          </div>
-                          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${followupOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        {followupOpen && (
-                          <div className="ml-4 mt-1 space-y-1 border-l-2 border-border pl-3">
-                            {item.children.map((child) => (
-                              <button
-                                key={child.id}
-                                onClick={() => setActiveTab(child.id)}
-                                className={`w-full flex items-center space-x-3 px-3 py-1.5 rounded-lg text-left transition-all duration-200 ${
-                                  activeTab === child.id
-                                    ? "bg-primary text-primary-foreground font-medium"
-                                    : "hover:bg-accent hover:text-accent-foreground"
-                                }`}
-                              >
-                                <child.icon className="h-3.5 w-3.5" />
-                                <span className="font-poppins text-sm">{child.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  return (
+            <CardContent className="p-4 space-y-4">
+              {groups.map((group) => (
+                <div key={group.id} className="space-y-1">
+                  <div className="px-3 pt-1 pb-2 text-xs font-poppins font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </div>
+                  {group.items.map((item) => (
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
                       className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
                         activeTab === item.id
-                          ? "bg-primary text-primary-foreground font-medium" 
+                          ? "bg-primary text-primary-foreground font-medium"
                           : "hover:bg-accent hover:text-accent-foreground"
                       }`}
                     >
                       <item.icon className="h-4 w-4" />
                       <span className="font-poppins text-sm">{item.label}</span>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>
