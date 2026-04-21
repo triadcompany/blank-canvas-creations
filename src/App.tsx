@@ -7,6 +7,7 @@ import { CRMLayout } from "@/components/layout/CRMLayout";
 import { ClerkProvider } from "@/providers/ClerkProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppGate } from "@/components/AppGate";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import { Dashboard } from "@/pages/Dashboard";
 import { Oportunidades } from "@/pages/Oportunidades";
 import { Leads } from "@/pages/Leads";
