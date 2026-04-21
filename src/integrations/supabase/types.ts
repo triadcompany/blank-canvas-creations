@@ -5505,6 +5505,7 @@ export type Database = {
           is_active: boolean | null
           logo_url: string | null
           name: string
+          owner_profile_id: string | null
           phone: string | null
           state: string | null
           updated_at: string | null
@@ -5525,6 +5526,7 @@ export type Database = {
           is_active?: boolean | null
           logo_url?: string | null
           name: string
+          owner_profile_id?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string | null
@@ -5545,12 +5547,28 @@ export type Database = {
           is_active?: boolean | null
           logo_url?: string | null
           name?: string
+          owner_profile_id?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string | null
           zip_code?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_owner_profile_id_fkey"
+            columns: ["owner_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_owner_profile_id_fkey"
+            columns: ["owner_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pagamentos: {
         Row: {
@@ -5738,6 +5756,66 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_permissions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          pipeline_id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pipeline_id: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pipeline_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_permissions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_permissions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_permissions_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_permissions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_permissions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_with_roles"
             referencedColumns: ["id"]
           },
         ]
@@ -8133,6 +8211,13 @@ export type Database = {
         Returns: boolean
       }
       is_org_admin: { Args: never; Returns: boolean }
+      is_org_owner: { Args: { _org_id: string }; Returns: boolean }
+      list_pipeline_permissions: {
+        Args: { p_pipeline_id: string }
+        Returns: {
+          profile_id: string
+        }[]
+      }
       notify_automation_event: {
         Args: { event_data: Json; event_type: string; organization_id: string }
         Returns: undefined
@@ -8176,6 +8261,10 @@ export type Database = {
         | { Args: { p_created_by: string; p_org_id: string }; Returns: string }
         | { Args: { p_organization_id: string }; Returns: string }
       set_organization_context: { Args: { org_id: string }; Returns: undefined }
+      set_pipeline_permissions: {
+        Args: { p_pipeline_id: string; p_profile_ids: string[] }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       test_automation_trigger: {
