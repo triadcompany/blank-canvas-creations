@@ -140,15 +140,42 @@ Deno.serve(async (req) => {
     }
 
     // ── If no membership from token, fetch existing membership ──
+    // IMPORTANT: prefer the membership that matches profiles.organization_id
+    // (the user's currently-active org). Otherwise, with multiple memberships,
+    // we'd return an arbitrary one and override the user's switch in the UI.
     if (!membership) {
-      const { data: existingMembership } = await supabase
-        .from("org_members")
-        .select("role, clerk_org_id, organization_id")
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("organization_id")
         .eq("clerk_user_id", clerk_user_id)
-        .eq("status", "active")
-        .limit(1)
         .maybeSingle();
-      if (existingMembership) membership = existingMembership as any;
+
+      const activeOrgId = profileRow?.organization_id;
+
+      if (activeOrgId) {
+        const { data: activeMembership } = await supabase
+          .from("org_members")
+          .select("role, clerk_org_id, organization_id")
+          .eq("clerk_user_id", clerk_user_id)
+          .eq("status", "active")
+          .eq("organization_id", activeOrgId)
+          .limit(1)
+          .maybeSingle();
+        if (activeMembership) membership = activeMembership as any;
+      }
+
+      // Fallback: any active membership (legacy users without profile.org_id)
+      if (!membership) {
+        const { data: anyMembership } = await supabase
+          .from("org_members")
+          .select("role, clerk_org_id, organization_id")
+          .eq("clerk_user_id", clerk_user_id)
+          .eq("status", "active")
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (anyMembership) membership = anyMembership as any;
+      }
     }
 
     // ── Fallback: pending invitation by email (only if still no membership) ──
