@@ -352,6 +352,19 @@ export function Auth() {
                   routing="hash"
                   signInUrl="/auth"
                   forceRedirectUrl="/"
+                  initialValues={
+                    inviteData
+                      ? {
+                          emailAddress: inviteData.email,
+                          ...(inviteData.name
+                            ? {
+                                firstName: inviteData.name.split(' ')[0] || '',
+                                lastName: inviteData.name.split(' ').slice(1).join(' ') || '',
+                              }
+                            : {}),
+                        }
+                      : undefined
+                  }
                   unsafeMetadata={
                     inviteData
                       ? {
@@ -368,6 +381,9 @@ export function Auth() {
                   routing="hash"
                   signUpUrl="/auth?signup=true"
                   forceRedirectUrl="/"
+                  initialValues={
+                    inviteData ? { emailAddress: inviteData.email } : undefined
+                  }
                 />
               )}
             </div>
