@@ -223,7 +223,7 @@ export function UserProfile() {
           {/* Avatar Section */}
           <div className="flex items-center gap-6">
             <Avatar className="w-20 h-20 border-2 border-border">
-              <AvatarImage src={profile?.avatar_url} alt={formData.name || userName} />
+              <AvatarImage src={clerkUser?.imageUrl || profile?.avatar_url} alt={formData.name || userName} />
               <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
                 {getInitials(formData.name || userName)}
               </AvatarFallback>
