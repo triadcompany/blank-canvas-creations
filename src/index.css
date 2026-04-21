@@ -20,6 +20,34 @@
     display: none;
   }
 
+  /* Always-visible thin horizontal scrollbar (used by Kanban boards) */
+  .scrollbar-always {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+  }
+
+  .scrollbar-always::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+    -webkit-appearance: none;
+  }
+
+  .scrollbar-always::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-always::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.45);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .scrollbar-always::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.7);
+  }
+
   /* PWA Specific Utilities */
   .pwa-safe-top {
     padding-top: max(env(safe-area-inset-top), 1rem);
