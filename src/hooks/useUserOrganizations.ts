@@ -33,24 +33,48 @@ export function useUserOrganizations() {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1) Get all active memberships for this Clerk user
+      const { data: memberships, error: memErr } = await supabase
         .from('org_members')
-        .select('organization_id, clerk_org_id, role, organizations(name)')
+        .select('organization_id, clerk_org_id, role')
         .eq('clerk_user_id', user.id)
         .eq('status', 'active');
 
-      if (error) {
-        console.error('useUserOrganizations: load error', error);
+      if (memErr) {
+        console.error('useUserOrganizations: memberships error', memErr);
         setOrganizations([]);
         return;
       }
 
-      const list: UserOrganization[] = (data || [])
-        .filter((row: any) => row.organization_id && row.organizations?.name)
+      const orgIds = Array.from(
+        new Set((memberships || []).map((m: any) => m.organization_id).filter(Boolean))
+      );
+
+      if (orgIds.length === 0) {
+        setOrganizations([]);
+        return;
+      }
+
+      // 2) Resolve org names in a separate query (no FK between the tables)
+      const { data: orgs, error: orgErr } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .in('id', orgIds);
+
+      if (orgErr) {
+        console.error('useUserOrganizations: organizations error', orgErr);
+      }
+
+      const nameById = new Map<string, string>(
+        (orgs || []).map((o: any) => [o.id as string, o.name as string])
+      );
+
+      const list: UserOrganization[] = (memberships || [])
+        .filter((row: any) => row.organization_id)
         .map((row: any) => ({
           organization_id: row.organization_id,
           clerk_org_id: row.clerk_org_id,
-          name: row.organizations.name as string,
+          name: nameById.get(row.organization_id) || 'Organização',
           role: (row.role === 'admin' ? 'admin' : 'seller') as 'admin' | 'seller',
           is_current: row.organization_id === orgId,
         }))
