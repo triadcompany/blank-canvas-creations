@@ -103,7 +103,7 @@ export function UserProfile() {
         const parts = trimmed.split(/\s+/);
         const firstName = parts[0] || trimmed;
         const lastName = parts.slice(1).join(' ');
-        await (user as any)?.update?.({ firstName, lastName });
+        await clerkUser?.update?.({ firstName, lastName });
       } catch (e) {
         console.warn('Clerk name sync failed (non-fatal):', e);
       }
@@ -162,7 +162,7 @@ export function UserProfile() {
 
       // Also push avatar to Clerk so it shows everywhere
       try {
-        await (user as any)?.setProfileImage?.({ file });
+        await clerkUser?.setProfileImage?.({ file });
       } catch (e) {
         console.warn('Clerk avatar sync failed (non-fatal):', e);
       }
