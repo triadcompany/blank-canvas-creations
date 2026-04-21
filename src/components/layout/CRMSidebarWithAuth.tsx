@@ -38,6 +38,7 @@ import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { OrgSwitcher } from "./OrgSwitcher";
 
 const menuItems = [
   {
@@ -98,7 +99,7 @@ const adminMenuItems = [
 export function CRMSidebarWithAuth() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, signOut, isAdmin, userName, orgName, role } = useAuth();
+  const { profile, signOut, isAdmin, userName } = useAuth();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   
   
@@ -121,17 +122,8 @@ export function CRMSidebarWithAuth() {
   
   return (
     <Sidebar className="hidden md:flex border-r border-border/40">
-      <SidebarHeader className="px-4 py-6">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">CRM</span>
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-lg font-poppins font-bold text-foreground truncate">
-              {orgName || 'AutoLead'}
-            </h2>
-          </div>
-        </div>
+      <SidebarHeader className="px-3 py-4">
+        <OrgSwitcher />
       </SidebarHeader>
       
       <SidebarContent>
