@@ -596,6 +596,14 @@ export function PipelineManagement() {
           </CardContent>
         </Card>
       )}
+
+      <PipelinePermissionsModal
+        open={permissionsOpen}
+        onOpenChange={setPermissionsOpen}
+        pipelineId={selectedPipeline?.id ?? null}
+        pipelineName={selectedPipeline?.name ?? ''}
+        orgId={orgId}
+      />
     </div>
   );
 }
