@@ -531,7 +531,7 @@ export default function LandingPage() {
       <PricingSection />
 
       {/* Final CTA Section */}
-      <section className="py-24 md:py-32 relative">
+      <section className="py-16 sm:py-24 md:py-32 relative">
         {/* fundo global */}
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
@@ -542,11 +542,11 @@ export default function LandingPage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Pronto para organizar suas vendas?" as="span" />
             </h2>
             <motion.p 
-              className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto"
+              className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl mx-auto"
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
@@ -563,11 +563,11 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth")} 
-                className="h-14 px-10 text-base font-semibold shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
+                className="h-12 sm:h-14 px-8 sm:px-10 text-base font-semibold shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group w-full sm:w-auto max-w-sm"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <span className="relative z-10 flex items-center">
+                <span className="relative z-10 flex items-center justify-center">
                   Criar conta gratuita
                   <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </span>
@@ -581,7 +581,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
+      <footer className="py-10 sm:py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div className="md:col-span-2">
