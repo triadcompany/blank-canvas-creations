@@ -50,8 +50,8 @@ export function PipelineVisualization({ stages, onStagePositionUpdate }: Props) 
                 className="w-3 h-3 rounded-full mx-auto mb-1"
                 style={{ backgroundColor: stage.color }}
               />
-              <div className="font-medium text-sm">{stage.name}</div>
-              <div className="text-xs text-muted-foreground">Posição {stage.position}</div>
+              <div className="font-medium text-sm text-slate-900">{stage.name}</div>
+              <div className="text-xs text-slate-500">Posição {stage.position}</div>
             </div>
           )
         },
@@ -61,6 +61,7 @@ export function PipelineVisualization({ stages, onStagePositionUpdate }: Props) 
           borderRadius: '8px',
           padding: '10px',
           minWidth: '120px',
+          color: '#0f172a',
         },
       }));
 
