@@ -9,6 +9,7 @@ export interface Profile {
   clerk_user_id?: string;
   name: string;
   email: string;
+  avatar_url?: string | null;
   role: 'admin' | 'seller';
   created_at: string;
   updated_at: string;

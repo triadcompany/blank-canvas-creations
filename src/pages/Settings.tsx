@@ -385,8 +385,14 @@ export function Settings() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          {userProfile.role === 'admin' ? (
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          {userProfile.avatar_url ? (
+                            <img
+                              src={userProfile.avatar_url}
+                              alt={userProfile.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : userProfile.role === 'admin' ? (
                             <Crown className="h-5 w-5 text-primary" />
                           ) : (
                             <UserCheck className="h-5 w-5 text-primary" />
