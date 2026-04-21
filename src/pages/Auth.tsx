@@ -348,6 +348,7 @@ export function Auth() {
             <div className="relative px-1 sm:px-2">
               {isSignUp ? (
                 <SignUp
+                  key={inviteData?.email || 'signup-default'}
                   appearance={clerkAppearance}
                   routing="hash"
                   signInUrl="/auth"
@@ -368,15 +369,16 @@ export function Auth() {
                   unsafeMetadata={
                     inviteData
                       ? {
-                          organization_id: inviteData.orgId,
-                          role: inviteData.role,
-                          invited_name: inviteData.name,
-                        }
-                      : undefined
-                  }
+                              organization_id: inviteData.orgId,
+                              role: inviteData.role,
+                              invited_name: inviteData.name,
+                            }
+                          : undefined
+                      }
                 />
               ) : (
                 <SignIn
+                  key={inviteData?.email || 'signin-default'}
                   appearance={clerkAppearance}
                   routing="hash"
                   signUpUrl="/auth?signup=true"
