@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useUserOrganizations } from '@/hooks/useUserOrganizations';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useUser } from '@clerk/clerk-react';
 
 interface UserOrgMenuProps {
   onLogout: () => void;
@@ -20,8 +21,10 @@ interface UserOrgMenuProps {
 export function UserOrgMenu({ onLogout }: UserOrgMenuProps) {
   const navigate = useNavigate();
   const { profile, userName, isAdmin, orgName: clerkOrgName } = useAuth();
+  const { user: clerkUser } = useUser();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   const { organizations, loading, switching, switchOrg } = useUserOrganizations();
+  const avatarUrl = clerkUser?.imageUrl || profile?.avatar_url;
 
   const displayName = userName || profile?.name || 'Usuário';
   const initials = displayName.split(' ').map((n) => n[0]).join('').substring(0, 2);
@@ -54,8 +57,8 @@ export function UserOrgMenu({ onLogout }: UserOrgMenuProps) {
           className="w-full flex items-center gap-2 rounded-lg p-2 hover:bg-accent/40 transition-colors text-left group"
         >
           <div className="w-9 h-9 rounded-full overflow-hidden bg-primary flex items-center justify-center flex-shrink-0">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
             ) : (
               <span className="text-white font-bold text-xs font-poppins">{initials}</span>
             )}
@@ -82,8 +85,8 @@ export function UserOrgMenu({ onLogout }: UserOrgMenuProps) {
         {/* Header — current user info */}
         <div className="p-3 flex items-center gap-3 bg-muted/30 border-b">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-primary flex items-center justify-center flex-shrink-0">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
             ) : (
               <span className="text-white font-bold text-sm font-poppins">{initials}</span>
             )}
