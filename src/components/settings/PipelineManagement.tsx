@@ -16,10 +16,13 @@ import {
   GitBranch, 
   Target,
   Settings,
-  Eye
+  Eye,
+  Shield
 } from 'lucide-react';
 import { usePipelines, Pipeline, PipelineStage } from '@/hooks/usePipelines';
 import { PipelineVisualization } from '@/components/pipelines/PipelineVisualization';
+import { PipelinePermissionsModal } from '@/components/pipelines/PipelinePermissionsModal';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   DndContext,
   closestCenter,

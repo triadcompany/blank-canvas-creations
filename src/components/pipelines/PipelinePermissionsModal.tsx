@@ -159,7 +159,7 @@ export function PipelinePermissionsModal({
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">{m.name || m.email}</span>
                           {m.is_owner && (
-                            <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            <Crown className="h-3.5 w-3.5 text-primary shrink-0" />
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
