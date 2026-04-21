@@ -99,7 +99,7 @@ const adminMenuItems = [
 export function CRMSidebarWithAuth() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, signOut, isAdmin, userName, orgName, role } = useAuth();
+  const { profile, signOut, isAdmin, userName } = useAuth();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   
   
