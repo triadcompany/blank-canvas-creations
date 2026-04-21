@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { ImageCropDialog, fileToDataUrl } from '@/components/ui/image-crop-dialog';
 
 interface OrgRow {
   id: string;
@@ -38,6 +39,7 @@ export function OrganizationSettings() {
   const [cnpj, setCnpj] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [original, setOriginal] = useState<OrgRow | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,10 +256,21 @@ export function OrganizationSettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/svg+xml"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
-                      if (f) handleLogoUpload(f);
                       e.target.value = '';
+                      if (!f) return;
+                      // SVG cannot be cropped on canvas reliably — upload as-is
+                      if (f.type === 'image/svg+xml') {
+                        handleLogoUpload(f);
+                        return;
+                      }
+                      try {
+                        const url = await fileToDataUrl(f);
+                        setCropSrc(url);
+                      } catch {
+                        toast({ title: 'Erro ao ler imagem', variant: 'destructive' });
+                      }
                     }}
                   />
                   <div className="flex gap-2">
@@ -342,6 +355,21 @@ export function OrganizationSettings() {
           </>
         )}
       </CardContent>
+
+      <ImageCropDialog
+        open={!!cropSrc}
+        imageSrc={cropSrc}
+        aspect={1}
+        cropShape="rect"
+        outputSize={512}
+        title="Ajustar logo da organização"
+        description="Arraste, gire e use o zoom para enquadrar o logo."
+        onCancel={() => setCropSrc(null)}
+        onConfirm={async (cropped) => {
+          await handleLogoUpload(cropped);
+          setCropSrc(null);
+        }}
+      />
     </Card>
   );
 }
