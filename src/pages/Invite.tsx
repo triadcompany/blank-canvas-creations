@@ -76,8 +76,20 @@ export default function Invite() {
     };
   }, [token]);
 
+  const persistInviteContext = () => {
+    if (state.status !== "valid" || !token) return;
+    try {
+      sessionStorage.setItem("pending_invitation_token", token);
+      sessionStorage.setItem("pending_invitation_org_id", state.invitation.organization_id);
+      sessionStorage.setItem("pending_invitation_role", state.invitation.role);
+    } catch {
+      /* sessionStorage unavailable */
+    }
+  };
+
   const handleAccept = () => {
     if (state.status !== "valid") return;
+    persistInviteContext();
     // Redireciona ao /auth com email pré-preenchido + flag de signup
     const params = new URLSearchParams({
       signup: "true",
@@ -94,6 +106,7 @@ export default function Invite() {
 
   const handleSignIn = () => {
     if (state.status !== "valid") return;
+    persistInviteContext();
     // Preserve token + org context so the user is auto-attached after login
     const params = new URLSearchParams({
       signup: "false",
