@@ -98,7 +98,7 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
   };
 
   return (
-    <div className="overflow-x-auto pb-4">
+    <div className="overflow-x-scroll overflow-y-hidden pb-4 scrollbar-always">
       <div className="flex gap-4" style={{ minWidth: "fit-content" }}>
         {columns.map((column, columnIndex) => (
           <motion.div 
