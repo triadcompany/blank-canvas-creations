@@ -8101,6 +8101,16 @@ export type Database = {
       get_user_organization_id:
         | { Args: never; Returns: string }
         | { Args: { user_uuid: string }; Returns: string }
+      get_user_organizations_with_logos: {
+        Args: { p_clerk_user_id: string }
+        Returns: {
+          clerk_org_id: string
+          logo_url: string
+          org_name: string
+          organization_id: string
+          role: string
+        }[]
+      }
       get_user_role: {
         Args: { user_uuid: string }
         Returns: Database["public"]["Enums"]["app_role"]
