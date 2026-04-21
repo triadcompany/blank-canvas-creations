@@ -53,7 +53,9 @@ export function useSupabaseLeads(pipelineId?: string) {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { profile, isAdmin, orgId: authOrgId } = useAuth();
-  const orgId = profile?.organization_id || authOrgId;
+  // Always prefer the ACTIVE org from AuthContext (kept in sync on org switch).
+  // profile.organization_id can be stale right after switching organizations.
+  const orgId = authOrgId || profile?.organization_id;
   const { toast } = useToast();
 
   // Fetch pipeline stages
