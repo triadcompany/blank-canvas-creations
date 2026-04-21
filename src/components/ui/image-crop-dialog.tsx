@@ -155,56 +155,44 @@ async function getCroppedImg(
   aspect: number,
 ): Promise<File> {
   const image = await loadImage(imageSrc);
+  const rotRad = (rotation * Math.PI) / 180;
 
-  // Render the rotated source onto an intermediate canvas first so that
-  // the crop coordinates returned by react-easy-crop (which already account
-  // for rotation) line up correctly.
-  const safeArea = Math.max(image.width, image.height) * 2;
-  const canvas = document.createElement("canvas");
-  canvas.width = safeArea;
-  canvas.height = safeArea;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas 2D context not available");
-
-  ctx.translate(safeArea / 2, safeArea / 2);
-  ctx.rotate((rotation * Math.PI) / 180);
-  ctx.translate(-safeArea / 2, -safeArea / 2);
-  ctx.drawImage(
-    image,
-    safeArea / 2 - image.width / 2,
-    safeArea / 2 - image.height / 2,
+  // Bounding box of the rotated image
+  const { width: bBoxWidth, height: bBoxHeight } = rotatedSize(
+    image.width,
+    image.height,
+    rotRad,
   );
 
-  const data = ctx.getImageData(0, 0, safeArea, safeArea);
+  // Render the rotated source on an intermediate canvas large enough to fit
+  // the rotated bounding box. The image is centered in this canvas.
+  const rotCanvas = document.createElement("canvas");
+  rotCanvas.width = bBoxWidth;
+  rotCanvas.height = bBoxHeight;
+  const rotCtx = rotCanvas.getContext("2d");
+  if (!rotCtx) throw new Error("Canvas 2D context not available");
+  rotCtx.translate(bBoxWidth / 2, bBoxHeight / 2);
+  rotCtx.rotate(rotRad);
+  rotCtx.drawImage(image, -image.width / 2, -image.height / 2);
 
-  // Final cropped canvas
-  const out = document.createElement("canvas");
+  // Final output canvas at the requested size / aspect
   const outW = outputSize;
   const outH = Math.round(outputSize / aspect);
+  const out = document.createElement("canvas");
   out.width = outW;
   out.height = outH;
   const outCtx = out.getContext("2d");
   if (!outCtx) throw new Error("Canvas 2D context not available");
+  outCtx.imageSmoothingEnabled = true;
+  outCtx.imageSmoothingQuality = "high";
 
-  // Place the rotated image data into the output, offset by the crop
-  outCtx.putImageData(
-    data,
-    Math.round(0 - safeArea / 2 + image.width / 2 - pixelCrop.x),
-    Math.round(0 - safeArea / 2 + image.height / 2 - pixelCrop.y),
-  );
-
-  // Scale to desired output size
-  const scaled = document.createElement("canvas");
-  scaled.width = outW;
-  scaled.height = outH;
-  const sctx = scaled.getContext("2d");
-  if (!sctx) throw new Error("Canvas 2D context not available");
-  sctx.imageSmoothingEnabled = true;
-  sctx.imageSmoothingQuality = "high";
-  sctx.drawImage(
-    out,
-    0,
-    0,
+  // pixelCrop comes in coordinates relative to the rotated bounding box,
+  // which is exactly what react-easy-crop returns. Draw that region scaled
+  // into the output canvas.
+  outCtx.drawImage(
+    rotCanvas,
+    pixelCrop.x,
+    pixelCrop.y,
     pixelCrop.width,
     pixelCrop.height,
     0,
@@ -214,7 +202,7 @@ async function getCroppedImg(
   );
 
   const blob: Blob = await new Promise((resolve, reject) =>
-    scaled.toBlob(
+    out.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("Failed to encode image"))),
       "image/jpeg",
       0.92,
@@ -222,6 +210,15 @@ async function getCroppedImg(
   );
 
   return new File([blob], "cropped.jpg", { type: "image/jpeg" });
+}
+
+function rotatedSize(w: number, h: number, rotRad: number) {
+  const cos = Math.abs(Math.cos(rotRad));
+  const sin = Math.abs(Math.sin(rotRad));
+  return {
+    width: w * cos + h * sin,
+    height: w * sin + h * cos,
+  };
 }
 
 export function fileToDataUrl(file: File): Promise<string> {
