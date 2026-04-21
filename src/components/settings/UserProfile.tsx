@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "react-router-dom";
 import { resizeAndCropToSquare } from "@/lib/image";
+import { ImageCropDialog, fileToDataUrl } from "@/components/ui/image-crop-dialog";
 
 export function UserProfile() {
   const { profile, user, refreshProfile, isAdmin, userName, userEmail } = useAuth();
@@ -36,6 +37,7 @@ export function UserProfile() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -126,7 +128,7 @@ export function UserProfile() {
     }
   };
 
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !user?.id) return;
 
@@ -139,26 +141,37 @@ export function UserProfile() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       toast({
         title: "Erro",
-        description: "A imagem deve ter no máximo 5MB.",
+        description: "A imagem deve ter no máximo 10MB.",
         variant: "destructive",
       });
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setCropSrc(dataUrl);
+    } catch (e) {
+      toast({ title: "Erro", description: "Não foi possível ler a imagem.", variant: "destructive" });
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCroppedAvatar = async (cropped: File) => {
+    if (!user?.id) return;
     setIsUploadingAvatar(true);
     try {
-      // Resize + center-crop to a 512x512 square JPEG to avoid distortion
-      // and dramatically speed up the upload.
-      const processed = await resizeAndCropToSquare(file, 512, 0.9);
+      // Re-encode at 512x512 to keep file small (cropper already gave us a square)
+      const processed = await resizeAndCropToSquare(cropped, 512, 0.9);
 
       const fd = new FormData();
       fd.append("clerk_user_id", user.id);
       fd.append("file", processed, "avatar.jpg");
 
-      // Run Supabase + Clerk uploads in parallel for snappier UX
       const [supaRes] = await Promise.all([
         supabase.functions.invoke('update-user-profile', { body: fd }),
         clerkUser?.setProfileImage?.({ file: processed }).catch((e) => {
@@ -174,6 +187,7 @@ export function UserProfile() {
         title: "Avatar atualizado",
         description: "Sua foto foi atualizada com sucesso.",
       });
+      setCropSrc(null);
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast({
@@ -183,7 +197,6 @@ export function UserProfile() {
       });
     } finally {
       setIsUploadingAvatar(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -260,7 +273,7 @@ export function UserProfile() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                onChange={handleAvatarUpload}
+                onChange={handleAvatarSelected}
                 className="hidden"
               />
             </div>
