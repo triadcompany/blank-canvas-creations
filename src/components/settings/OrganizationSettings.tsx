@@ -42,14 +42,16 @@ export function OrganizationSettings() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!orgId) return;
+      if (!orgId || !user?.id) return;
       setLoading(true);
-      const [{ data, error }, { data: clerkOrg }] = await Promise.all([
-        supabase
-          .from('organizations')
-          .select('id, name, cnpj, logo_url')
-          .eq('id', orgId)
-          .maybeSingle(),
+
+      // Use SECURITY DEFINER RPC because RLS on `organizations` relies on
+      // get_my_org_id() which is null in Clerk-authenticated sessions.
+      const [{ data: rpcData, error: rpcErr }, { data: clerkOrg }] = await Promise.all([
+        supabase.rpc('get_organization_details', {
+          p_clerk_user_id: user.id,
+          p_organization_id: orgId,
+        } as any),
         supabase
           .from('clerk_organizations')
           .select('name')
@@ -57,21 +59,22 @@ export function OrganizationSettings() {
           .maybeSingle(),
       ]);
       if (cancelled) return;
-      if (error) {
+      if (rpcErr) {
         toast({
           title: 'Erro ao carregar organização',
-          description: error.message,
+          description: rpcErr.message,
           variant: 'destructive',
         });
         setLoading(false);
         return;
       }
-      const seedName = (data?.name && data.name.trim()) || clerkOrg?.name || '';
+      const data: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      const seedName = (data?.out_name && String(data.out_name).trim()) || clerkOrg?.name || '';
       const row: OrgRow = {
         id: orgId,
         name: seedName,
-        cnpj: data?.cnpj ?? null,
-        logo_url: (data as any)?.logo_url ?? null,
+        cnpj: data?.out_cnpj ?? null,
+        logo_url: data?.out_logo_url ?? null,
       };
       setOriginal(row);
       setName(row.name);
@@ -83,7 +86,7 @@ export function OrganizationSettings() {
     return () => {
       cancelled = true;
     };
-  }, [orgId, toast]);
+  }, [orgId, user?.id, toast]);
 
   const handleLogoUpload = async (file: File) => {
     if (!orgId || !user?.id) return;
