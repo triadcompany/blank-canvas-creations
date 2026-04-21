@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { ImageCropDialog, fileToDataUrl } from '@/components/ui/image-crop-dialog';
 
 interface OrgRow {
   id: string;
@@ -38,6 +39,7 @@ export function OrganizationSettings() {
   const [cnpj, setCnpj] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [original, setOriginal] = useState<OrgRow | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;

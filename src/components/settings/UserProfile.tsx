@@ -397,6 +397,18 @@ export function UserProfile() {
           </Button>
         </CardContent>
       </Card>
+
+      <ImageCropDialog
+        open={!!cropSrc}
+        imageSrc={cropSrc}
+        aspect={1}
+        cropShape="round"
+        outputSize={512}
+        title="Ajustar foto de perfil"
+        description="Arraste, gire e use o zoom para enquadrar sua foto."
+        onCancel={() => setCropSrc(null)}
+        onConfirm={handleCroppedAvatar}
+      />
     </div>
   );
 }
