@@ -107,20 +107,30 @@ export function useUserOrganizations() {
       setSwitching(true);
       try {
         // 1) Update profiles.organization_id (this is what RLS reads).
-        // Wait for the DB confirmation BEFORE redirecting so the next page
-        // load reads the new org from the canonical source.
-        const { data: updated, error: profileErr } = await supabase
+        // We don't .select() the row back because changing organization_id
+        // can momentarily intersect the SELECT policy and return null even
+        // on success. We trust the absence of `error` and verify with a
+        // separate SELECT below.
+        const { error: profileErr } = await supabase
           .from('profiles')
           .update({ organization_id: target.organization_id })
-          .eq('clerk_user_id', user.id)
-          .select('organization_id')
-          .maybeSingle();
+          .eq('clerk_user_id', user.id);
 
         if (profileErr) {
           throw new Error(profileErr.message);
         }
 
-        if (!updated || updated.organization_id !== target.organization_id) {
+        // Verify the update landed by reading back via clerk_user_id
+        // (this row is always visible to the user via RLS).
+        const { data: verify, error: verifyErr } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('clerk_user_id', user.id)
+          .maybeSingle();
+
+        if (verifyErr) {
+          console.warn('switchOrg: verify SELECT failed (continuing anyway)', verifyErr);
+        } else if (verify && verify.organization_id !== target.organization_id) {
           throw new Error('A atualização do perfil não foi confirmada pelo banco.');
         }
 
