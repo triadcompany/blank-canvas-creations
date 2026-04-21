@@ -8032,6 +8032,15 @@ export type Database = {
         }
         Returns: string
       }
+      create_pipeline_stage: {
+        Args: {
+          p_color?: string
+          p_created_by?: string
+          p_name: string
+          p_pipeline_id: string
+        }
+        Returns: string
+      }
       create_secure_notification: {
         Args: {
           p_mensagem: string
