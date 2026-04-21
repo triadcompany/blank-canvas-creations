@@ -193,7 +193,7 @@ export default function PricingSection() {
                 </div>
               </div>
 
-              <CardContent className="p-8">
+              <CardContent className="p-6 sm:p-8">
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-2xl font-bold">Scale</h3>
