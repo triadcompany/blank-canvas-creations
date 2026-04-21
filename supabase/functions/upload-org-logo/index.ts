@@ -21,11 +21,12 @@ Deno.serve(async (req) => {
 
     const form = await req.formData();
     const clerkUserId = (form.get("clerk_user_id") as string) || "";
+    const orgIdInput = (form.get("organization_id") as string) || "";
     const file = form.get("file") as File | null;
 
-    if (!clerkUserId || !file) {
+    if (!clerkUserId || !file || !orgIdInput) {
       return new Response(
-        JSON.stringify({ error: "Missing clerk_user_id or file" }),
+        JSON.stringify({ error: "Missing clerk_user_id, organization_id or file" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -37,35 +38,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolve org and verify admin role
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("organization_id")
-      .eq("clerk_user_id", clerkUserId)
-      .maybeSingle();
-
-    const orgId = profile?.organization_id;
-    if (!orgId) {
-      return new Response(JSON.stringify({ error: "Organization not found" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: member } = await admin
+    // Verify admin role for this specific organization
+    const { data: member, error: memErr } = await admin
       .from("org_members")
       .select("role, status")
       .eq("clerk_user_id", clerkUserId)
-      .eq("organization_id", orgId)
+      .eq("organization_id", orgIdInput)
       .eq("status", "active")
       .maybeSingle();
 
-    if (!member || member.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Admin role required" }), {
-        status: 403,
+    if (memErr) {
+      return new Response(JSON.stringify({ error: memErr.message }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    if (!member || member.role !== "admin") {
+      return new Response(
+        JSON.stringify({ error: "Admin role required for this organization" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const orgId = orgIdInput;
 
     // Ensure bucket exists (idempotent)
     await admin.storage
