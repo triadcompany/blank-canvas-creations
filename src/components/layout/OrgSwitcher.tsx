@@ -13,9 +13,13 @@ import { useUserOrganizations } from '@/hooks/useUserOrganizations';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function OrgSwitcher() {
-  const { orgName, role, isAdmin } = useAuth();
+  const { orgName: clerkOrgName, isAdmin } = useAuth();
   const { organizations, loading, switching, switchOrg } = useUserOrganizations();
 
+  // Prefer the name from the active membership (matches AuthContext orgId)
+  // over Clerk's live name, since soft-switching may not have updated Clerk yet.
+  const currentOrg = organizations.find((o) => o.is_current);
+  const orgName = currentOrg?.name || clerkOrgName || 'Organização';
   const currentRoleLabel = isAdmin ? 'Admin' : 'Vendedor';
   const hasMultiple = organizations.length > 1;
 
