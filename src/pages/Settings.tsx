@@ -41,7 +41,9 @@ import {
   ToggleLeft,
   Inbox,
   Construction,
+  Building2,
 } from "lucide-react";
+import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
 import { InstagramSettings } from "@/components/instagram/InstagramSettings";
 import { UserProfile } from "@/components/settings/UserProfile";
 import { EvolutionIntegration } from "@/components/settings/EvolutionIntegration";
@@ -122,6 +124,7 @@ export function Settings() {
   const settingsItems: MenuItem[] = [
     { id: "billing", icon: CreditCard, label: "Planos e Cobrança" },
     { id: "profile", icon: User, label: "Meu Perfil" },
+    ...(isAdmin ? [{ id: "organization", icon: Building2, label: "Organização" }] : []),
     { id: "vendors", icon: Users, label: "Usuários" },
     { id: "instagram", icon: Instagram, label: "Instagram" },
     { id: "whatsapp-evolution", icon: MessageSquare, label: "WhatsApp (Evolution)" },
@@ -142,6 +145,8 @@ export function Settings() {
         return <BillingSettings />;
       case "profile":
         return <UserProfile />;
+      case "organization":
+        return <OrganizationSettings />;
       case "vendors":
         return renderVendorsContent();
       case "templates":
