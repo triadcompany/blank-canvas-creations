@@ -106,22 +106,33 @@ export function useUserOrganizations() {
       if (target.organization_id === orgId) return;
       setSwitching(true);
       try {
-        // 1) Update profiles.organization_id (this is what RLS reads)
-        const { error: profileErr } = await supabase
+        // 1) Update profiles.organization_id (this is what RLS reads).
+        // Wait for the DB confirmation BEFORE redirecting so the next page
+        // load reads the new org from the canonical source.
+        const { data: updated, error: profileErr } = await supabase
           .from('profiles')
           .update({ organization_id: target.organization_id })
-          .eq('clerk_user_id', user.id);
+          .eq('clerk_user_id', user.id)
+          .select('organization_id')
+          .maybeSingle();
 
         if (profileErr) {
           throw new Error(profileErr.message);
         }
 
-        // 2) Switch active Clerk organization (best-effort, non-blocking)
+        if (!updated || updated.organization_id !== target.organization_id) {
+          throw new Error('A atualização do perfil não foi confirmada pelo banco.');
+        }
+
+        // 2) Switch active Clerk organization (best-effort, non-blocking).
+        // Don't await — Clerk's setActive can hang and block the redirect.
         if (target.clerk_org_id && target.clerk_org_id !== 'unknown') {
           try {
-            await setActive({ organization: target.clerk_org_id });
+            setActive({ organization: target.clerk_org_id }).catch((err) => {
+              console.warn('switchOrg: Clerk setActive failed (non-critical)', err);
+            });
           } catch (err) {
-            console.warn('switchOrg: Clerk setActive failed (non-critical)', err);
+            console.warn('switchOrg: Clerk setActive threw (non-critical)', err);
           }
         }
 
@@ -130,21 +141,26 @@ export function useUserOrganizations() {
           description: `Você está agora em ${target.name}.`,
         });
 
-        // 3) Force a full reload so every cached query (leads, pipeline, inbox)
-        // refetches under the new organization_id.
-        await refreshProfile();
-        window.location.assign('/dashboard');
+        // 3) Force a FULL page reload. This is the only reliable way to
+        // reset every in-memory cache (useAuthBootstrap.org, react-query,
+        // useLeads, usePipelines, useInbox, useAutomations, etc.) so that
+        // every subsequent query runs under the new organization_id.
+        // Do NOT use navigate() / router.push() — those keep hooks alive
+        // and the stale `org` from useAuthBootstrap would override the
+        // freshly-updated profile.organization_id.
+        window.location.href = '/dashboard';
       } catch (err: any) {
         toast({
           title: 'Erro ao trocar organização',
           description: err?.message || 'Tente novamente.',
           variant: 'destructive',
         });
-      } finally {
         setSwitching(false);
       }
+      // Note: don't reset `switching` on success — we want the spinner to
+      // stay visible until the page reloads.
     },
-    [user?.id, orgId, setActive, refreshProfile, toast]
+    [user?.id, orgId, setActive, toast]
   );
 
   return { organizations, loading, switching, switchOrg, reload: load };
