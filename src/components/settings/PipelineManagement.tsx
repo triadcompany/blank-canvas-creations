@@ -427,7 +427,7 @@ export function PipelineManagement() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5" />
-                <CardTitle className="text-base">Selecionar Pipeline</CardTitle>
+                <CardTitle className="text-base dark:text-primary">Selecionar Pipeline</CardTitle>
               </div>
               <Badge variant="secondary">{pipelines.length}/10</Badge>
             </div>
