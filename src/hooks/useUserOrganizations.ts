@@ -174,7 +174,7 @@ export function useUserOrganizations() {
         setSwitching(false);
       }
     },
-    [user?.id, orgId, setActive, switchActiveOrg, queryClient, navigate, toast]
+    [user?.id, orgId, setActive, switchActiveOrg, queryClient, navigate, toast, refreshProfile]
   );
 
   return { organizations, loading, switching, switchOrg, reload: load };
