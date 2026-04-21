@@ -121,7 +121,7 @@ export default function PricingSection() {
             transition={{ delay: 0.3 }}
           >
             <Card className="h-full border-2 border-border/50 hover:border-border transition-all duration-300">
-              <CardContent className="p-8">
+              <CardContent className="p-6 sm:p-8">
                 <div className="mb-6">
                   <h3 className="text-2xl font-bold mb-2">Start</h3>
                   <p className="text-muted-foreground">
