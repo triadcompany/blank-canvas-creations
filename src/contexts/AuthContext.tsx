@@ -59,7 +59,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { openSignIn, openSignUp } = useClerk();
   const { organization: clerkOrganization } = useOrganization();
   const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
-  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap } = useAuthBootstrap();
+  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap, setActiveOrg } = useAuthBootstrap();
 
   // Converter usuário Clerk para formato compatível
   const user: CompatUser | null = clerkUser ? {
