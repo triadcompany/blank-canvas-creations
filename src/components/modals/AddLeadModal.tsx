@@ -145,13 +145,8 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
     }
   }, [selectedPipelineId, fetchStages]);
 
-  // Filtrar perfis baseado no role do usuário
-  const availableProfiles = useMemo(() => {
-    if (role === 'seller' && user) {
-      return profiles.filter(p => p.id === user.id);
-    }
-    return profiles;
-  }, [profiles, role, user]);
+  // Todos os perfis da organização ficam disponíveis no dropdown (admin e vendedor)
+  const availableProfiles = profiles;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
