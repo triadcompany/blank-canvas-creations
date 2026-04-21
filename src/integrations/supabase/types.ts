@@ -5503,6 +5503,7 @@ export type Database = {
           id: string
           inbox_enabled: boolean
           is_active: boolean | null
+          logo_url: string | null
           name: string
           phone: string | null
           state: string | null
@@ -5522,6 +5523,7 @@ export type Database = {
           id?: string
           inbox_enabled?: boolean
           is_active?: boolean | null
+          logo_url?: string | null
           name: string
           phone?: string | null
           state?: string | null
@@ -5541,6 +5543,7 @@ export type Database = {
           id?: string
           inbox_enabled?: boolean
           is_active?: boolean | null
+          logo_url?: string | null
           name?: string
           phone?: string | null
           state?: string | null
@@ -8197,6 +8200,20 @@ export type Database = {
       update_lead_rpc: {
         Args: { p_clerk_user_id: string; p_data: Json; p_lead_id: string }
         Returns: Json
+      }
+      update_organization_details: {
+        Args: {
+          p_clerk_user_id: string
+          p_cnpj: string
+          p_logo_url: string
+          p_name: string
+        }
+        Returns: {
+          cnpj: string
+          id: string
+          logo_url: string
+          name: string
+        }[]
       }
     }
     Enums: {
