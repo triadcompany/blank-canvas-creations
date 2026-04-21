@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClerk } from '@clerk/clerk-react';
@@ -18,9 +20,11 @@ export interface UserOrganization {
  * the active Clerk organization, then reloads the app context.
  */
 export function useUserOrganizations() {
-  const { user, orgId } = useAuth();
+  const { user, orgId, switchActiveOrg } = useAuth();
   const { setActive } = useClerk();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [organizations, setOrganizations] = useState<UserOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
@@ -146,31 +150,40 @@ export function useUserOrganizations() {
           }
         }
 
+        // 3) Update the in-memory AuthContext so every consumer (sidebar,
+        // hooks reading orgId, RLS-derived headers) reflects the new org
+        // immediately, without a full page reload.
+        switchActiveOrg({
+          org_id: target.organization_id,
+          clerk_org_id: target.clerk_org_id || 'unknown',
+          role: target.role,
+        });
+
+        // 4) Invalidate every react-query cache so leads, pipeline, inbox,
+        // automations, etc. refetch under the new organization_id. They all
+        // include orgId in their query keys, so the new context drives a
+        // fresh fetch.
+        await queryClient.invalidateQueries();
+
         toast({
           title: 'Organização alterada',
           description: `Você está agora em ${target.name}.`,
         });
 
-        // 3) Force a FULL page reload. This is the only reliable way to
-        // reset every in-memory cache (useAuthBootstrap.org, react-query,
-        // useLeads, usePipelines, useInbox, useAutomations, etc.) so that
-        // every subsequent query runs under the new organization_id.
-        // Do NOT use navigate() / router.push() — those keep hooks alive
-        // and the stale `org` from useAuthBootstrap would override the
-        // freshly-updated profile.organization_id.
-        window.location.href = '/dashboard';
+        // 5) Navigate to the dashboard. Use `replace` so the user can't
+        // back-button into a stale URL from the previous org.
+        navigate('/dashboard', { replace: true });
       } catch (err: any) {
         toast({
           title: 'Erro ao trocar organização',
           description: err?.message || 'Tente novamente.',
           variant: 'destructive',
         });
+      } finally {
         setSwitching(false);
       }
-      // Note: don't reset `switching` on success — we want the spinner to
-      // stay visible until the page reloads.
     },
-    [user?.id, orgId, setActive, toast]
+    [user?.id, orgId, setActive, switchActiveOrg, queryClient, navigate, toast]
   );
 
   return { organizations, loading, switching, switchOrg, reload: load };

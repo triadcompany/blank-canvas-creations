@@ -26,6 +26,9 @@ interface UseAuthBootstrapReturn {
   error: string | null;
   needsOnboarding: boolean;
   retryBootstrap: () => Promise<void>;
+  /** Update the active org in memory after the user switches organizations.
+   *  Avoids a full page reload while keeping AuthContext.orgId in sync. */
+  setActiveOrg: (next: OrgInfo) => void;
 }
 
 export function useAuthBootstrap(): UseAuthBootstrapReturn {
@@ -195,11 +198,18 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       .finally(() => setLoading(false));
   }, [user, isLoaded, bootstrap]);
 
+  const setActiveOrg = useCallback((next: OrgInfo) => {
+    setOrg(next);
+    setNeedsOnboarding(false);
+    setError(null);
+  }, []);
+
   return useMemo(() => ({
     org,
     loading: !isLoaded || loading,
     error,
     needsOnboarding,
     retryBootstrap,
-  }), [org, isLoaded, loading, error, needsOnboarding, retryBootstrap]);
+    setActiveOrg,
+  }), [org, isLoaded, loading, error, needsOnboarding, retryBootstrap, setActiveOrg]);
 }

@@ -36,6 +36,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   retryBootstrap: () => Promise<void>;
+  /** Update the active org in memory after switching organizations.
+   *  Avoids a full page reload while keeping orgId / role / clerkOrgId in sync. */
+  switchActiveOrg: (next: { org_id: string; clerk_org_id: string; role: 'admin' | 'seller' }) => void;
   isAdmin: boolean;
   orgId: string | null;
   clerkOrgId: string | null;
@@ -56,7 +59,7 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { openSignIn, openSignUp } = useClerk();
   const { organization: clerkOrganization } = useOrganization();
   const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
-  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap } = useAuthBootstrap();
+  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap, setActiveOrg } = useAuthBootstrap();
 
   // Converter usuário Clerk para formato compatível
   const user: CompatUser | null = clerkUser ? {
@@ -114,6 +117,13 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   // Derive org name: prefer Clerk live data, fallback to profile's org
   const orgName = clerkOrganization?.name || '';
 
+  const switchActiveOrg = useCallback(
+    (next: { org_id: string; clerk_org_id: string; role: 'admin' | 'seller' }) => {
+      setActiveOrg(next);
+    },
+    [setActiveOrg]
+  );
+
   const value: AuthContextType = useMemo(() => ({
     user,
     session: clerkUser ? { user: clerkUser } : null,
@@ -127,13 +137,14 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     signOut,
     refreshProfile,
     retryBootstrap,
+    switchActiveOrg,
     isAdmin,
     orgId: org?.org_id || profile?.organization_id || null,
     clerkOrgId: org?.clerk_org_id || null,
     userName,
     userEmail,
     orgName,
-  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, isAdmin, org, userName, userEmail, orgName, clerkOrganization]);
+  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, switchActiveOrg, isAdmin, org, userName, userEmail, orgName]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -169,6 +180,7 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
     signOut,
     refreshProfile,
     retryBootstrap: refreshProfile,
+    switchActiveOrg: () => {},
     isAdmin: false,
     orgId: null,
     clerkOrgId: null,
