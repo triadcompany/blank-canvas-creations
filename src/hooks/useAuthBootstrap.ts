@@ -173,8 +173,17 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       return;
     }
 
-    // Skip if we already bootstrapped this user
-    if (lastBootstrappedUserIdRef.current === user.id) return;
+    // Skip if we already bootstrapped this user — UNLESS there's a pending
+    // invitation token (user clicked a new invite link while already logged in,
+    // or signed in via "Já tenho conta" on the /invite page).
+    let hasPendingInviteToken = false;
+    try {
+      hasPendingInviteToken = !!sessionStorage.getItem('pending_invitation_token');
+    } catch {
+      /* noop */
+    }
+
+    if (lastBootstrappedUserIdRef.current === user.id && !hasPendingInviteToken) return;
     lastBootstrappedUserIdRef.current = user.id;
 
     setLoading(true);
