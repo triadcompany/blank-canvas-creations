@@ -19,13 +19,18 @@ interface UserOrgMenuProps {
 
 export function UserOrgMenu({ onLogout }: UserOrgMenuProps) {
   const navigate = useNavigate();
-  const { profile, userName, isAdmin, orgName } = useAuth();
+  const { profile, userName, isAdmin, orgName: clerkOrgName } = useAuth();
   const { subscription, loading: subscriptionLoading } = useSubscription();
   const { organizations, loading, switching, switchOrg } = useUserOrganizations();
 
   const displayName = userName || profile?.name || 'Usuário';
   const initials = displayName.split(' ').map((n) => n[0]).join('').substring(0, 2);
   const currentRoleLabel = isAdmin ? 'Admin' : 'Vendedor';
+
+  // Prefer the active membership's name (matches AuthContext orgId) over Clerk's
+  // live name, since soft-switching may not have updated Clerk's active org yet.
+  const currentOrg = organizations.find((o) => o.is_current);
+  const orgName = currentOrg?.name || clerkOrgName;
 
   const planLabel = subscriptionLoading
     ? '...'
