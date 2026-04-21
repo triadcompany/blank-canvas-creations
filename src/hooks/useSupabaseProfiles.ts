@@ -69,22 +69,14 @@ export function useSupabaseProfiles() {
       const profilesList = result?.profiles || [];
       const rolesList = result?.roles || [];
 
-      if (!isAdmin && user) {
-        // Non-admin: only show own profile
-        const ownProfile = profilesList.find((p: any) => p.clerk_user_id === user.id);
-        if (ownProfile) {
-          const ownRole = rolesList.find((r: any) => r.clerk_user_id === user.id);
-          setProfiles([{ ...ownProfile, role: ownRole?.role || 'seller' }]);
-        } else {
-          setProfiles([]);
-        }
-      } else {
-        // Admin: all profiles with roles
-        const profilesWithRoles = profilesList.map((profile: any) => ({
-          ...profile,
-          role: rolesList.find((r: any) => r.clerk_user_id === profile.clerk_user_id)?.role || 'seller',
-        }));
-        setProfiles(profilesWithRoles);
+      // Always return all org members so dropdowns (vendedor responsável, etc.) work for everyone
+      const profilesWithRoles = profilesList.map((profile: any) => ({
+        ...profile,
+        role: rolesList.find((r: any) => r.clerk_user_id === profile.clerk_user_id)?.role || 'seller',
+      }));
+      setProfiles(profilesWithRoles);
+      // Invitations only relevant for admins (used in user management UI)
+      if (isAdmin) {
         setInvitations((result?.invitations || []) as unknown as UserInvitation[]);
       }
     } catch (err) {

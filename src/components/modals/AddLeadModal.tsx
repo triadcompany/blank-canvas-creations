@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -60,7 +60,7 @@ const parseCurrency = (value: string): number => {
 };
 
 export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) {
-  const { user, role, profile, orgId } = useAuth();
+  const { profile, orgId } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -136,8 +136,12 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
   useEffect(() => {
     if (open) {
       fetchPipelines();
+      // Pré-seleciona o usuário logado como vendedor padrão (pode ser trocado)
+      if (profile?.id) {
+        setFormData(prev => prev.seller_id ? prev : { ...prev, seller_id: profile.id });
+      }
     }
-  }, [open, fetchPipelines]);
+  }, [open, fetchPipelines, profile?.id]);
 
   useEffect(() => {
     if (selectedPipelineId) {
@@ -145,13 +149,8 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
     }
   }, [selectedPipelineId, fetchStages]);
 
-  // Filtrar perfis baseado no role do usuário
-  const availableProfiles = useMemo(() => {
-    if (role === 'seller' && user) {
-      return profiles.filter(p => p.id === user.id);
-    }
-    return profiles;
-  }, [profiles, role, user]);
+  // Todos os perfis da organização ficam disponíveis no dropdown (admin e vendedor)
+  const availableProfiles = profiles;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
