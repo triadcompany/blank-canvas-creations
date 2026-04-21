@@ -137,6 +137,7 @@ export function OrganizationSettings() {
         p_name: name.trim(),
         p_cnpj: cnpjDigits || null,
         p_logo_url: logoUrl,
+        p_organization_id: orgId,
       } as any);
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
