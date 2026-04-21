@@ -127,8 +127,12 @@ export function UserOrgMenu({ onLogout }: UserOrgMenuProps) {
                   }}
                   className="w-full flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent/50 transition-colors disabled:hover:bg-transparent disabled:cursor-default text-left"
                 >
-                  <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {org.logo_url ? (
+                      <img src={org.logo_url} alt={org.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-poppins font-medium text-foreground truncate">

@@ -22,6 +22,7 @@ export function OrgSwitcher() {
   const orgName = currentOrg?.name || clerkOrgName || 'Organização';
   const currentRoleLabel = isAdmin ? 'Admin' : 'Vendedor';
   const hasMultiple = organizations.length > 1;
+  const currentLogo = currentOrg?.logo_url || null;
 
   const trigger = (
     <button
@@ -29,8 +30,12 @@ export function OrgSwitcher() {
       disabled={!hasMultiple || switching}
       className="group w-full flex items-center gap-2 rounded-lg border border-border/50 bg-card hover:bg-accent/40 transition-colors px-2.5 py-2 text-left disabled:cursor-default disabled:hover:bg-card"
     >
-      <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center flex-shrink-0">
-        <Building2 className="h-4 w-4 text-primary-foreground" />
+      <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center flex-shrink-0 overflow-hidden">
+        {currentLogo ? (
+          <img src={currentLogo} alt={orgName} className="w-full h-full object-cover" />
+        ) : (
+          <Building2 className="h-4 w-4 text-primary-foreground" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-poppins font-semibold text-foreground truncate leading-tight">
@@ -79,8 +84,12 @@ export function OrgSwitcher() {
               }}
               className="flex items-center gap-2 py-2 cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
+              <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {org.logo_url ? (
+                  <img src={org.logo_url} alt={org.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-poppins font-medium text-foreground truncate">

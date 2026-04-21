@@ -12,6 +12,7 @@ export interface UserOrganization {
   name: string;
   role: 'admin' | 'seller';
   is_current: boolean;
+  logo_url: string | null;
 }
 
 /**
@@ -64,7 +65,7 @@ export function useUserOrganizations() {
       //    We also look up `organizations` as a fallback for any legacy rows.
       const [{ data: clerkOrgs, error: clerkOrgErr }, { data: orgs, error: orgErr }] = await Promise.all([
         supabase.from('clerk_organizations').select('id, name').in('id', orgIds),
-        supabase.from('organizations').select('id, name').in('id', orgIds),
+        supabase.from('organizations').select('id, name, logo_url').in('id', orgIds),
       ]);
 
       if (clerkOrgErr) {
@@ -75,8 +76,10 @@ export function useUserOrganizations() {
       }
 
       const nameById = new Map<string, string>();
+      const logoById = new Map<string, string | null>();
       (orgs || []).forEach((o: any) => {
         if (o?.id && o?.name) nameById.set(o.id as string, o.name as string);
+        if (o?.id) logoById.set(o.id as string, (o.logo_url as string) || null);
       });
       // clerk_organizations takes precedence (matches what Clerk shows live)
       (clerkOrgs || []).forEach((o: any) => {
@@ -91,6 +94,7 @@ export function useUserOrganizations() {
           name: nameById.get(row.organization_id) || 'Organização',
           role: (row.role === 'admin' ? 'admin' : 'seller') as 'admin' | 'seller',
           is_current: row.organization_id === orgId,
+          logo_url: logoById.get(row.organization_id) ?? null,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
