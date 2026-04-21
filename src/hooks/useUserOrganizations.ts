@@ -38,63 +38,28 @@ export function useUserOrganizations() {
     }
     setLoading(true);
     try {
-      // 1) Get all active memberships for this Clerk user
-      const { data: memberships, error: memErr } = await supabase
-        .from('org_members')
-        .select('organization_id, clerk_org_id, role')
-        .eq('clerk_user_id', user.id)
-        .eq('status', 'active');
-
-      if (memErr) {
-        console.error('useUserOrganizations: memberships error', memErr);
-        setOrganizations([]);
-        return;
-      }
-
-      const orgIds = Array.from(
-        new Set((memberships || []).map((m: any) => m.organization_id).filter(Boolean))
+      // Use SECURITY DEFINER RPC because RLS on `organizations` is null in
+      // Clerk-authenticated sessions. This returns name + logo joined.
+      const { data: rows, error: rpcErr } = await supabase.rpc(
+        'get_user_organizations_with_logos',
+        { p_clerk_user_id: user.id } as any,
       );
 
-      if (orgIds.length === 0) {
+      if (rpcErr) {
+        console.error('useUserOrganizations: RPC error', rpcErr);
         setOrganizations([]);
         return;
       }
 
-      // 2) Resolve org names. The canonical source for org names in this project
-      //    is `clerk_organizations` (its `id` matches `org_members.organization_id`).
-      //    We also look up `organizations` as a fallback for any legacy rows.
-      const [{ data: clerkOrgs, error: clerkOrgErr }, { data: orgs, error: orgErr }] = await Promise.all([
-        supabase.from('clerk_organizations').select('id, name').in('id', orgIds),
-        supabase.from('organizations').select('id, name, logo_url').in('id', orgIds),
-      ]);
-
-      if (clerkOrgErr) {
-        console.error('useUserOrganizations: clerk_organizations error', clerkOrgErr);
-      }
-      if (orgErr) {
-        console.error('useUserOrganizations: organizations error', orgErr);
-      }
-
-      const nameById = new Map<string, string>();
-      const logoById = new Map<string, string | null>();
-      (orgs || []).forEach((o: any) => {
-        if (o?.id && o?.name) nameById.set(o.id as string, o.name as string);
-        if (o?.id) logoById.set(o.id as string, (o.logo_url as string) || null);
-      });
-      // clerk_organizations takes precedence (matches what Clerk shows live)
-      (clerkOrgs || []).forEach((o: any) => {
-        if (o?.id && o?.name) nameById.set(o.id as string, o.name as string);
-      });
-
-      const list: UserOrganization[] = (memberships || [])
-        .filter((row: any) => row.organization_id)
+      const list: UserOrganization[] = ((rows as any[]) || [])
+        .filter((row) => row?.organization_id)
         .map((row: any) => ({
           organization_id: row.organization_id,
           clerk_org_id: row.clerk_org_id,
-          name: nameById.get(row.organization_id) || 'Organização',
+          name: row.org_name || 'Organização',
           role: (row.role === 'admin' ? 'admin' : 'seller') as 'admin' | 'seller',
           is_current: row.organization_id === orgId,
-          logo_url: logoById.get(row.organization_id) ?? null,
+          logo_url: row.logo_url ?? null,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 

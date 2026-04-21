@@ -8067,6 +8067,15 @@ export type Database = {
         }
       }
       get_org_profiles_with_roles: { Args: { p_org_id: string }; Returns: Json }
+      get_organization_details: {
+        Args: { p_clerk_user_id: string; p_organization_id?: string }
+        Returns: {
+          out_cnpj: string
+          out_id: string
+          out_logo_url: string
+          out_name: string
+        }[]
+      }
       get_pipeline_stages: {
         Args: { p_pipeline_id: string }
         Returns: {
@@ -8092,6 +8101,16 @@ export type Database = {
       get_user_organization_id:
         | { Args: never; Returns: string }
         | { Args: { user_uuid: string }; Returns: string }
+      get_user_organizations_with_logos: {
+        Args: { p_clerk_user_id: string }
+        Returns: {
+          clerk_org_id: string
+          logo_url: string
+          org_name: string
+          organization_id: string
+          role: string
+        }[]
+      }
       get_user_role: {
         Args: { user_uuid: string }
         Returns: Database["public"]["Enums"]["app_role"]
