@@ -7,6 +7,7 @@ import { CRMLayout } from "@/components/layout/CRMLayout";
 import { ClerkProvider } from "@/providers/ClerkProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AppGate } from "@/components/AppGate";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import { Dashboard } from "@/pages/Dashboard";
 import { Oportunidades } from "@/pages/Oportunidades";
 import { Leads } from "@/pages/Leads";
@@ -98,17 +99,18 @@ const App = () => {
                   <Route path="/oportunidades" element={<Oportunidades />} />
                   <Route path="/leads" element={<Leads />} />
                   <Route path="/reports" element={<Reports />} />
-                  <Route path="/settings" element={<Settings />} />
                   <Route path="/pipelines" element={<Pipelines />} />
                   <Route path="/tarefas" element={<Tasks />} />
-                  
                   <Route path="/automacoes" element={<Automacoes />} />
                   <Route path="/inbox" element={<InboxPage />} />
-                  <Route path="/treinar-agente" element={<TreinarAgente />} />
-                  <Route path="/admin/debug/automations" element={<AdminDebugAutomations />} />
-                  <Route path="/admin/diagnostico" element={<AdminDiagnostico />} />
                   <Route path="/broadcasts" element={<Broadcasts />} />
                   <Route path="/broadcasts/:id" element={<BroadcastDetail />} />
+
+                  {/* Admin-only routes — sellers are silently redirected */}
+                  <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
+                  <Route path="/treinar-agente" element={<AdminRoute><TreinarAgente /></AdminRoute>} />
+                  <Route path="/admin/debug/automations" element={<AdminRoute><AdminDebugAutomations /></AdminRoute>} />
+                  <Route path="/admin/diagnostico" element={<AdminRoute><AdminDiagnostico /></AdminRoute>} />
                 </Route>
               </Route>
 
