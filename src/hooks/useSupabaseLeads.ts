@@ -315,12 +315,32 @@ export function useSupabaseLeads(pipelineId?: string) {
 
   // Add new lead via RPC
   const addLead = async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => {
-    if (!profile || !profile.clerk_user_id) return;
+    console.log('🆕 addLead called with:', newLeadData);
+    console.log('🆕 addLead profile state:', { hasProfile: !!profile, clerkUserId: profile?.clerk_user_id, orgId: profile?.organization_id });
+
+    if (!profile || !profile.clerk_user_id) {
+      console.error('❌ addLead: missing profile or clerk_user_id');
+      toast({
+        title: "Erro",
+        description: "Sessão não está pronta. Recarregue a página e tente novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Use the stage_id passed from the modal, or fall back to the first stage
     const stageId = (newLeadData as any).stage_id || stages.sort((a, b) => a.position - b.position)[0]?.id;
-    if (!stageId) return;
+    if (!stageId) {
+      console.error('❌ addLead: no stageId available');
+      toast({
+        title: "Erro",
+        description: "Nenhuma etapa do funil disponível. Selecione uma etapa.",
+        variant: "destructive",
+      });
+      return;
+    }
 
+    console.log('🆕 addLead calling create_lead_rpc with stage_id:', stageId);
     const { data, error } = await supabase.rpc('create_lead_rpc', {
       p_clerk_user_id: profile.clerk_user_id,
       p_name: newLeadData.name,
@@ -338,14 +358,16 @@ export function useSupabaseLeads(pipelineId?: string) {
     });
 
     if (error) {
-      console.error('Error creating lead:', error);
+      console.error('❌ Error creating lead:', error);
       toast({
         title: "Erro",
-        description: "Erro ao criar lead",
+        description: error.message || "Erro ao criar lead",
         variant: "destructive",
       });
       return;
     }
+
+    console.log('✅ Lead created:', data);
 
     const createdLead = data as any;
 
