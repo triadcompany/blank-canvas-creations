@@ -44,11 +44,18 @@ export function OrganizationSettings() {
     async function load() {
       if (!orgId) return;
       setLoading(true);
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, name, cnpj, logo_url')
-        .eq('id', orgId)
-        .maybeSingle();
+      const [{ data, error }, { data: clerkOrg }] = await Promise.all([
+        supabase
+          .from('organizations')
+          .select('id, name, cnpj, logo_url')
+          .eq('id', orgId)
+          .maybeSingle(),
+        supabase
+          .from('clerk_organizations')
+          .select('name')
+          .eq('id', orgId)
+          .maybeSingle(),
+      ]);
       if (cancelled) return;
       if (error) {
         toast({
@@ -59,12 +66,17 @@ export function OrganizationSettings() {
         setLoading(false);
         return;
       }
-      if (data) {
-        setOriginal(data as OrgRow);
-        setName(data.name || '');
-        setCnpj(data.cnpj ? formatCnpj(data.cnpj) : '');
-        setLogoUrl((data as any).logo_url || null);
-      }
+      const seedName = (data?.name && data.name.trim()) || clerkOrg?.name || '';
+      const row: OrgRow = {
+        id: orgId,
+        name: seedName,
+        cnpj: data?.cnpj ?? null,
+        logo_url: (data as any)?.logo_url ?? null,
+      };
+      setOriginal(row);
+      setName(row.name);
+      setCnpj(row.cnpj ? formatCnpj(row.cnpj) : '');
+      setLogoUrl(row.logo_url);
       setLoading(false);
     }
     load();
