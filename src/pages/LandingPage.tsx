@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
 import { 
   Target, Users, TrendingUp, BarChart3, Zap, Shield, 
   ArrowRight, CheckCircle2, XCircle, Building2, Smartphone,
   Lock, Server, UserCheck, Layers, Clock, Eye, MessageSquare,
-  ChevronRight, Sparkles, Play
+  ChevronRight, Sparkles, Play, Menu
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
@@ -105,24 +106,63 @@ export default function LandingPage() {
                 </a>
               ))}
             </nav>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Button variant="ghost" onClick={() => navigate("/auth")} className="hidden sm:flex">
                 Entrar
               </Button>
               <Button 
                 onClick={() => navigate("/auth")} 
-                className="font-semibold relative overflow-hidden group"
+                size="sm"
+                className="font-semibold relative overflow-hidden group md:h-10 md:px-4"
               >
-                <span className="relative z-10">Começar agora</span>
+                <span className="relative z-10 text-xs sm:text-sm">Começar agora</span>
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x opacity-0 group-hover:opacity-100 transition-opacity" />
               </Button>
+
+              {/* Mobile menu */}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden h-9 w-9">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Abrir menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[80vw] sm:max-w-sm bg-background/95 backdrop-blur-xl">
+                  <nav className="flex flex-col gap-1 mt-10">
+                    {[
+                      { href: "#solucao", label: "Solução" },
+                      { href: "#funcionalidades", label: "Funcionalidades" },
+                      { href: "#planos", label: "Planos" },
+                      { href: "#seguranca", label: "Segurança" },
+                    ].map((item) => (
+                      <SheetClose asChild key={item.href}>
+                        <a 
+                          href={item.href}
+                          className="px-4 py-3 rounded-lg text-base font-medium text-foreground hover:bg-muted transition-colors"
+                        >
+                          {item.label}
+                        </a>
+                      </SheetClose>
+                    ))}
+                    <SheetClose asChild>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => navigate("/auth")}
+                        className="mt-6 h-12 text-base"
+                      >
+                        Entrar
+                      </Button>
+                    </SheetClose>
+                  </nav>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
         </div>
       </motion.header>
 
       {/* Hero Section */}
-      <section ref={heroRef} className="pt-32 pb-20 md:pt-40 md:pb-32 relative min-h-screen flex items-center">
+      <section ref={heroRef} className="pt-24 pb-14 sm:pt-32 sm:pb-20 md:pt-40 md:pb-32 relative md:min-h-screen flex items-center">
         <AnimatedBackground variant="hero" parallax />
 
         <motion.div 
@@ -132,22 +172,22 @@ export default function LandingPage() {
           <div className="max-w-4xl mx-auto text-center">
             {/* Badge */}
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/20 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8 relative overflow-hidden group"
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/20 text-primary px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium mb-5 sm:mb-8 relative overflow-hidden group"
               initial={{ opacity: 0, scale: 0.9, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
             >
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent animate-shine" />
-              <Sparkles className="w-4 h-4 relative z-10" />
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 relative z-10" />
               <span className="relative z-10">CRM para times que querem vender mais</span>
             </motion.div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 tracking-tight leading-[1.1]">
+            <h1 className="text-[2.25rem] leading-[1.05] sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-5 sm:mb-6 tracking-tight">
               <TextReveal text="Organize suas vendas." className="text-foreground block" delay={0.3} as="span" />
               <TextReveal 
                 text="Feche mais negócios." 
-                className="block mt-2"
+                className="block mt-1 sm:mt-2"
                 delay={0.7}
                 gradient
                 as="span"
@@ -156,7 +196,7 @@ export default function LandingPage() {
 
             {/* Subheadline */}
             <motion.p 
-              className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed"
+              className="text-base sm:text-xl text-muted-foreground mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.2, duration: 0.6 }}
@@ -167,7 +207,7 @@ export default function LandingPage() {
 
             {/* CTAs */}
             <motion.div 
-              className="flex flex-col sm:flex-row gap-4 justify-center"
+              className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-2 sm:px-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.4, duration: 0.6 }}
@@ -175,11 +215,11 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth")} 
-                className="h-14 px-8 text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
+                className="h-12 sm:h-14 px-6 sm:px-8 text-base font-semibold shadow-lg shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group w-full sm:w-auto"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <span className="relative z-10 flex items-center">
+                <span className="relative z-10 flex items-center justify-center">
                   Começar agora
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </span>
@@ -187,7 +227,7 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="h-14 px-8 text-base font-semibold group backdrop-blur bg-foreground/50 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1"
+                className="h-12 sm:h-14 px-6 sm:px-8 text-base font-semibold group backdrop-blur bg-foreground/5 hover:bg-background border-2 hover:border-primary/50 transition-all hover:-translate-y-1 w-full sm:w-auto"
               >
                 <Play className="mr-2 h-5 w-5 group-hover:text-primary group-hover:scale-125 transition-all" />
                 Ver como funciona
@@ -196,7 +236,7 @@ export default function LandingPage() {
 
             {/* Trust indicators */}
             <motion.div 
-              className="flex flex-wrap items-center justify-center gap-6 mt-12 text-sm text-muted-foreground"
+              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:gap-6 mt-8 sm:mt-12 text-xs sm:text-sm text-muted-foreground"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.7, duration: 0.6 }}
@@ -204,12 +244,12 @@ export default function LandingPage() {
               {["Teste grátis", "Sem cartão de crédito", "Pronto em minutos"].map((text, i) => (
                 <motion.div 
                   key={text}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-1.5 sm:gap-2"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 1.7 + i * 0.1 }}
                 >
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   <span>{text}</span>
                 </motion.div>
               ))}
@@ -236,20 +276,20 @@ export default function LandingPage() {
       </section>
 
       {/* Problems Section */}
-      <section className="py-20 md:py-28 relative">
+      <section className="py-14 sm:py-20 md:py-28 relative">
         {/* sem fundo: o ContinuousBackground global cuida da continuidade */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Você conhece esses problemas?" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Se sua equipe comercial enfrenta algum desses desafios, o AutoLead foi feito para você.
             </p>
           </motion.div>
@@ -275,29 +315,29 @@ export default function LandingPage() {
       </section>
 
       {/* Solution Section */}
-      <section id="solucao" className="py-20 md:py-28 relative">
+      <section id="solucao" className="py-14 sm:py-20 md:py-28 relative">
         {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 text-primary px-6 py-3 rounded-full text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
+              className="inline-flex items-center gap-2 bg-primary/10 border border-primary/30 text-primary px-4 py-2 sm:px-6 sm:py-3 rounded-full text-sm sm:text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
               A solução
             </motion.div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Um CRM que sua equipe vai usar de verdade" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground leading-relaxed">
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
               Interface intuitiva, implementação em minutos e tudo que você precisa para 
               gerenciar seu funil de vendas. Sem complicação, sem curva de aprendizado longa.
             </p>
@@ -336,20 +376,20 @@ export default function LandingPage() {
       </section>
 
       {/* For Who Section */}
-      <section className="py-20 md:py-28 relative">
+      <section className="py-14 sm:py-20 md:py-28 relative">
         {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Para quem é o AutoLead?" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Feito para quem precisa organizar vendas sem burocracia
             </p>
           </motion.div>
@@ -383,20 +423,20 @@ export default function LandingPage() {
       </section>
 
       {/* Differentials Section */}
-      <section className="py-20 md:py-28 relative">
+      <section className="py-14 sm:py-20 md:py-28 relative">
         {/* fundo global */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Por que escolher o AutoLead?" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Diferenciais que fazem a diferença no seu dia a dia
             </p>
           </motion.div>
@@ -427,7 +467,7 @@ export default function LandingPage() {
       </section>
 
       {/* Security Section */}
-      <section id="seguranca" className="py-20 md:py-28 relative">
+      <section id="seguranca" className="py-14 sm:py-20 md:py-28 relative">
         {/* fundo global */}
         {/* Animated grid */}
         <div 
@@ -439,25 +479,25 @@ export default function LandingPage() {
         />
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/30 text-primary px-6 py-3 rounded-full text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/30 text-primary px-4 py-2 sm:px-6 sm:py-3 rounded-full text-sm sm:text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
-              <Shield className="w-5 h-5" />
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
               Segurança
             </motion.div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Seus dados protegidos" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Segurança de nível empresarial para você focar no que importa: vender
             </p>
           </motion.div>
@@ -491,7 +531,7 @@ export default function LandingPage() {
       <PricingSection />
 
       {/* Final CTA Section */}
-      <section className="py-24 md:py-32 relative">
+      <section className="py-16 sm:py-24 md:py-32 relative">
         {/* fundo global */}
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
@@ -502,11 +542,11 @@ export default function LandingPage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Pronto para organizar suas vendas?" as="span" />
             </h2>
             <motion.p 
-              className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto"
+              className="text-base sm:text-lg text-muted-foreground mb-8 sm:mb-10 max-w-xl mx-auto"
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
@@ -523,11 +563,11 @@ export default function LandingPage() {
               <Button 
                 size="lg" 
                 onClick={() => navigate("/auth")} 
-                className="h-14 px-10 text-base font-semibold shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group"
+                className="h-12 sm:h-14 px-8 sm:px-10 text-base font-semibold shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 relative overflow-hidden group w-full sm:w-auto max-w-sm"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x" />
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <span className="relative z-10 flex items-center">
+                <span className="relative z-10 flex items-center justify-center">
                   Criar conta gratuita
                   <ChevronRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </span>
@@ -541,9 +581,9 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
+      <footer className="py-10 sm:py-12 border-t border-border/50 relative bg-background/40 backdrop-blur">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8 mb-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
             <div className="md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-9 h-9 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
