@@ -140,17 +140,17 @@ export function OrganizationSettings() {
         p_organization_id: orgId,
       } as any);
       if (error) throw error;
-      const row = Array.isArray(data) ? data[0] : data;
+      const row: any = Array.isArray(data) ? data[0] : data;
       if (row) {
         setOriginal({
-          id: row.id,
-          name: row.name,
-          cnpj: row.cnpj,
-          logo_url: row.logo_url,
+          id: row.out_id,
+          name: row.out_name,
+          cnpj: row.out_cnpj,
+          logo_url: row.out_logo_url,
         });
-        setName(row.name || '');
-        setCnpj(row.cnpj ? formatCnpj(row.cnpj) : '');
-        setLogoUrl(row.logo_url || null);
+        setName(row.out_name || '');
+        setCnpj(row.out_cnpj ? formatCnpj(row.out_cnpj) : '');
+        setLogoUrl(row.out_logo_url || null);
       }
       toast({ title: 'Organização atualizada' });
       // Refresh org switcher list (reads from clerk_organizations)
