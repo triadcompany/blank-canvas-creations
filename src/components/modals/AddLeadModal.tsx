@@ -60,7 +60,7 @@ const parseCurrency = (value: string): number => {
 };
 
 export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) {
-  const { user, role, profile, orgId } = useAuth();
+  const { profile, orgId } = useAuth();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
