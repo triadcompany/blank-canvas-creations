@@ -7973,24 +7973,44 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      create_lead_rpc: {
-        Args: {
-          p_cidade?: string
-          p_clerk_user_id: string
-          p_email?: string
-          p_estado?: string
-          p_interest?: string
-          p_name: string
-          p_observations?: string
-          p_phone: string
-          p_price?: string
-          p_seller_id?: string
-          p_servico?: string
-          p_source?: string
-          p_stage_id?: string
-        }
-        Returns: Json
-      }
+      create_lead_rpc:
+        | {
+            Args: {
+              p_cidade?: string
+              p_clerk_user_id: string
+              p_email?: string
+              p_estado?: string
+              p_interest?: string
+              p_name: string
+              p_observations?: string
+              p_phone: string
+              p_price?: string
+              p_seller_id?: string
+              p_servico?: string
+              p_source?: string
+              p_stage_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_cidade?: string
+              p_clerk_user_id: string
+              p_email?: string
+              p_estado?: string
+              p_interest?: string
+              p_name: string
+              p_observations?: string
+              p_org_id?: string
+              p_phone: string
+              p_price?: string
+              p_seller_id?: string
+              p_servico?: string
+              p_source?: string
+              p_stage_id?: string
+            }
+            Returns: Json
+          }
       create_manual_notification: {
         Args: {
           p_link?: string
