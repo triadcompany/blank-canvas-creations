@@ -459,7 +459,7 @@ export function PipelineManagement() {
                 </SelectContent>
               </Select>
               
-              {selectedPipeline && (
+              {selectedPipeline && isAdmin && (
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
