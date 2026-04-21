@@ -8201,20 +8201,36 @@ export type Database = {
         Args: { p_clerk_user_id: string; p_data: Json; p_lead_id: string }
         Returns: Json
       }
-      update_organization_details: {
-        Args: {
-          p_clerk_user_id: string
-          p_cnpj: string
-          p_logo_url: string
-          p_name: string
-        }
-        Returns: {
-          cnpj: string
-          id: string
-          logo_url: string
-          name: string
-        }[]
-      }
+      update_organization_details:
+        | {
+            Args: {
+              p_clerk_user_id: string
+              p_cnpj: string
+              p_logo_url: string
+              p_name: string
+            }
+            Returns: {
+              cnpj: string
+              id: string
+              logo_url: string
+              name: string
+            }[]
+          }
+        | {
+            Args: {
+              p_clerk_user_id: string
+              p_cnpj: string
+              p_logo_url: string
+              p_name: string
+              p_organization_id?: string
+            }
+            Returns: {
+              cnpj: string
+              id: string
+              logo_url: string
+              name: string
+            }[]
+          }
     }
     Enums: {
       app_role: "admin" | "seller"
