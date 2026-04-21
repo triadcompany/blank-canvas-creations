@@ -80,27 +80,43 @@ export function UserProfile() {
   };
 
   const handleUpdateProfile = async () => {
-    if (!profile?.id) return;
-    
+    if (!user?.id) return;
+    const trimmed = formData.name.trim();
+    if (!trimmed) return;
+
     setIsUpdating(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ name: formData.name })
-        .eq('id', profile.id);
+      const fd = new FormData();
+      fd.append("clerk_user_id", user.id);
+      fd.append("name", trimmed);
+
+      const { data, error } = await supabase.functions.invoke('update-user-profile', {
+        body: fd,
+      });
 
       if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+
+      // Also update Clerk so the displayed name stays in sync everywhere
+      try {
+        const parts = trimmed.split(/\s+/);
+        const firstName = parts[0] || trimmed;
+        const lastName = parts.slice(1).join(' ');
+        await (user as any)?.update?.({ firstName, lastName });
+      } catch (e) {
+        console.warn('Clerk name sync failed (non-fatal):', e);
+      }
 
       await refreshProfile();
       toast({
         title: "Perfil atualizado",
         description: "Suas informações foram atualizadas com sucesso.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
       toast({
         title: "Erro",
-        description: "Erro ao atualizar perfil. Tente novamente.",
+        description: error?.message || "Erro ao atualizar perfil. Tente novamente.",
         variant: "destructive",
       });
     } finally {
@@ -123,7 +139,7 @@ export function UserProfile() {
 
     if (file.size > 2 * 1024 * 1024) {
       toast({
-        title: "Erro", 
+        title: "Erro",
         description: "A imagem deve ter no máximo 2MB.",
         variant: "destructive",
       });
@@ -132,45 +148,42 @@ export function UserProfile() {
 
     setIsUploadingAvatar(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/avatar.${fileExt}`;
+      const fd = new FormData();
+      fd.append("clerk_user_id", user.id);
+      fd.append("file", file);
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, {
-          upsert: true,
-          contentType: file.type
-        });
+      const { data, error } = await supabase.functions.invoke('update-user-profile', {
+        body: fd,
+      });
 
-      if (uploadError) throw uploadError;
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('user_id', user.id);
-
-      if (updateError) throw updateError;
+      // Also push avatar to Clerk so it shows everywhere
+      try {
+        await (user as any)?.setProfileImage?.({ file });
+      } catch (e) {
+        console.warn('Clerk avatar sync failed (non-fatal):', e);
+      }
 
       await refreshProfile();
       toast({
         title: "Avatar atualizado",
         description: "Sua foto foi atualizada com sucesso.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading avatar:', error);
       toast({
         title: "Erro",
-        description: "Erro ao fazer upload da imagem. Tente novamente.",
+        description: error?.message || "Erro ao fazer upload da imagem. Tente novamente.",
         variant: "destructive",
       });
     } finally {
       setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
 
   const handleOpenAccountPortal = () => {
     openUserProfile();
