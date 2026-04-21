@@ -152,9 +152,10 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
   // Todos os perfis da organização ficam disponíveis no dropdown (admin e vendedor)
   const availableProfiles = profiles;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    console.log('📝 AddLeadModal submit', { formData, selectedStageId, selectedPipelineId });
+
     if (!formData.name.trim()) { alert("Nome é obrigatório"); return; }
     if (!formData.phone.trim()) { alert("Telefone é obrigatório"); return; }
     if (!formData.seller_id.trim()) { alert("Vendedor responsável é obrigatório"); return; }
@@ -166,13 +167,17 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
       stage_id: selectedStageId,
     };
 
-    onSave(dataToSave as any);
-    setFormData({
-      name: "", email: "", phone: "", seller_id: "", source: "",
-      interest: "", price: "", observations: "", valor_negocio: "",
-      servico: "", cidade: "", estado: ""
-    });
-    onOpenChange(false);
+    try {
+      await onSave(dataToSave as any);
+      setFormData({
+        name: "", email: "", phone: "", seller_id: "", source: "",
+        interest: "", price: "", observations: "", valor_negocio: "",
+        servico: "", cidade: "", estado: ""
+      });
+      onOpenChange(false);
+    } catch (err) {
+      console.error('❌ AddLeadModal submit failed:', err);
+    }
   };
 
   const handleInputChange = (field: string, value: string) => {
