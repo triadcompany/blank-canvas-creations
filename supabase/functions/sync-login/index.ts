@@ -51,6 +51,42 @@ Deno.serve(async (req) => {
       throw new Error(error.message);
     }
 
+    // ── SHORT-CIRCUIT: if the user already has a profiles.organization_id
+    // AND a matching org_members row, return immediately. Do NOT search for
+    // any other membership — that would override the user's currently-active
+    // organization (the one they switched to in the org switcher).
+    // The only exception is when an invitation_token is present, which means
+    // the user is explicitly accepting an invite to a NEW org.
+    if (!invitation_token) {
+      const { data: currentProfile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("clerk_user_id", clerk_user_id)
+        .maybeSingle();
+
+      if (currentProfile?.organization_id) {
+        const { data: currentMember } = await supabase
+          .from("org_members")
+          .select("role, clerk_org_id, organization_id")
+          .eq("clerk_user_id", clerk_user_id)
+          .eq("organization_id", currentProfile.organization_id)
+          .eq("status", "active")
+          .maybeSingle();
+
+        if (currentMember) {
+          console.log(`✅ sync-login: respecting active org ${currentProfile.organization_id} from profiles`);
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              profile: data,
+              membership: currentMember,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+    }
+
     let membership: { role: string; clerk_org_id: string; organization_id: string } | null = null;
 
     // ── PRIORITY 1: Process invitation_token if present (works for existing users joining new orgs) ──
