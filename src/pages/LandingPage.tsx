@@ -106,17 +106,56 @@ export default function LandingPage() {
                 </a>
               ))}
             </nav>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Button variant="ghost" onClick={() => navigate("/auth")} className="hidden sm:flex">
                 Entrar
               </Button>
               <Button 
                 onClick={() => navigate("/auth")} 
-                className="font-semibold relative overflow-hidden group"
+                size="sm"
+                className="font-semibold relative overflow-hidden group md:h-10 md:px-4"
               >
-                <span className="relative z-10">Começar agora</span>
+                <span className="relative z-10 text-xs sm:text-sm">Começar agora</span>
                 <span className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary bg-200% animate-gradient-x opacity-0 group-hover:opacity-100 transition-opacity" />
               </Button>
+
+              {/* Mobile menu */}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden h-9 w-9">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Abrir menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[80vw] sm:max-w-sm bg-background/95 backdrop-blur-xl">
+                  <nav className="flex flex-col gap-1 mt-10">
+                    {[
+                      { href: "#solucao", label: "Solução" },
+                      { href: "#funcionalidades", label: "Funcionalidades" },
+                      { href: "#planos", label: "Planos" },
+                      { href: "#seguranca", label: "Segurança" },
+                    ].map((item) => (
+                      <SheetClose asChild key={item.href}>
+                        <a 
+                          href={item.href}
+                          className="px-4 py-3 rounded-lg text-base font-medium text-foreground hover:bg-muted transition-colors"
+                        >
+                          {item.label}
+                        </a>
+                      </SheetClose>
+                    ))}
+                    <SheetClose asChild>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => navigate("/auth")}
+                        className="mt-6 h-12 text-base"
+                      >
+                        Entrar
+                      </Button>
+                    </SheetClose>
+                  </nav>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
         </div>
