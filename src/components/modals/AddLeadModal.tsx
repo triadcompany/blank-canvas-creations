@@ -136,8 +136,12 @@ export function AddLeadModal({ open, onOpenChange, onSave }: AddLeadModalProps) 
   useEffect(() => {
     if (open) {
       fetchPipelines();
+      // Pré-seleciona o usuário logado como vendedor padrão (pode ser trocado)
+      if (profile?.id) {
+        setFormData(prev => prev.seller_id ? prev : { ...prev, seller_id: profile.id });
+      }
     }
-  }, [open, fetchPipelines]);
+  }, [open, fetchPipelines, profile?.id]);
 
   useEffect(() => {
     if (selectedPipelineId) {
