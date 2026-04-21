@@ -336,7 +336,7 @@ export function PipelineManagement() {
   const [isPipelineDialogOpen, setIsPipelineDialogOpen] = useState(false);
   const [isStageDialogOpen, setIsStageDialogOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
-  const { orgId } = useAuth();
+  const { orgId, isAdmin } = useAuth();
 
   const handleSavePipeline = async (data: { name: string; description?: string }) => {
     let success = false;
@@ -384,36 +384,40 @@ export function PipelineManagement() {
         <div className="space-y-1">
           <h3 className="text-lg font-semibold">Gerenciar Pipelines</h3>
           <p className="text-sm text-muted-foreground">
-            Configure os funis de vendas da sua organização (máximo 10)
+            {isAdmin
+              ? 'Configure os funis de vendas da sua organização (máximo 10)'
+              : 'Visualize os funis de vendas aos quais você tem acesso'}
           </p>
         </div>
-        
-        <Dialog open={isPipelineDialogOpen} onOpenChange={setIsPipelineDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              onClick={() => setEditingPipeline(null)}
-              disabled={pipelines.length >= 10}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Pipeline
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPipeline ? 'Editar Pipeline' : 'Novo Pipeline'}
-              </DialogTitle>
-            </DialogHeader>
-            <PipelineForm
-              pipeline={editingPipeline}
-              onSave={handleSavePipeline}
-              onCancel={() => {
-                setIsPipelineDialogOpen(false);
-                setEditingPipeline(null);
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+
+        {isAdmin && (
+          <Dialog open={isPipelineDialogOpen} onOpenChange={setIsPipelineDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => setEditingPipeline(null)}
+                disabled={pipelines.length >= 10}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Pipeline
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingPipeline ? 'Editar Pipeline' : 'Novo Pipeline'}
+                </DialogTitle>
+              </DialogHeader>
+              <PipelineForm
+                pipeline={editingPipeline}
+                onSave={handleSavePipeline}
+                onCancel={() => {
+                  setIsPipelineDialogOpen(false);
+                  setEditingPipeline(null);
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Pipeline Selection */}
@@ -455,7 +459,7 @@ export function PipelineManagement() {
                 </SelectContent>
               </Select>
               
-              {selectedPipeline && (
+              {selectedPipeline && isAdmin && (
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
@@ -496,15 +500,17 @@ export function PipelineManagement() {
       {/* Pipeline Management Tabs */}
       {selectedPipeline && (
         <Tabs defaultValue="visualization" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <TabsTrigger value="visualization" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />
               Visualização
             </TabsTrigger>
-            <TabsTrigger value="stages" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Gerenciar Estágios
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="stages" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Gerenciar Estágios
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="visualization" className="space-y-4">
@@ -523,55 +529,57 @@ export function PipelineManagement() {
               <CardContent>
                 <PipelineVisualization 
                   stages={stages} 
-                  onStagePositionUpdate={updateStagePositions}
+                  onStagePositionUpdate={isAdmin ? updateStagePositions : undefined}
                 />
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="stages" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Estágios do Pipeline</CardTitle>
-                  <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button onClick={() => setEditingStage(null)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Novo Estágio
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>
-                          {editingStage ? 'Editar Estágio' : 'Novo Estágio'}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <StageForm
-                        stage={editingStage}
-                        onSave={handleSaveStage}
-                        onCancel={() => {
-                          setIsStageDialogOpen(false);
-                          setEditingStage(null);
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <StagesList
-                  stages={stages}
-                  onEditStage={(stage) => {
-                    setEditingStage(stage);
-                    setIsStageDialogOpen(true);
-                  }}
-                  onDeleteStage={deleteStage}
-                  onReorder={updateStagePositions}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="stages" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Estágios do Pipeline</CardTitle>
+                    <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button onClick={() => setEditingStage(null)}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Novo Estágio
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>
+                            {editingStage ? 'Editar Estágio' : 'Novo Estágio'}
+                          </DialogTitle>
+                        </DialogHeader>
+                        <StageForm
+                          stage={editingStage}
+                          onSave={handleSaveStage}
+                          onCancel={() => {
+                            setIsStageDialogOpen(false);
+                            setEditingStage(null);
+                          }}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <StagesList
+                    stages={stages}
+                    onEditStage={(stage) => {
+                      setEditingStage(stage);
+                      setIsStageDialogOpen(true);
+                    }}
+                    onDeleteStage={deleteStage}
+                    onReorder={updateStagePositions}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       )}
 
@@ -580,19 +588,23 @@ export function PipelineManagement() {
         <Card>
           <CardContent className="text-center py-8">
             <GitBranch className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum Pipeline Criado</h3>
+            <h3 className="text-lg font-semibold mb-2">Nenhum Pipeline Disponível</h3>
             <p className="text-muted-foreground mb-4">
-              Crie seu primeiro pipeline para começar a organizar seu funil de vendas.
+              {isAdmin
+                ? 'Crie seu primeiro pipeline para começar a organizar seu funil de vendas.'
+                : 'Você ainda não tem acesso a nenhum pipeline. Solicite acesso a um administrador.'}
             </p>
-            <Button 
-              onClick={() => {
-                setEditingPipeline(null);
-                setIsPipelineDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Criar Primeiro Pipeline
-            </Button>
+            {isAdmin && (
+              <Button
+                onClick={() => {
+                  setEditingPipeline(null);
+                  setIsPipelineDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Primeiro Pipeline
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
