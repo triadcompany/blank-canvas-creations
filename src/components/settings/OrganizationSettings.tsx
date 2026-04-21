@@ -153,7 +153,7 @@ export function OrganizationSettings() {
         setLogoUrl(row.out_logo_url || null);
       }
 
-      // Sync the name to Clerk (best-effort; do not block the success message)
+      // Sync name + logo to Clerk (best-effort; do not block the success message)
       try {
         const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
         await fetch(`${SUPABASE_URL}/functions/v1/update-clerk-org`, {
@@ -163,6 +163,7 @@ export function OrganizationSettings() {
             clerk_user_id: user.id,
             organization_id: orgId,
             name: name.trim(),
+            logo_url: logoUrl,
           }),
         });
       } catch {
@@ -170,8 +171,10 @@ export function OrganizationSettings() {
       }
 
       toast({ title: 'Organização atualizada' });
-      // Refresh org switcher list (reads from clerk_organizations)
+      // Refresh org switcher list and any org-aware queries
       await queryClient.invalidateQueries();
+      // Notify the org switcher (which manages local state, not React Query)
+      window.dispatchEvent(new CustomEvent('org-details-updated'));
     } catch (err: any) {
       toast({
         title: 'Erro ao salvar',
