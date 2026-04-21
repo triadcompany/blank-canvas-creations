@@ -467,7 +467,7 @@ export default function LandingPage() {
       </section>
 
       {/* Security Section */}
-      <section id="seguranca" className="py-20 md:py-28 relative">
+      <section id="seguranca" className="py-14 sm:py-20 md:py-28 relative">
         {/* fundo global */}
         {/* Animated grid */}
         <div 
@@ -479,25 +479,25 @@ export default function LandingPage() {
         />
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
             <motion.div 
-              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/30 text-primary px-6 py-3 rounded-full text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
+              className="inline-flex items-center gap-2 bg-primary/10 backdrop-blur border border-primary/30 text-primary px-4 py-2 sm:px-6 sm:py-3 rounded-full text-sm sm:text-base md:text-lg font-semibold mb-4 shadow-lg shadow-primary/10"
               initial={{ opacity: 0, scale: 0.8 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
             >
-              <Shield className="w-5 h-5" />
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
               Segurança
             </motion.div>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Seus dados protegidos" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Segurança de nível empresarial para você focar no que importa: vender
             </p>
           </motion.div>
