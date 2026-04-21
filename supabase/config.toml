@@ -158,3 +158,6 @@ verify_jwt = false
 
 [functions.sync-subscription-from-checkout]
 verify_jwt = false
+
+[functions.upload-org-logo]
+verify_jwt = false

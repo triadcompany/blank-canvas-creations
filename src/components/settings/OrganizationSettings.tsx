@@ -86,7 +86,7 @@ export function OrganizationSettings() {
   }, [orgId, toast]);
 
   const handleLogoUpload = async (file: File) => {
-    if (!orgId) return;
+    if (!orgId || !user?.id) return;
     if (file.size > 2 * 1024 * 1024) {
       toast({
         title: 'Arquivo muito grande',
@@ -97,14 +97,19 @@ export function OrganizationSettings() {
     }
     setUploading(true);
     try {
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const path = `${orgId}/logo-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('org-logos')
-        .upload(path, file, { upsert: true, contentType: file.type });
-      if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from('org-logos').getPublicUrl(path);
-      setLogoUrl(pub.publicUrl);
+      const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
+      const fd = new FormData();
+      fd.append('clerk_user_id', user.id);
+      fd.append('file', file);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-org-logo`, {
+        method: 'POST',
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.public_url) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      setLogoUrl(json.public_url);
       toast({ title: 'Logo carregado', description: 'Clique em Salvar para confirmar.' });
     } catch (err: any) {
       toast({
