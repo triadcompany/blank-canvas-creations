@@ -50,19 +50,7 @@ export function WebhookIntegration() {
   };
 
   if (!isAdmin) {
-    return (
-      <Card className="card-gradient border-0">
-        <CardContent className="p-8 text-center">
-          <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-poppins font-bold text-foreground mb-2">
-            Acesso Restrito
-          </h2>
-          <p className="text-muted-foreground font-poppins">
-            Apenas administradores podem configurar integrações.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
   const payloadExample = `{
