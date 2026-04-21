@@ -36,6 +36,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   retryBootstrap: () => Promise<void>;
+  /** Update the active org in memory after switching organizations.
+   *  Avoids a full page reload while keeping orgId / role / clerkOrgId in sync. */
+  switchActiveOrg: (next: { org_id: string; clerk_org_id: string; role: 'admin' | 'seller' }) => void;
   isAdmin: boolean;
   orgId: string | null;
   clerkOrgId: string | null;
