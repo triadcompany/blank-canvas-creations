@@ -39,6 +39,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { UserOrgMenu } from "./UserOrgMenu";
 
 const menuItems = [
   {
@@ -177,55 +178,10 @@ export function CRMSidebarWithAuth() {
         </SidebarGroup>
       </SidebarContent>
       
-      <SidebarFooter className="p-4">
-        <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/settings')}
-            className="w-full justify-start font-poppins text-sm p-2 h-auto"
-          >
-            <div className="flex items-center space-x-2 w-full">
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-primary flex items-center justify-center flex-shrink-0">
-                {profile?.avatar_url ? (
-                  <img 
-                    src={profile.avatar_url} 
-                    alt={userName || profile?.name || ''}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-white font-bold text-xs">
-                    {(userName || profile?.name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2)}
-                  </span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-poppins font-medium text-foreground truncate">
-                  {userName || profile?.name || 'Usuário'}
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground font-poppins capitalize">
-                    {isAdmin ? 'Admin' : 'Vendedor'}
-                  </span>
-                  <span className="text-xs text-muted-foreground">•</span>
-                  <span className={`text-xs font-poppins font-medium flex items-center gap-0.5 ${getPlanColor()}`}>
-                    {subscription?.plan === "scale" && <Crown className="h-3 w-3" />}
-                    {getPlanLabel()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Button>
+      <SidebarFooter className="p-3">
+        <div className="bg-muted/50 rounded-lg p-2 space-y-1">
+          <UserOrgMenu onLogout={handleLogout} />
           <ThemeToggle variant="full" />
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleLogout}
-            className="w-full justify-start font-poppins text-xs"
-          >
-            <LogOut className="h-3 w-3 mr-2" />
-            Sair
-          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
