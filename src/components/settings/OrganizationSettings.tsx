@@ -173,6 +173,8 @@ export function OrganizationSettings() {
       toast({ title: 'Organização atualizada' });
       // Refresh org switcher list and any org-aware queries
       await queryClient.invalidateQueries();
+      // Notify the org switcher (which manages local state, not React Query)
+      window.dispatchEvent(new CustomEvent('org-details-updated'));
     } catch (err: any) {
       toast({
         title: 'Erro ao salvar',
