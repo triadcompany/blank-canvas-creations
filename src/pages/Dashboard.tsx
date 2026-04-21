@@ -18,7 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function Dashboard() {
   const { leads, stages, loading } = useSupabaseLeads();
-  const { userName, orgName, orgId, userEmail, role, isAdmin, refreshProfile } = useAuth();
+  const { userName } = useAuth();
 
   // Calcular métricas reais baseadas nos dados
   const metrics = useMemo(() => {
@@ -127,17 +127,6 @@ export function Dashboard() {
 
   return (
     <div className="p-6 space-y-8">
-      {/* Debug panel (dev only) */}
-      {import.meta.env.DEV && (
-        <details className="bg-muted/50 rounded-lg p-3 text-xs font-mono">
-          <summary className="cursor-pointer text-muted-foreground">🐛 Debug Context</summary>
-          <pre className="mt-2 whitespace-pre-wrap">
-{JSON.stringify({ userName, userEmail, orgId, orgName, role, isAdmin }, null, 2)}
-          </pre>
-          <button onClick={() => refreshProfile()} className="mt-2 text-primary underline">Recarregar contexto</button>
-        </details>
-      )}
-
       {/* Hero Banner - Improved */}
       <div 
         className="relative h-40 rounded-3xl overflow-hidden shadow-xl"
