@@ -276,20 +276,20 @@ export default function LandingPage() {
       </section>
 
       {/* Problems Section */}
-      <section className="py-20 md:py-28 relative">
+      <section className="py-14 sm:py-20 md:py-28 relative">
         {/* sem fundo: o ContinuousBackground global cuida da continuidade */}
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
           <motion.div 
-            className="max-w-3xl mx-auto text-center mb-16"
+            className="max-w-3xl mx-auto text-center mb-10 sm:mb-16"
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 leading-tight">
               <TextRevealOnScroll text="Você conhece esses problemas?" as="span" />
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-base sm:text-lg text-muted-foreground">
               Se sua equipe comercial enfrenta algum desses desafios, o AutoLead foi feito para você.
             </p>
           </motion.div>
