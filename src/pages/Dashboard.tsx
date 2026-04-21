@@ -18,7 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function Dashboard() {
   const { leads, stages, loading } = useSupabaseLeads();
-  const { userName, orgName, orgId, userEmail, role, isAdmin, refreshProfile } = useAuth();
+  const { userName } = useAuth();
 
   // Calcular métricas reais baseadas nos dados
   const metrics = useMemo(() => {
