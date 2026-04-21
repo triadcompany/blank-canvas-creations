@@ -16,10 +16,13 @@ import {
   GitBranch, 
   Target,
   Settings,
-  Eye
+  Eye,
+  Shield
 } from 'lucide-react';
 import { usePipelines, Pipeline, PipelineStage } from '@/hooks/usePipelines';
 import { PipelineVisualization } from '@/components/pipelines/PipelineVisualization';
+import { PipelinePermissionsModal } from '@/components/pipelines/PipelinePermissionsModal';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   DndContext,
   closestCenter,
@@ -332,6 +335,8 @@ export function PipelineManagement() {
   const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
   const [isPipelineDialogOpen, setIsPipelineDialogOpen] = useState(false);
   const [isStageDialogOpen, setIsStageDialogOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const { orgId } = useAuth();
 
   const handleSavePipeline = async (data: { name: string; description?: string }) => {
     let success = false;
@@ -451,7 +456,7 @@ export function PipelineManagement() {
               </Select>
               
               {selectedPipeline && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -462,6 +467,14 @@ export function PipelineManagement() {
                   >
                     <Edit className="h-4 w-4 mr-1" />
                     Editar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPermissionsOpen(true)}
+                  >
+                    <Shield className="h-4 w-4 mr-1" />
+                    Permissões
                   </Button>
                   <Button
                     variant="outline"
@@ -583,6 +596,14 @@ export function PipelineManagement() {
           </CardContent>
         </Card>
       )}
+
+      <PipelinePermissionsModal
+        open={permissionsOpen}
+        onOpenChange={setPermissionsOpen}
+        pipelineId={selectedPipeline?.id ?? null}
+        pipelineName={selectedPipeline?.name ?? ''}
+        orgId={orgId}
+      />
     </div>
   );
 }
