@@ -382,7 +382,7 @@ export function PipelineManagement() {
       {/* Pipeline Selection Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Gerenciar Pipelines</h3>
+          <h3 className="text-lg font-semibold dark:text-primary">Gerenciar Pipelines</h3>
           <p className="text-sm text-muted-foreground">
             {isAdmin
               ? 'Configure os funis de vendas da sua organização (máximo 10)'
@@ -427,7 +427,7 @@ export function PipelineManagement() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Target className="h-5 w-5" />
-                <CardTitle className="text-base">Selecionar Pipeline</CardTitle>
+                <CardTitle className="text-base dark:text-primary">Selecionar Pipeline</CardTitle>
               </div>
               <Badge variant="secondary">{pipelines.length}/10</Badge>
             </div>
@@ -516,7 +516,7 @@ export function PipelineManagement() {
           <TabsContent value="visualization" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 dark:text-primary">
                   <GitBranch className="h-5 w-5" />
                   {selectedPipeline.name}
                 </CardTitle>
@@ -540,7 +540,7 @@ export function PipelineManagement() {
               <Card>
                 <CardHeader>
                   <div className="flex justify-between items-center">
-                    <CardTitle>Estágios do Pipeline</CardTitle>
+                    <CardTitle className="dark:text-primary">Estágios do Pipeline</CardTitle>
                     <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
                       <DialogTrigger asChild>
                         <Button onClick={() => setEditingStage(null)}>
