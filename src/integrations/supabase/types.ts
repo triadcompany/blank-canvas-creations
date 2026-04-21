@@ -8085,6 +8085,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_user_active_org_ids: { Args: never; Returns: string[] }
       get_user_organization_id:
         | { Args: never; Returns: string }
         | { Args: { user_uuid: string }; Returns: string }
