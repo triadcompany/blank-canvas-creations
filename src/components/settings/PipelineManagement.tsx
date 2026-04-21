@@ -540,7 +540,7 @@ export function PipelineManagement() {
               <Card>
                 <CardHeader>
                   <div className="flex justify-between items-center">
-                    <CardTitle>Estágios do Pipeline</CardTitle>
+                    <CardTitle className="dark:text-primary">Estágios do Pipeline</CardTitle>
                     <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
                       <DialogTrigger asChild>
                         <Button onClick={() => setEditingStage(null)}>
