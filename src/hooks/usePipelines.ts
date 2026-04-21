@@ -214,23 +214,19 @@ export function usePipelines() {
 
   // Create stage
   const createStage = async (stageData: { name: string; color: string }) => {
-    if (!selectedPipeline || !profile?.id) {
-      toast({ title: "Erro", description: "Pipeline ou informações do usuário não encontradas", variant: "destructive" });
+    if (!selectedPipeline) {
+      toast({ title: "Erro", description: "Pipeline não selecionado", variant: "destructive" });
       return false;
     }
 
     try {
-      const maxPosition = Math.max(...stages.map(s => s.position), 0);
-      const { error } = await supabase
-        .from('pipeline_stages')
-        .insert({
-          name: stageData.name,
-          color: stageData.color,
-          position: maxPosition + 1,
-          pipeline_id: selectedPipeline.id,
-          created_by: profile.id,
-          is_active: true,
-        });
+      const createdBy = profile?.id || clerkUserId || null;
+      const { error } = await supabase.rpc('create_pipeline_stage', {
+        p_pipeline_id: selectedPipeline.id,
+        p_name: stageData.name,
+        p_color: stageData.color,
+        p_created_by: createdBy,
+      });
 
       if (error) throw error;
       toast({ title: "Sucesso", description: "Estágio criado com sucesso" });
