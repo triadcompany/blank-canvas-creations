@@ -22,6 +22,7 @@ import { useClerk, useUser } from "@clerk/clerk-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "react-router-dom";
+import { resizeAndCropToSquare } from "@/lib/image";
 
 export function UserProfile() {
   const { profile, user, refreshProfile, isAdmin, userName, userEmail } = useAuth();
@@ -138,10 +139,10 @@ export function UserProfile() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "Erro",
-        description: "A imagem deve ter no máximo 2MB.",
+        description: "A imagem deve ter no máximo 5MB.",
         variant: "destructive",
       });
       return;
@@ -149,23 +150,24 @@ export function UserProfile() {
 
     setIsUploadingAvatar(true);
     try {
+      // Resize + center-crop to a 512x512 square JPEG to avoid distortion
+      // and dramatically speed up the upload.
+      const processed = await resizeAndCropToSquare(file, 512, 0.9);
+
       const fd = new FormData();
       fd.append("clerk_user_id", user.id);
-      fd.append("file", file);
+      fd.append("file", processed, "avatar.jpg");
 
-      const { data, error } = await supabase.functions.invoke('update-user-profile', {
-        body: fd,
-      });
+      // Run Supabase + Clerk uploads in parallel for snappier UX
+      const [supaRes] = await Promise.all([
+        supabase.functions.invoke('update-user-profile', { body: fd }),
+        clerkUser?.setProfileImage?.({ file: processed }).catch((e) => {
+          console.warn('Clerk avatar sync failed (non-fatal):', e);
+        }),
+      ]);
 
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-
-      // Also push avatar to Clerk so it shows everywhere
-      try {
-        await clerkUser?.setProfileImage?.({ file });
-      } catch (e) {
-        console.warn('Clerk avatar sync failed (non-fatal):', e);
-      }
+      if (supaRes.error) throw supaRes.error;
+      if ((supaRes.data as any)?.error) throw new Error((supaRes.data as any).error);
 
       await refreshProfile();
       toast({
@@ -223,7 +225,11 @@ export function UserProfile() {
           {/* Avatar Section */}
           <div className="flex items-center gap-6">
             <Avatar className="w-20 h-20 border-2 border-border">
-              <AvatarImage src={clerkUser?.imageUrl || profile?.avatar_url} alt={formData.name || userName} />
+              <AvatarImage
+                src={clerkUser?.imageUrl || profile?.avatar_url}
+                alt={formData.name || userName}
+                className="object-cover"
+              />
               <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
                 {getInitials(formData.name || userName)}
               </AvatarFallback>
