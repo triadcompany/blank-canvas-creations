@@ -162,7 +162,7 @@ export default function LandingPage() {
       </motion.header>
 
       {/* Hero Section */}
-      <section ref={heroRef} className="pt-32 pb-20 md:pt-40 md:pb-32 relative min-h-screen flex items-center">
+      <section ref={heroRef} className="pt-24 pb-14 sm:pt-32 sm:pb-20 md:pt-40 md:pb-32 relative md:min-h-screen flex items-center">
         <AnimatedBackground variant="hero" parallax />
 
         <motion.div 
