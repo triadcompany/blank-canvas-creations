@@ -80,67 +80,38 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       }
 
       if (!existingProfile) {
-        const metadata = clerkUser.unsafeMetadata as Record<string, any> | undefined;
-        const invitedOrgId = metadata?.organization_id as string | undefined;
-        const invitedRole = (metadata?.role as string) || 'seller';
+        // Try to provision via SECURITY DEFINER RPC (bypasses RLS, handles
+        // race conditions, and works for invited members whose profile row
+        // is missing while their org_members entry exists).
+        console.log('🎟️ Attempting profile provisioning via RPC...');
+        const { data: provisioned, error: provisionError } = await supabase.rpc(
+          'provision_profile_from_membership' as any,
+          {
+            p_clerk_user_id: clerkUserId,
+            p_email: email,
+            p_name: name,
+            p_avatar_url: avatarUrl ?? null,
+          } as any,
+        );
 
-        // Determine org ID: from invite metadata OR from existing org_members row
-        let resolvedOrgId = invitedOrgId;
-        let resolvedRole = invitedRole;
-
-        if (!resolvedOrgId) {
-          // Check if user has an org membership (created by sync-login / bootstrap)
-          const { data: membership } = await supabase
-            .from('org_members')
-            .select('organization_id, role')
-            .eq('clerk_user_id', clerkUserId)
-            .eq('status', 'active')
-            .limit(1)
-            .maybeSingle();
-
-          if (membership?.organization_id) {
-            console.log('🔗 Found org_members membership, auto-provisioning profile...');
-            resolvedOrgId = membership.organization_id;
-            resolvedRole = membership.role || 'admin';
-          }
+        if (provisionError) {
+          console.error('❌ provision_profile_from_membership failed:', provisionError);
         }
 
-        if (resolvedOrgId) {
-          console.log('🎟️ Auto-provisioning profile for org:', resolvedOrgId);
-          const { data: newProfile, error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              clerk_user_id: clerkUserId,
-              email,
-              name,
-              avatar_url: avatarUrl,
-              organization_id: resolvedOrgId,
-              onboarding_completed: true,
-            })
-            .select()
-            .single();
+        if (provisioned) {
+          const newProfile = provisioned as Profile;
+          console.log('✅ Profile provisioned via RPC:', newProfile.id);
+          setProfile(newProfile);
 
-          if (insertError) {
-            console.error('❌ Profile auto-provision failed:', insertError);
-            // Don't throw - fall through to onboarding
-          } else {
-            // Insert role - ignore conflict since unique is on (user_id, organization_id) not clerk_user_id
-            const { error: roleErr } = await supabase
-              .from('user_roles')
-              .insert({
-                clerk_user_id: clerkUserId,
-                organization_id: resolvedOrgId,
-                role: resolvedRole === 'admin' ? 'admin' : 'seller',
-              });
-
-            if (roleErr) {
-              console.warn('⚠️ user_roles insert warning (non-fatal):', roleErr.message);
-            }
-
-            setProfile(newProfile as Profile);
-            setRole(resolvedRole === 'admin' ? 'admin' : 'seller');
-            return newProfile as Profile;
-          }
+          // Resolve role for this org
+          const { data: roleRow } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('clerk_user_id', clerkUserId)
+            .eq('organization_id', newProfile.organization_id)
+            .maybeSingle();
+          setRole((roleRow?.role as 'admin' | 'seller') || 'seller');
+          return newProfile;
         }
 
         console.log('📝 No profile found and no membership - needs onboarding');
