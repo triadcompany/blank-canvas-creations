@@ -588,19 +588,23 @@ export function PipelineManagement() {
         <Card>
           <CardContent className="text-center py-8">
             <GitBranch className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum Pipeline Criado</h3>
+            <h3 className="text-lg font-semibold mb-2">Nenhum Pipeline Disponível</h3>
             <p className="text-muted-foreground mb-4">
-              Crie seu primeiro pipeline para começar a organizar seu funil de vendas.
+              {isAdmin
+                ? 'Crie seu primeiro pipeline para começar a organizar seu funil de vendas.'
+                : 'Você ainda não tem acesso a nenhum pipeline. Solicite acesso a um administrador.'}
             </p>
-            <Button 
-              onClick={() => {
-                setEditingPipeline(null);
-                setIsPipelineDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Criar Primeiro Pipeline
-            </Button>
+            {isAdmin && (
+              <Button
+                onClick={() => {
+                  setEditingPipeline(null);
+                  setIsPipelineDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Primeiro Pipeline
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
