@@ -373,6 +373,33 @@ export function Auth() {
             </div>
           </div>
 
+          {/* Forgot password — only on sign-in mode */}
+          {!isSignUp && !inviteData && (
+            <div className="text-center -mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Trigger Clerk's native "forgot password" flow
+                  const link = document.querySelector<HTMLAnchorElement>(
+                    'a[data-localization-key="signIn.start.actionLink__use_email"], button[data-localization-key="formFieldAction__forgotPassword"], a[href*="forgot"]'
+                  );
+                  if (link) {
+                    link.click();
+                  } else {
+                    // Fallback: focus password field and click "forgot password" trigger
+                    const forgotBtn = document.querySelector<HTMLButtonElement>(
+                      '.cl-formFieldAction, [class*="forgotPassword" i]'
+                    );
+                    forgotBtn?.click();
+                  }
+                }}
+                className="text-sm font-poppins text-white/60 hover:text-[hsl(20,100%,70%)] underline-offset-4 hover:underline transition-colors"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
+          )}
+
           {/* Toggle */}
           {!inviteData && (
             <div className="text-center">
