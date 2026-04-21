@@ -500,15 +500,17 @@ export function PipelineManagement() {
       {/* Pipeline Management Tabs */}
       {selectedPipeline && (
         <Tabs defaultValue="visualization" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <TabsTrigger value="visualization" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />
               Visualização
             </TabsTrigger>
-            <TabsTrigger value="stages" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Gerenciar Estágios
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="stages" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Gerenciar Estágios
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="visualization" className="space-y-4">
@@ -527,55 +529,57 @@ export function PipelineManagement() {
               <CardContent>
                 <PipelineVisualization 
                   stages={stages} 
-                  onStagePositionUpdate={updateStagePositions}
+                  onStagePositionUpdate={isAdmin ? updateStagePositions : undefined}
                 />
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="stages" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Estágios do Pipeline</CardTitle>
-                  <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button onClick={() => setEditingStage(null)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Novo Estágio
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>
-                          {editingStage ? 'Editar Estágio' : 'Novo Estágio'}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <StageForm
-                        stage={editingStage}
-                        onSave={handleSaveStage}
-                        onCancel={() => {
-                          setIsStageDialogOpen(false);
-                          setEditingStage(null);
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <StagesList
-                  stages={stages}
-                  onEditStage={(stage) => {
-                    setEditingStage(stage);
-                    setIsStageDialogOpen(true);
-                  }}
-                  onDeleteStage={deleteStage}
-                  onReorder={updateStagePositions}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="stages" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Estágios do Pipeline</CardTitle>
+                    <Dialog open={isStageDialogOpen} onOpenChange={setIsStageDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button onClick={() => setEditingStage(null)}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Novo Estágio
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>
+                            {editingStage ? 'Editar Estágio' : 'Novo Estágio'}
+                          </DialogTitle>
+                        </DialogHeader>
+                        <StageForm
+                          stage={editingStage}
+                          onSave={handleSaveStage}
+                          onCancel={() => {
+                            setIsStageDialogOpen(false);
+                            setEditingStage(null);
+                          }}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <StagesList
+                    stages={stages}
+                    onEditStage={(stage) => {
+                      setEditingStage(stage);
+                      setIsStageDialogOpen(true);
+                    }}
+                    onDeleteStage={deleteStage}
+                    onReorder={updateStagePositions}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       )}
 
