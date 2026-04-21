@@ -310,6 +310,7 @@ export function KanbanBoard({ columns, onMoveLead, onEditLead }: KanbanBoardProp
             </Card>
           </motion.div>
         ))}
+        </div>
       </div>
     </div>
   );
