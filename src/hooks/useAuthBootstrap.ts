@@ -198,11 +198,18 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       .finally(() => setLoading(false));
   }, [user, isLoaded, bootstrap]);
 
+  const setActiveOrg = useCallback((next: OrgInfo) => {
+    setOrg(next);
+    setNeedsOnboarding(false);
+    setError(null);
+  }, []);
+
   return useMemo(() => ({
     org,
     loading: !isLoaded || loading,
     error,
     needsOnboarding,
     retryBootstrap,
-  }), [org, isLoaded, loading, error, needsOnboarding, retryBootstrap]);
+    setActiveOrg,
+  }), [org, isLoaded, loading, error, needsOnboarding, retryBootstrap, setActiveOrg]);
 }
