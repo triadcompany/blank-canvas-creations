@@ -10,7 +10,6 @@ import {
   Calendar,
   DollarSign,
   ArrowUpRight,
-  Sparkles
 } from "lucide-react";
 import heroImage from "@/assets/crm-hero.jpg";
 import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
@@ -125,7 +124,6 @@ export function Dashboard() {
   }, [leads, stages, loading]);
 
   const displayName = userName || 'Usuário';
-  const displayOrg = orgName || 'AutoLead CRM';
 
   return (
     <div className="p-6 space-y-8">
@@ -152,12 +150,6 @@ export function Dashboard() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/95 via-primary/80 to-authority/60"></div>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent"></div>
         <div className="relative z-10 p-8 h-full flex flex-col justify-center">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="h-5 w-5 text-white/80" />
-            <span className="text-white/80 font-medium text-sm uppercase tracking-wider">
-              {displayOrg}
-            </span>
-          </div>
           <h1 className="text-3xl font-poppins font-bold text-white mb-1">
             Olá, {displayName.split(' ')[0]}! 👋
           </h1>
