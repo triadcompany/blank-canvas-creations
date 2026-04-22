@@ -8,8 +8,15 @@ export function UpdatePrompt() {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
+    let intervalId: number | undefined;
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then((reg) => {
+        if (reg.waiting) {
+          setRegistration(reg);
+          setShowPrompt(true);
+        }
+
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (newWorker) {
@@ -23,11 +30,17 @@ export function UpdatePrompt() {
         });
 
         // Check for updates every hour
-        setInterval(() => {
+        intervalId = window.setInterval(() => {
           reg.update();
         }, 60 * 60 * 1000);
       });
     }
+
+    return () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
   }, []);
 
   const handleUpdate = () => {

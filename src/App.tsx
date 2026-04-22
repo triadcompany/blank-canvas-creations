@@ -51,9 +51,23 @@ const App = () => {
   useEffect(() => {
     // Register service worker for PWA — only in production
     if ('serviceWorker' in navigator && import.meta.env.PROD) {
+      let hasReloadedForNewWorker = false;
+
       navigator.serviceWorker
-        .register('/sw.js')
-        .then(() => console.log('Service Worker registered'))
+        .register('/sw.js', { updateViaCache: 'none' })
+        .then((registration) => {
+          console.log('Service Worker registered');
+
+          registration.update().catch((err) => {
+            console.log('Service Worker update check failed:', err);
+          });
+
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (hasReloadedForNewWorker) return;
+            hasReloadedForNewWorker = true;
+            window.location.reload();
+          });
+        })
         .catch((err) => console.log('Service Worker registration failed:', err));
     } else if ('serviceWorker' in navigator && !import.meta.env.PROD) {
       navigator.serviceWorker.getRegistrations().then((registrations) => {
