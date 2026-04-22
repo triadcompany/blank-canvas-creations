@@ -887,8 +887,8 @@ export function EvolutionIntegration() {
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">1</div>
             <div>
-              <p className="font-medium">Defina o nome da instância</p>
-              <p className="text-muted-foreground">Um identificador único para sua organização (ex: minha-empresa)</p>
+              <p className="font-medium">Instância automática por organização</p>
+              <p className="text-muted-foreground">Cada organização recebe sua própria instância isolada (autolead_&lt;org&gt;). O mesmo número não pode ser conectado em duas organizações ao mesmo tempo.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
