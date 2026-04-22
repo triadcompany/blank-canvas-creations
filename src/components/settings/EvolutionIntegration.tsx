@@ -652,7 +652,7 @@ export function EvolutionIntegration() {
           )}
 
           {/* ── DISCONNECTED STATE ── */}
-          {isDisconnected && (
+          {isDisconnected && instanceFound && (
             <div className="space-y-4">
               {hasExistingInstance ? (
                 <>
