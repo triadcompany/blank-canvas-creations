@@ -476,6 +476,8 @@ export function EvolutionIntegration() {
       setActionLoading(false);
     }
   };
+
+  const handleSendTest = async () => {
     if (!testPhone.trim()) { toast({ title: "Erro", description: "Informe o número", variant: "destructive" }); return; }
     setActionLoading(true);
     try {
