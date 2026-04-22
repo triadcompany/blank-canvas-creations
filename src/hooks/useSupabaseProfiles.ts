@@ -97,7 +97,7 @@ export function useSupabaseProfiles() {
 
   useEffect(() => {
     fetchProfiles();
-  }, [isAdmin, user, currentProfile?.organization_id, authOrgId]);
+  }, [isAdmin, user, authOrgId, currentProfile?.organization_id]);
 
   const updateProfile = async (profileId: string, updates: Partial<Profile>) => {
     try {
