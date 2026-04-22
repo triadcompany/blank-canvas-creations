@@ -70,13 +70,20 @@ serve(async (req) => {
     if (!organization_id) return respond({ ok: false, error: "organization_id obrigatório" }, 400);
     if (!clerkUserId) return respond({ ok: false, error: "x-clerk-user-id header ausente" }, 401);
 
-    // Validar admin da org
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("clerk_user_id", clerkUserId)
-      .eq("organization_id", organization_id)
-      .maybeSingle();
+    // Validar admin da org + buscar nome da org para gerar instance_name legível
+    const [{ data: profile }, { data: org }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("clerk_user_id", clerkUserId)
+        .eq("organization_id", organization_id)
+        .maybeSingle(),
+      supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", organization_id)
+        .maybeSingle(),
+    ]);
 
     if (!profile) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
 
