@@ -602,6 +602,38 @@ export function EvolutionIntegration() {
                     <QrCodeIcon className="h-4 w-4" />
                     Criar outra instância
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionLoading}
+                        className="font-poppins gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Limpar configuração
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Limpar configuração do WhatsApp?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Isso vai remover completamente a instância configurada para esta organização. A tela voltará ao estado inicial e você poderá criar uma nova instância do zero.
+                          <br /><br />
+                          <strong>Esta ação não pode ser desfeita.</strong>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleClearConfiguration}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Sim, limpar tudo
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </AlertDescription>
             </Alert>
