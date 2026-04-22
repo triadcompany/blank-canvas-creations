@@ -389,3 +389,34 @@ serve(async (req) => {
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 });
+
+// Fetch profile picture from Evolution API and save to conversations table
+async function fetchAndStoreProfilePicture(
+  supabase: any,
+  instanceName: string,
+  remoteJid: string,
+  conversationId: string,
+): Promise<void> {
+  if (!EVOLUTION_BASE_URL || !EVOLUTION_API_KEY) return;
+  try {
+    const res = await fetch(`${EVOLUTION_BASE_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number: remoteJid }),
+    });
+    if (!res.ok) {
+      console.warn(`[wa-webhook-v2] fetchProfilePictureUrl failed: ${res.status}`);
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
+    const updateData: Record<string, unknown> = {
+      profile_picture_updated_at: new Date().toISOString(),
+    };
+    if (pictureUrl) updateData.profile_picture_url = pictureUrl;
+    await supabase.from("conversations").update(updateData).eq("id", conversationId);
+    console.log(`[wa-webhook-v2] profile picture ${pictureUrl ? "updated" : "checked"} for conv ${conversationId}`);
+  } catch (e) {
+    console.error("[wa-webhook-v2] fetchAndStoreProfilePicture error:", e);
+  }
+}
