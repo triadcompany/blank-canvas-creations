@@ -817,23 +817,15 @@ export function EvolutionIntegration() {
                 </>
               ) : (
                 <>
-                  <div className="space-y-2">
-                    <Label className="font-poppins font-medium">Nome da instância</Label>
-                    <Input
-                      value={instanceName}
-                      onChange={(e) => {
-                        const val = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
-                        setInstanceName(val);
-                        if (val) validateInstanceName(val);
-                      }}
-                      placeholder="Ex: nome da minha empresa"
-                      className="font-mono"
-                      maxLength={40}
-                    />
-                    {instanceNameError && <p className="text-xs text-destructive">{instanceNameError}</p>}
-                    <p className="text-xs text-muted-foreground">Identificador único, apenas minúsculas, números, - e _ (3-40 caracteres)</p>
-                  </div>
-                  <Button onClick={() => handleConnect()} disabled={actionLoading || !instanceName.trim()} className="btn-gradient text-white font-poppins gap-2">
+                  <Alert>
+                    <MessageSquare className="h-4 w-4" />
+                    <AlertDescription>
+                      A instância do WhatsApp será criada automaticamente para esta organização.
+                      Cada organização tem sua própria instância isolada — o mesmo número não pode
+                      estar conectado em duas organizações ao mesmo tempo.
+                    </AlertDescription>
+                  </Alert>
+                  <Button onClick={() => handleConnect()} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
                     {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
                     Gerar QR e Conectar
                   </Button>
