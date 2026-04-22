@@ -19,10 +19,10 @@ const respond = (body: Record<string, unknown>, status = 200) =>
  * Steps:
  *  1. Logout the WhatsApp session (so the phone forgets this device).
  *  2. Delete the instance from Evolution (frees the instance_name globally).
- *  3. Wipe the row in `whatsapp_integrations` for this org.
+ *  3. Delete the row in `whatsapp_integrations` for this org.
  *
  * Even if Evolution returns 404 (instance already gone) or any non-fatal error,
- * we still wipe the local row so the UI returns to a clean state.
+ * we still remove the local row so the UI returns to a clean state.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
