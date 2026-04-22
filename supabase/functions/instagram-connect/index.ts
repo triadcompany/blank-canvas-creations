@@ -39,23 +39,27 @@ serve(async (req) => {
     }
 
     const { profileId, organizationId: bodyOrgId } = body;
+    const headerClerkUserId = req.headers.get('x-clerk-user-id');
 
     console.log("[instagram-connect] start", {
       method: req.method,
       action: body.action,
       profileId,
       bodyOrgId,
+      headerClerkUserId,
     });
 
     // Auth: identify user via profileId from body (Clerk-based auth)
+    // Org membership is validated against `org_members` (multi-org safe).
     let userId: string | null = null;
     let organizationId: string | null = null;
+    let resolvedClerkUserId: string | null = headerClerkUserId;
 
     if (profileId) {
-      // Verify profile exists and get org
+      // Verify profile exists; we use it only to resolve clerk_user_id and a userId for downstream code.
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
-        .select('id, user_id, organization_id')
+        .select('id, user_id, clerk_user_id')
         .eq('id', profileId)
         .single();
 
@@ -68,7 +72,7 @@ serve(async (req) => {
       }
 
       userId = profile.user_id || profile.id;
-      organizationId = profile.organization_id;
+      if (!resolvedClerkUserId) resolvedClerkUserId = profile.clerk_user_id || null;
     }
 
     // Fallback: try Supabase Auth header (for non-Clerk users)
@@ -79,13 +83,39 @@ serve(async (req) => {
         const { data: authData } = await supabaseAdmin.auth.getUser(token);
         if (authData?.user) {
           userId = authData.user.id;
-          const { data: profile } = await supabaseAdmin
-            .from('profiles')
-            .select('organization_id')
-            .eq('user_id', userId)
-            .single();
-          organizationId = profile?.organization_id || null;
         }
+      }
+    }
+
+    // Resolve organizationId via org_members — REQUIRES bodyOrgId so the user
+    // can pick the active org (multi-org accounts). Falls back to the user's
+    // first active membership when no body org is supplied.
+    if (resolvedClerkUserId) {
+      if (bodyOrgId) {
+        const { data: member } = await supabaseAdmin
+          .from('org_members')
+          .select('organization_id')
+          .eq('clerk_user_id', resolvedClerkUserId)
+          .eq('organization_id', bodyOrgId)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (!member) {
+          console.error("[instagram-connect] User not member of requested org", { resolvedClerkUserId, bodyOrgId });
+          return new Response(JSON.stringify({ error: 'Usuário não pertence à organização', code: 'ORG_MISMATCH' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        organizationId = member.organization_id;
+      } else {
+        const { data: anyMember } = await supabaseAdmin
+          .from('org_members')
+          .select('organization_id')
+          .eq('clerk_user_id', resolvedClerkUserId)
+          .eq('status', 'active')
+          .limit(1)
+          .maybeSingle();
+        organizationId = anyMember?.organization_id || null;
       }
     }
 

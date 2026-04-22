@@ -73,31 +73,36 @@ serve(async (req: Request) => {
       return json({ error: "x-clerk-user-id ausente" }, 401);
     }
 
-    // Resolver org alvo: header > body > org do solicitante
+    // Resolver org alvo: header > body > primeira membership ativa do solicitante (via org_members).
+    // NÃO usar profiles.organization_id — ele reflete apenas a última org ativa do usuário e
+    // quebra para usuários que pertencem a múltiplas organizações.
     let targetOrgId = organizationId || orgIdHeader || null;
     if (!targetOrgId) {
-      const { data: requester } = await supabase
-        .from("profiles")
+      const { data: requesterMember } = await supabase
+        .from("org_members")
         .select("organization_id")
         .eq("clerk_user_id", requesterClerkUserId)
+        .eq("status", "active")
+        .limit(1)
         .maybeSingle();
-      targetOrgId = requester?.organization_id ?? null;
+      targetOrgId = requesterMember?.organization_id ?? null;
     }
     if (!targetOrgId) return json({ error: "organization_id não encontrado" }, 400);
 
-    // Validar que solicitante é admin da org alvo
-    const { data: requesterRole } = await supabase
-      .from("user_roles")
-      .select("role")
+    // Validar que solicitante é admin da org alvo via org_members (fonte de verdade multi-org).
+    const { data: requesterMember } = await supabase
+      .from("org_members")
+      .select("role, status")
       .eq("clerk_user_id", requesterClerkUserId)
       .eq("organization_id", targetOrgId)
+      .eq("status", "active")
       .maybeSingle();
 
-    if (!requesterRole || requesterRole.role !== "admin") {
+    if (!requesterMember || requesterMember.role !== "admin") {
       return json({ error: "Apenas administradores podem remover usuários" }, 403);
     }
 
-    // Buscar perfil alvo (precisa ser da mesma org)
+    // Buscar perfil alvo
     const { data: target, error: targetErr } = await supabase
       .from("profiles")
       .select("id, clerk_user_id, organization_id")
@@ -105,7 +110,20 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (targetErr || !target) return json({ error: "Perfil não encontrado" }, 404);
-    if (target.organization_id !== targetOrgId) {
+
+    // Validar que o alvo pertence à org via org_members (NÃO via profiles.organization_id,
+    // pois ele só reflete a última org ativa do usuário em multi-org).
+    const targetClerkIdForCheck = target.clerk_user_id || clerkUserId;
+    if (!targetClerkIdForCheck) {
+      return json({ error: "clerk_user_id do alvo não encontrado" }, 400);
+    }
+    const { data: targetMember } = await supabase
+      .from("org_members")
+      .select("organization_id")
+      .eq("clerk_user_id", targetClerkIdForCheck)
+      .eq("organization_id", targetOrgId)
+      .maybeSingle();
+    if (!targetMember) {
       return json({ error: "Perfil não pertence à organização atual" }, 403);
     }
 
