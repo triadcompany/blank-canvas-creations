@@ -8190,6 +8190,14 @@ export type Database = {
         }[]
       }
       get_org_profiles_with_roles: { Args: { p_org_id: string }; Returns: Json }
+      get_org_sales_stage_ids: {
+        Args: { p_org_id: string }
+        Returns: {
+          pipeline_id: string
+          stage_id: string
+          stage_name: string
+        }[]
+      }
       get_organization_details: {
         Args: { p_clerk_user_id: string; p_organization_id?: string }
         Returns: {
