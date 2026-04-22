@@ -101,10 +101,10 @@ export function useSupabaseProfiles() {
 
   const updateProfile = async (profileId: string, updates: Partial<Profile>) => {
     try {
-      // Separate role from other updates
       const { role, ...profileUpdates } = updates;
+      const targetProfile = profiles.find((p) => p.id === profileId);
 
-      // Update profile (without role)
+      // 1) Atualizar campos de perfil (nome, avatar, etc.) — não inclui role
       if (Object.keys(profileUpdates).length > 0) {
         const { error: profileError } = await supabase
           .from('profiles')
@@ -114,36 +114,50 @@ export function useSupabaseProfiles() {
         if (profileError) throw profileError;
       }
 
-      // Update role in user_roles table if provided
-      if (role !== undefined) {
-        const profile = profiles.find(p => p.id === profileId);
-        if (profile?.user_id) {
-          const { error: roleError } = await supabase
-            .from('user_roles')
-            .update({ role })
-            .eq('user_id', profile.user_id);
+      // 2) Atualizar papel via edge function (RPC valida admin + sync Clerk)
+      if (role !== undefined && targetProfile) {
+        const targetClerkUserId = targetProfile.clerk_user_id || targetProfile.user_id;
+        const callerClerkUserId = (user as any)?.id;
+        const organizationId = authOrgId || currentProfile?.organization_id;
 
-          if (roleError) throw roleError;
+        if (!callerClerkUserId || !organizationId || !targetClerkUserId) {
+          throw new Error('Contexto insuficiente para atualizar papel');
         }
+
+        const { data, error: fnError } = await supabase.functions.invoke(
+          'update-user-role',
+          {
+            body: {
+              callerClerkUserId,
+              targetClerkUserId,
+              organizationId,
+              newRole: role,
+            },
+          },
+        );
+
+        if (fnError) throw new Error(fnError.message || 'Erro ao atualizar papel');
+        if (data && (data as any).error) throw new Error((data as any).error);
       }
 
-      setProfiles(prev => 
-        prev.map(profile => 
-          profile.id === profileId 
+      setProfiles((prev) =>
+        prev.map((profile) =>
+          profile.id === profileId
             ? { ...profile, ...updates }
-            : profile
-        )
+            : profile,
+        ),
       );
-      
+
       toast({
-        title: "Sucesso",
-        description: "Usuário atualizado com sucesso",
+        title: 'Sucesso',
+        description: 'Usuário atualizado com sucesso',
       });
     } catch (error: any) {
+      console.error('Erro ao atualizar usuário:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao atualizar usuário",
-        variant: "destructive",
+        title: 'Erro',
+        description: error?.message || 'Erro ao atualizar usuário',
+        variant: 'destructive',
       });
     }
   };

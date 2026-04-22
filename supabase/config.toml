@@ -168,3 +168,6 @@ verify_jwt = false
 [functions.update-user-profile]
 verify_jwt = false
 
+[functions.update-user-role]
+verify_jwt = false
+
