@@ -387,20 +387,44 @@ export function EvolutionIntegration() {
     }
   };
 
-  const handleSelectInstance = (name: string) => {
-    setInstanceName(name);
-    // Also update the integration's instance_name in DB if we have one
-    if (integration?.id) {
-      supabase
+  const handleCreateNewInstance = async () => {
+    if (!integration?.id) {
+      setIntegration(null);
+      setInstanceName("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await supabase
         .from("whatsapp_integrations")
-        .update({ instance_name: name, updated_at: new Date().toISOString() } as any)
-        .eq("id", integration.id)
-        .then(() => {
-          setIntegration((prev) => prev ? { ...prev, instance_name: name } : prev);
-          toast({ title: "Instância atualizada", description: `Instância alterada para "${name}". Clique em Reconectar.` });
-          // Re-check live status
-          fetchIntegration(true);
-        });
+        .update({
+          status: "disconnected",
+          is_active: false,
+          qr_code_data: null,
+          connected_at: null,
+          phone_number: null,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("id", integration.id);
+
+      setIntegration(null);
+      setInstanceName("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      toast({
+        title: "Pronto para criar nova instância",
+        description: "Digite um nome novo e clique em Gerar QR e Conectar.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
     }
   };
 
