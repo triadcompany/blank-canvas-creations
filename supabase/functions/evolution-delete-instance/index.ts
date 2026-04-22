@@ -39,7 +39,10 @@ serve(async (req) => {
     const { organization_id } = await req.json();
 
     if (!organization_id) {
-      return respond({ ok: false, message: "organization_id obrigatório" }, 400);
+      return respond(
+        { ok: false, message: "organization_id obrigatório" },
+        400,
+      );
     }
 
     console.log(`[evolution-delete] === START === org=${organization_id}`);
@@ -64,8 +67,15 @@ serve(async (req) => {
           headers: { apikey: evolutionApiKey },
         });
         const text = await r.text();
-        console.log(`[evolution-delete] Logout: HTTP ${r.status} | ${text.substring(0, 200)}`);
-        evolutionResults.logout = { status: r.status, body: text.substring(0, 200) };
+        console.log(
+          `[evolution-delete] Logout: HTTP ${r.status} | ${
+            text.substring(0, 200)
+          }`,
+        );
+        evolutionResults.logout = {
+          status: r.status,
+          body: text.substring(0, 200),
+        };
       } catch (err) {
         console.error("[evolution-delete] Logout error:", err);
         evolutionResults.logout = { error: String(err) };
@@ -80,14 +90,25 @@ serve(async (req) => {
           headers: { apikey: evolutionApiKey },
         });
         const text = await r.text();
-        console.log(`[evolution-delete] Delete: HTTP ${r.status} | ${text.substring(0, 200)}`);
-        evolutionResults.delete = { status: r.status, body: text.substring(0, 200) };
+        console.log(
+          `[evolution-delete] Delete: HTTP ${r.status} | ${
+            text.substring(0, 200)
+          }`,
+        );
+        evolutionResults.delete = {
+          status: r.status,
+          body: text.substring(0, 200),
+        };
       } catch (err) {
         console.error("[evolution-delete] Delete error:", err);
         evolutionResults.delete = { error: String(err) };
       }
     } else {
-      console.log(`[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${!!evolutionApiKey && !!evolutionBaseUrl})`);
+      console.log(
+        `[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${
+          !!evolutionApiKey && !!evolutionBaseUrl
+        })`,
+      );
     }
 
     // ── Step 3: remove local row (always, even if Evolution failed) ──
@@ -101,7 +122,8 @@ serve(async (req) => {
         console.error("[evolution-delete] DB delete error:", deleteErr);
         return respond({
           ok: false,
-          message: `Instância removida da Evolution mas falhou ao remover integração local: ${deleteErr.message}`,
+          message:
+            `Instância removida da Evolution mas falhou ao remover integração local: ${deleteErr.message}`,
           evolution: evolutionResults,
         }, 500);
       }
