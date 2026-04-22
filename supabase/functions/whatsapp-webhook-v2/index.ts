@@ -239,7 +239,7 @@ async function handleMessagesUpsert(
           // Never use participant pushName as the group name.
           update.is_group = true;
           const groupSubject =
-            (typeof body?.data?.subject === "string" && body.data.subject) ||
+            (typeof payload?.data?.subject === "string" && payload.data.subject) ||
             (typeof msg?.subject === "string" && msg.subject) ||
             null;
           if (groupSubject) {
@@ -248,7 +248,8 @@ async function handleMessagesUpsert(
             update.contact_name_source = "whatsapp_group";
           } else if (
             !existingConv.contact_name ||
-            existingConv.contact_name_source === "whatsapp"
+            existingConv.contact_name_source === "whatsapp" ||
+            existingConv.contact_name_source === "group_fallback"
           ) {
             const fallback = `Grupo (${phone.slice(-4)})`;
             update.contact_name = fallback;
@@ -263,6 +264,16 @@ async function handleMessagesUpsert(
           }
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
+
+        // If we still don't have a real group subject, fetch it from Evolution (background).
+        if (
+          isGroup &&
+          existingConv.contact_name_source !== "whatsapp_group" &&
+          update.contact_name_source !== "whatsapp_group"
+        ) {
+          refreshGroupNameAsync(supabase, instanceName, remoteJid, existingConv.id)
+            .catch((e) => console.error("[wa-webhook-v2] group refresh error:", e));
+        }
 
         // Refresh profile picture (only for individual conversations)
         if (!isFromMe && !isGroup) {
