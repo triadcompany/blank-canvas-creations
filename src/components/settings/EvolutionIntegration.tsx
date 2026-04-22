@@ -441,19 +441,16 @@ export function EvolutionIntegration() {
       setPolling(false);
     }
     try {
-      if (integration?.id) {
-        await supabase
-          .from("whatsapp_integrations")
-          .update({
-            status: "disconnected",
-            is_active: false,
-            instance_name: null,
-            qr_code_data: null,
-            connected_at: null,
-            phone_number: null,
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq("id", integration.id);
+      // Call the edge function that fully tears down the instance:
+      // logout from WhatsApp, delete the Evolution instance, and wipe the DB row.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-delete-instance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || "Erro ao limpar configuração");
       }
 
       setIntegration(null);
@@ -468,7 +465,7 @@ export function EvolutionIntegration() {
 
       toast({
         title: "Configuração limpa",
-        description: "Você pode criar uma nova instância agora.",
+        description: "WhatsApp desconectado e instância removida. Você pode criar uma nova agora.",
       });
     } catch (err: any) {
       toast({ title: "Erro ao limpar", description: err.message, variant: "destructive" });
