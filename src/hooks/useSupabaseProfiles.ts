@@ -37,7 +37,11 @@ export function useSupabaseProfiles() {
   const { toast } = useToast();
 
   const fetchProfiles = async () => {
-    const organizationId = currentProfile?.organization_id || authOrgId;
+    // Always prefer the ACTIVE org from AuthContext (kept in sync on org switch).
+    // profiles.organization_id can be stale right after switching organizations,
+    // which would cause this hook to load users from the WRONG org and display
+    // incorrect role badges.
+    const organizationId = authOrgId || currentProfile?.organization_id;
 
     // Se não tiver organization_id, não pode listar ninguém
     if (!organizationId) {
