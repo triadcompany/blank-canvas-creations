@@ -1,936 +1,464 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/clerk-react";
 import {
-  MessageSquare, Wifi, WifiOff, QrCode as QrCodeIcon, Send,
-  Loader2, CheckCircle, XCircle, RefreshCw, ShieldAlert, Bug, AlertTriangle,
+  MessageSquare, Wifi, WifiOff, Loader2, CheckCircle,
+  RefreshCw, Smartphone, ShieldAlert,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
 import QRCodeLib from "qrcode";
 
-const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
-
-interface Integration {
+interface Connection {
   id: string;
   organization_id: string;
-  provider: string;
   instance_name: string;
-  status: string;
-  is_active: boolean;
   phone_number: string | null;
-  qr_code_data: string | null;
+  status: "disconnected" | "connecting" | "connected" | "error" | string;
+  qr_code: string | null;
   connected_at: string | null;
+  last_connected_at: string | null;
+  last_disconnected_at: string | null;
+  mirror_enabled: boolean;
+  mirror_enabled_at: string | null;
 }
 
-interface DebugInfo {
-  instance_name: string;
-  endpoint: string;
-  http_status: number;
-  response: Record<string, unknown>;
-  timestamp: string;
-  live_status?: string | null;
-  live_error?: string | null;
-}
-
-/* ── QR helpers ── */
-function QrFromText({ text }: { text: string }) {
+/* ── QR rendering ── */
+function QrDisplay({ value }: { value: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDataUrl = value.startsWith("data:image");
+
   useEffect(() => {
-    if (canvasRef.current && text) {
-      QRCodeLib.toCanvas(canvasRef.current, text, { width: 288, margin: 2 }, (err) => {
-        if (err) console.error("[QrFromText] Error:", err);
+    if (!isDataUrl && canvasRef.current && value) {
+      QRCodeLib.toCanvas(canvasRef.current, value, { width: 288, margin: 2 }).catch((err) => {
+        console.error("[QR] render error:", err);
       });
     }
-  }, [text]);
-  return <canvas ref={canvasRef} className="mx-auto" />;
+  }, [value, isDataUrl]);
+
+  if (isDataUrl) {
+    return <img src={value} alt="QR Code WhatsApp" className="w-72 h-72 rounded-lg" />;
+  }
+  return <canvas ref={canvasRef} className="rounded-lg" />;
 }
 
-function QrRenderer({ qrData, qrFormat }: { qrData: string; qrFormat: string | null }) {
-  if (qrFormat === "data_url") return <img src={qrData} alt="QR Code" className="w-72 h-72 mx-auto" />;
-  if (qrFormat === "base64") return <img src={`data:image/png;base64,${qrData}`} alt="QR Code" className="w-72 h-72 mx-auto" />;
-  if (qrFormat === "url") return <img src={qrData} alt="QR Code" className="w-72 h-72 mx-auto" />;
-  if (qrFormat === "text") return <QrFromText text={qrData} />;
-  return (
-    <img
-      src={qrData.startsWith("data:") ? qrData : `data:image/png;base64,${qrData}`}
-      alt="QR Code" className="w-72 h-72 mx-auto"
-      onError={() => console.error("[QrRenderer] Fallback failed")}
-    />
-  );
-}
-
-function detectQrFormat(data: string | null): string | null {
-  if (!data) return null;
-  if (data.startsWith("data:image")) return "data_url";
-  if (data.startsWith("http://") || data.startsWith("https://")) return "url";
-  if (/^[A-Za-z0-9+/=]{50,}$/.test(data.replace(/\s/g, ""))) return "base64";
-  if (data.length > 10) return "text";
-  return null;
-}
-
-function StatusBadge({ status, liveStatus }: { status: string | undefined; liveStatus?: string | null }) {
-  const effectiveStatus = liveStatus || status;
-  if (effectiveStatus === "connected") {
-    return <Badge className="bg-green-500/10 text-green-600 border-green-200 gap-1 px-3 py-1.5"><Wifi className="h-3.5 w-3.5" />Conectado</Badge>;
-  }
-  if (effectiveStatus === "qr_pending" || effectiveStatus === "pairing") {
-    return <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200 gap-1 px-3 py-1.5"><QrCodeIcon className="h-3.5 w-3.5" />Aguardando QR</Badge>;
-  }
-  if (effectiveStatus === "not_found") {
-    return <Badge className="bg-red-500/10 text-red-600 border-red-200 gap-1 px-3 py-1.5"><AlertTriangle className="h-3.5 w-3.5" />Instância não encontrada</Badge>;
-  }
-  if (effectiveStatus === "api_error" || effectiveStatus === "parse_error") {
-    return <Badge className="bg-red-500/10 text-red-600 border-red-200 gap-1 px-3 py-1.5"><XCircle className="h-3.5 w-3.5" />Erro na API</Badge>;
-  }
-  return <Badge variant="secondary" className="gap-1 px-3 py-1.5"><WifiOff className="h-3.5 w-3.5" />Desconectado</Badge>;
-}
-
-function maskUrl(url: string | undefined): string {
-  if (!url) return "N/A";
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "—";
   try {
-    const u = new URL(url);
-    return `${u.protocol}//${u.hostname.substring(0, 6)}***`;
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
   } catch {
-    return url.substring(0, 12) + "***";
+    return "—";
   }
 }
 
-/* ── Main Component ── */
-export function EvolutionIntegration() {
-  const [integration, setIntegration] = useState<Integration | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [instanceName, setInstanceName] = useState("");
-  const [testPhone, setTestPhone] = useState("");
-  const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste do AutoLead. 🚀");
-  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
-  const [lastQrFormat, setLastQrFormat] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollingCountRef = useRef(0);
-  const { profile, isAdmin, orgId: authOrgId } = useAuth();
-  const orgId = profile?.organization_id || authOrgId || '';
+export default function EvolutionIntegration() {
   const { toast } = useToast();
+  const { profile, isAdmin, orgId: authOrgId } = useAuth();
+  const { user: clerkUser } = useUser();
+  const orgId = profile?.organization_id || authOrgId;
+  const clerkUserId = clerkUser?.id;
 
-  // Live status from Evolution API
-  const [liveStatus, setLiveStatus] = useState<string | null>(null);
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const [instanceFound, setInstanceFound] = useState(true);
-  const [availableInstances, setAvailableInstances] = useState<string[] | null>(null);
-  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [conn, setConn] = useState<Connection | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<"connect" | "disconnect" | "refresh" | null>(null);
+  const [qrStartedAt, setQrStartedAt] = useState<number | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const lastOrgRef = useRef<string | null>(null);
 
-  // Fetch integration + optionally check live status via Evolution API
-  // Returns { integration, live_status } when checkLive=true
-  const fetchIntegration = useCallback(async (checkLive = false): Promise<{ integration: Integration | null; live_status: string | null; live_error: string | null }> => {
-    if (!orgId) { setLoading(false); return { integration: null, live_status: null, live_error: null }; }
+  /* ── Fetch status ── */
+  const fetchStatus = useCallback(async (refreshQr = false): Promise<Connection | null> => {
+    if (!orgId) return null;
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-get-status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId, check_live: checkLive }),
+      const { data, error } = await supabase.functions.invoke("whatsapp-status", {
+        body: { organization_id: orgId, refresh_qr: refreshQr },
+        headers: clerkUserId ? { "x-clerk-user-id": clerkUserId } : {},
       });
-      const result = await res.json();
-      const resultLiveStatus = result.live_status || null;
-      const resultLiveError = result.live_error || null;
+      if (error) throw error;
 
-      if (checkLive) {
-        setLiveStatus(resultLiveStatus);
-        setLiveError(resultLiveError);
-        setInstanceFound(result.instance_found !== false);
-        setAvailableInstances(result.available_instances || null);
-        setLastCheckedAt(new Date().toISOString());
+      if (!data?.ok) return null;
+      if (data.status === "not_configured" || !data.connection) {
+        setConn(null);
+        return null;
+      }
+      // Defesa anti-vazamento entre orgs
+      if (data.connection.organization_id !== orgId) {
+        setConn(null);
+        return null;
+      }
+      setConn(data.connection);
+      return data.connection;
+    } catch (err) {
+      console.error("[fetchStatus]", err);
+      return null;
+    }
+  }, [orgId, clerkUserId]);
 
-        setDebugInfo({
-          instance_name: result.integration?.instance_name || "",
-          endpoint: `${SUPABASE_URL}/functions/v1/evolution-get-status`,
-          http_status: res.status,
-          response: { live_status: resultLiveStatus, live_error: resultLiveError, instance_found: result.instance_found, available_instances: result.available_instances },
-          timestamp: new Date().toISOString(),
-          live_status: resultLiveStatus,
-          live_error: resultLiveError,
-        });
+  /* ── Reset on org switch ── */
+  useEffect(() => {
+    if (lastOrgRef.current !== orgId) {
+      lastOrgRef.current = orgId || null;
+      setConn(null);
+      setLoading(true);
+      setQrStartedAt(null);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
-
-      if (result.ok && result.integration) {
-        // Defensive guard: ensure the returned integration belongs to the current org.
-        // Prevents any stale/cross-org data from being displayed.
-        if (result.integration.organization_id !== orgId) {
-          console.warn("[EvolutionIntegration] Org mismatch in response, discarding", {
-            expected: orgId,
-            received: result.integration.organization_id,
-          });
-          setIntegration(null);
-          setInstanceName("");
-          setLiveStatus(null);
-          setLiveError(null);
-          return { integration: null, live_status: null, live_error: null };
-        }
-        setIntegration(result.integration as Integration);
-        setInstanceName(result.integration.instance_name || "");
-        return { integration: result.integration as Integration, live_status: resultLiveStatus, live_error: resultLiveError };
-      }
-      // No integration for this org — clear any stale state from a previously viewed org
-      setIntegration(null);
-      setInstanceName("");
-      if (checkLive) {
-        setLiveStatus(null);
-        setLiveError(null);
-        setInstanceFound(true);
-        setAvailableInstances(null);
-      }
-      return { integration: null, live_status: resultLiveStatus, live_error: resultLiveError };
-    } catch {
-      return { integration: null, live_status: null, live_error: null };
-    } finally {
+    }
+    if (!orgId) {
       setLoading(false);
+      return;
     }
-  }, [orgId]);
+    fetchStatus().finally(() => setLoading(false));
+  }, [orgId, fetchStatus]);
 
-  // Reset state immediately when org changes, then fetch fresh data
+  /* ── Polling while connecting ── */
   useEffect(() => {
-    setIntegration(null);
-    setInstanceName("");
-    setLiveStatus(null);
-    setLiveError(null);
-    setInstanceFound(true);
-    setAvailableInstances(null);
-    setDebugInfo(null);
-    setLoading(true);
-    fetchIntegration(true);
-  }, [orgId, fetchIntegration]);
-
-  // Start polling for connection status (3s intervals, max 90s)
-  const startPolling = useCallback(() => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    pollingCountRef.current = 0;
-    setPolling(true);
-    console.log("[EvolutionIntegration] Starting status polling...");
-
-    pollingRef.current = setInterval(async () => {
-      pollingCountRef.current++;
-      console.log(`[EvolutionIntegration] Poll #${pollingCountRef.current}`);
-
-      const result = await fetchIntegration(true);
-      // Check both DB status and live status
-      if (result?.live_status === "connected" || result?.integration?.status === "connected") {
-        console.log("[EvolutionIntegration] Connected! Stopping poll.");
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-        setPolling(false);
-        toast({ title: "WhatsApp conectado!", description: "Conexão estabelecida com sucesso." });
-      } else if (pollingCountRef.current >= 30) {
-        console.log("[EvolutionIntegration] Polling timeout (90s)");
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-        setPolling(false);
-        toast({ title: "Timeout", description: "Verifique Base URL / API Key / Instance.", variant: "destructive" });
+    if (conn?.status === "connecting") {
+      if (!qrStartedAt) setQrStartedAt(Date.now());
+      if (!pollRef.current) {
+        pollRef.current = window.setInterval(() => {
+          fetchStatus().then((c) => {
+            if (c?.status === "connected") {
+              toast({ title: "WhatsApp conectado!", description: "Pronto para enviar e receber mensagens." });
+            }
+          });
+        }, 3000);
       }
-    }, 3000);
-  }, [fetchIntegration, toast, liveStatus]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      if (conn?.status !== "connecting") setQrStartedAt(null);
+    }
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
-  }, []);
+  }, [conn?.status, qrStartedAt, fetchStatus, toast]);
 
-
-
-  const sanitizeResponse = (data: Record<string, unknown>): Record<string, unknown> => {
-    const sanitized = { ...data };
-    delete sanitized.apikey;
-    delete sanitized.api_key;
-    delete sanitized.token;
-    return sanitized;
-  };
-
-  const handleConnect = async (_existingInstanceName?: string) => {
-    setActionLoading(true);
-    setDebugInfo(null);
-
-    const endpoint = `${SUPABASE_URL}/functions/v1/evolution-create-instance`;
-    // Instance name is now derived server-side as `autolead_{orgId}`.
-    // We only display it here for debug info.
-    const derivedName = `autolead_${orgId}`;
-
+  /* ── Actions ── */
+  const handleConnect = async () => {
+    if (!orgId || !clerkUserId) return;
+    setBusy("connect");
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId }),
+      const { data, error } = await supabase.functions.invoke("whatsapp-connect", {
+        body: { organization_id: orgId },
+        headers: { "x-clerk-user-id": clerkUserId },
       });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao iniciar conexão");
 
-      const data = await res.json();
-
-      setDebugInfo({
-        instance_name: derivedName,
-        endpoint,
-        http_status: res.status,
-        response: sanitizeResponse(data),
-        timestamp: new Date().toISOString(),
-      });
-
-      if (data.qr_format) setLastQrFormat(data.qr_format);
-
-      // Cross-org duplicate phone block
-      if (res.status === 409 && data.status === "duplicate_phone") {
-        toast({
-          title: "Número já em uso",
-          description: data.message || "Este número de WhatsApp já está conectado em outra organização.",
-          variant: "destructive",
-        });
-        fetchIntegration(true);
-        return;
-      }
-
-      if (data.status === "connected") {
-        setIntegration((prev) => ({
-          ...(prev || { id: "", organization_id: orgId, provider: "evolution", instance_name: derivedName, is_active: true, phone_number: null }),
-          status: "connected",
-          qr_code_data: null,
-          connected_at: new Date().toISOString(),
-          instance_name: derivedName,
-        } as Integration));
-        setLiveStatus("connected");
-        toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
-      } else if (data.ok && data.qr_code_data) {
-        setIntegration((prev) => ({
-          ...(prev || { id: "", organization_id: orgId, provider: "evolution", is_active: true, phone_number: null, connected_at: null }),
-          status: "qr_pending",
-          qr_code_data: data.qr_code_data,
-          instance_name: derivedName,
-        } as Integration));
-        setLiveStatus("pairing");
-        toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
-        startPolling();
-      } else {
-        toast({
-          title: "QR não obtido",
-          description: data.message || "Não foi possível obter o QR. Verifique logs.",
-          variant: "destructive",
-        });
-      }
-
-      fetchIntegration(false);
-    } catch (err: any) {
-      toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
-      setDebugInfo({ instance_name: derivedName, endpoint, http_status: 0, response: { error: err.message }, timestamp: new Date().toISOString() });
+      setConn(data.connection);
+      setQrStartedAt(Date.now());
+      toast({ title: "QR Code gerado", description: "Escaneie com seu WhatsApp." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Erro ao conectar", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(false);
+      setBusy(null);
     }
   };
 
-  const handleRefreshQR = async () => {
-    setActionLoading(true);
-    const endpoint = `${SUPABASE_URL}/functions/v1/evolution-get-qr`;
-
+  const handleRefreshQr = async () => {
+    setBusy("refresh");
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId }),
-      });
-
-      const data = await res.json();
-
-      setDebugInfo({ instance_name: integration?.instance_name || "", endpoint, http_status: res.status, response: sanitizeResponse(data), timestamp: new Date().toISOString() });
-
-      if (data.qr_format) setLastQrFormat(data.qr_format);
-
-      if (data.status === "connected") {
-        setIntegration((prev) => prev ? { ...prev, status: "connected", qr_code_data: null } : prev);
-        setLiveStatus("connected");
-        toast({ title: "WhatsApp conectado!", description: "Seu WhatsApp já está vinculado" });
-      } else if (data.ok && data.qr_code_data) {
-        setIntegration((prev) => prev ? { ...prev, status: "qr_pending", qr_code_data: data.qr_code_data } : prev);
-        toast({ title: "QR atualizado!", description: "Escaneie o QR code" });
-        startPolling();
-      } else {
-        toast({ title: "QR não disponível", description: data.message || "Tente novamente em alguns segundos", variant: "destructive" });
-      }
-
-      fetchIntegration(false);
-    } catch (err: any) {
-      toast({ title: "Erro ao buscar QR", description: err.message, variant: "destructive" });
+      await fetchStatus(true);
+      setQrStartedAt(Date.now());
     } finally {
-      setActionLoading(false);
+      setBusy(null);
     }
   };
 
   const handleDisconnect = async () => {
-    if (!integration) return;
-    setActionLoading(true);
-    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; setPolling(false); }
+    if (!orgId || !clerkUserId) return;
+    setBusy("disconnect");
     try {
-      // Calls the edge function which:
-      //  1) logs out the WhatsApp session on Evolution
-      //  2) deletes the Evolution instance (frees the WA session)
-      //  3) marks the local row as disconnected (preserves history, frees phone_number for other orgs)
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-delete-instance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId }),
+      const { data, error } = await supabase.functions.invoke("whatsapp-disconnect", {
+        body: { organization_id: orgId },
+        headers: { "x-clerk-user-id": clerkUserId },
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || "Erro ao desconectar");
-      }
-      setIntegration((prev) => prev ? { ...prev, status: "disconnected", qr_code_data: null, connected_at: null, phone_number: null } : prev);
-      setLiveStatus("disconnected");
-      toast({ title: "Desconectado", description: "WhatsApp desconectado. O número está livre para ser usado em outra organização." });
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Falha ao desconectar");
+      toast({ title: "WhatsApp desconectado" });
+      await fetchStatus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Erro", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(false);
+      setBusy(null);
     }
   };
 
-  const handleReconnect = () => {
-    if (integration?.instance_name) {
-      // Reuse existing instance - just get a new QR, don't create a new instance
-      handleRefreshQR();
-    }
-  };
-
-  const handleRefreshLiveStatus = async () => {
-    setActionLoading(true);
-    try {
-      const result = await fetchIntegration(true);
-      const status = result.live_status || result.integration?.status;
-      if (status === "connected") {
-        toast({ title: "✅ Conectado", description: "WhatsApp está conectado e funcionando." });
-      } else if (status === "not_found") {
-        toast({ title: "Instância não encontrada", description: "Verifique o nome da instância e o servidor Evolution.", variant: "destructive" });
-      } else if (status === "api_error" || status === "parse_error") {
-        toast({ title: "Erro na API", description: liveError || "Verifique Base URL e API Key.", variant: "destructive" });
-      } else if (status === "disconnected" || status === "close") {
-        toast({ title: "Desconectado", description: "A instância existe mas não está conectada. Gere um novo QR." });
-      } else if (status === "pairing" || status === "qr_pending") {
-        toast({ title: "Aguardando QR", description: "Escaneie o QR Code no WhatsApp." });
-      } else {
-        toast({ title: "Status verificado", description: `Status atual: ${status || "desconhecido"}` });
-      }
-    } catch (err: any) {
-      toast({ title: "Erro ao testar", description: err.message || "Falha na verificação", variant: "destructive" });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCreateNewInstance = async () => {
-    if (!integration?.id) {
-      setIntegration(null);
-      setInstanceName("");
-      setLiveStatus(null);
-      setLiveError(null);
-      setInstanceFound(true);
-      setAvailableInstances(null);
+  const handleToggleMirror = async (enabled: boolean) => {
+    if (!conn) return;
+    const { error } = await supabase
+      .from("whatsapp_connections")
+      .update({
+        mirror_enabled: enabled,
+        mirror_enabled_at: enabled ? new Date().toISOString() : conn.mirror_enabled_at,
+      })
+      .eq("id", conn.id);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
       return;
     }
-    setActionLoading(true);
-    try {
-      await supabase
-        .from("whatsapp_integrations")
-        .update({
-          status: "disconnected",
-          is_active: false,
-          qr_code_data: null,
-          connected_at: null,
-          phone_number: null,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq("id", integration.id);
-
-      setIntegration(null);
-      setInstanceName("");
-      setLiveStatus(null);
-      setLiveError(null);
-      setInstanceFound(true);
-      setAvailableInstances(null);
-      toast({
-        title: "Pronto para criar nova instância",
-        description: "Digite um nome novo e clique em Gerar QR e Conectar.",
-      });
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
-    } finally {
-      setActionLoading(false);
-    }
+    setConn({ ...conn, mirror_enabled: enabled });
+    toast({
+      title: enabled ? "Espelhamento ativado" : "Espelhamento desativado",
+      description: enabled ? "Conversas serão exibidas no Inbox" : "Conversas não serão exibidas",
+    });
   };
 
-  const handleClearConfiguration = async () => {
-    setActionLoading(true);
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-      setPolling(false);
-    }
-    try {
-      // Call the edge function that fully tears down the instance:
-      // logout from WhatsApp, delete the Evolution instance, and wipe the DB row.
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-delete-instance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId, wipe: true }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || "Erro ao limpar configuração");
-      }
-
-      setIntegration(null);
-      setInstanceName("");
-      setLiveStatus(null);
-      setLiveError(null);
-      setInstanceFound(true);
-      setAvailableInstances(null);
-      setDebugInfo(null);
-      setLastQrFormat(null);
-
-      toast({
-        title: "Configuração limpa",
-        description: "WhatsApp desconectado e instância removida. Você pode criar uma nova agora.",
-      });
-    } catch (err: any) {
-      toast({ title: "Erro ao limpar", description: err.message, variant: "destructive" });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleSendTest = async () => {
-    if (!testPhone.trim()) { toast({ title: "Erro", description: "Informe o número", variant: "destructive" }); return; }
-    setActionLoading(true);
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId, to_e164: testPhone.replace(/\D/g, ""), message: testMessage }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao enviar");
-      toast({ title: "Mensagem enviada!", description: `Teste enviado para ${testPhone}` });
-    } catch (err: any) {
-      toast({ title: "Erro ao enviar", description: err.message, variant: "destructive" });
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  /* ── Permission gate ── */
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Alert>
+            <ShieldAlert className="h-4 w-4" />
+            <AlertDescription>
+              Apenas administradores podem gerenciar a conexão do WhatsApp.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (loading) {
     return (
-      <Card className="card-gradient border-0">
-        <CardContent className="p-6 flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <Card>
+        <CardContent className="pt-6 flex items-center justify-center min-h-[200px]">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     );
   }
 
-  // Use live status as the truth when available
-  const effectiveStatus = liveStatus || integration?.status;
-  const isConnected = effectiveStatus === "connected";
-  const isPending = effectiveStatus === "qr_pending" || effectiveStatus === "pairing";
-  const isDisconnected = !isConnected && !isPending;
-  const hasExistingInstance = !!integration?.instance_name;
-
-  // Non-admin read-only view
-  if (!isAdmin) {
+  /* ── A) Sem conexão ── */
+  if (!conn || conn.status === "disconnected" && !conn.last_disconnected_at) {
     return (
-      <div className="space-y-6">
-        <Card className="card-gradient border-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-poppins">
-              <MessageSquare className="h-5 w-5 text-primary" />
-              WhatsApp (Evolution API)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert>
-              <ShieldAlert className="h-4 w-4" />
-              <AlertDescription>Apenas administradores podem configurar o WhatsApp. Peça para um admin conectar.</AlertDescription>
-            </Alert>
-            <div className="flex items-center gap-3">
-              <StatusBadge status={integration?.status} liveStatus={liveStatus} />
-              {hasExistingInstance && (
-                <span className="text-xs text-muted-foreground font-mono">Instância: {integration?.instance_name}</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            WhatsApp
+          </CardTitle>
+          <CardDescription>
+            Conecte seu WhatsApp para receber e enviar mensagens pelo sistema.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-primary" />
+          </div>
+          <h3 className="text-lg font-semibold">Conectar WhatsApp</h3>
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            Conecte seu WhatsApp para receber e enviar mensagens pelo sistema.
+          </p>
+          <Button onClick={handleConnect} disabled={busy === "connect"} size="lg">
+            {busy === "connect" ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando QR…</>
+            ) : (
+              <><Wifi className="w-4 h-4 mr-2" />Conectar WhatsApp</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
-  const qrFormat = lastQrFormat || detectQrFormat(integration?.qr_code_data ?? null);
+  /* ── B) Connecting (QR Code) ── */
+  if (conn.status === "connecting") {
+    const elapsedSec = qrStartedAt ? Math.floor((Date.now() - qrStartedAt) / 1000) : 0;
+    const showRefresh = elapsedSec > 120;
 
-  return (
-    <div className="space-y-6">
-      <Card className="card-gradient border-0">
+    return (
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-poppins">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            WhatsApp (Evolution API)
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            Conectar WhatsApp
           </CardTitle>
-          <CardDescription className="font-poppins">Conecte o WhatsApp da sua organização via QR code</CardDescription>
+          <CardDescription>Escaneie o QR code com seu WhatsApp</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-6 py-6">
+          {conn.qr_code ? (
+            <div className="p-4 bg-white rounded-xl border-2 border-border">
+              <QrDisplay value={conn.qr_code} />
+            </div>
+          ) : (
+            <div className="w-72 h-72 flex items-center justify-center bg-muted rounded-xl">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          <div className="text-sm text-muted-foreground space-y-1 text-center max-w-md">
+            <p className="font-medium text-foreground">Como conectar:</p>
+            <p>1. Abra o WhatsApp no seu celular</p>
+            <p>2. Toque em <strong>Aparelhos conectados</strong></p>
+            <p>3. Toque em <strong>Conectar aparelho</strong></p>
+            <p>4. Aponte para este QR Code</p>
+          </div>
+
+          <div className="flex gap-2">
+            {showRefresh ? (
+              <Button onClick={handleRefreshQr} disabled={busy === "refresh"} variant="default">
+                {busy === "refresh" ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando…</>
+                ) : (
+                  <><RefreshCw className="w-4 h-4 mr-2" />Gerar novo QR code</>
+                )}
+              </Button>
+            ) : (
+              <Button onClick={handleRefreshQr} variant="outline" disabled={busy === "refresh"}>
+                <RefreshCw className="w-4 h-4 mr-2" />Atualizar QR
+              </Button>
+            )}
+            <Button onClick={handleDisconnect} variant="ghost" disabled={busy === "disconnect"}>
+              Cancelar
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">Aguardando leitura… ({elapsedSec}s)</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  /* ── C) Connected ── */
+  if (conn.status === "connected") {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-primary" />
+                WhatsApp
+              </CardTitle>
+              <CardDescription>Conexão ativa com a Evolution API</CardDescription>
+            </div>
+            <Badge className="bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/10">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Conectado
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Status bar */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <StatusBadge status={integration?.status} liveStatus={liveStatus} />
-            {hasExistingInstance && (
-              <span className="text-xs text-muted-foreground font-mono">Instância: {integration?.instance_name}</span>
-            )}
-            {integration?.phone_number && (
-              <span className="text-xs text-muted-foreground font-mono">Tel: {integration.phone_number}</span>
-            )}
-            {polling && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" /> Verificando conexão...
-              </span>
-            )}
-            {/* Refresh live status button */}
-            <Button variant="ghost" size="sm" onClick={handleRefreshLiveStatus} disabled={actionLoading} className="ml-auto text-xs gap-1">
-              <RefreshCw className={`h-3.5 w-3.5 ${actionLoading ? "animate-spin" : ""}`} />
-              Testar conexão
-            </Button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Número conectado</Label>
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-muted-foreground" />
+                {conn.phone_number ? `+${conn.phone_number}` : "—"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Conectado desde</Label>
+              <p className="text-sm font-medium">{formatDateTime(conn.connected_at)}</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Última atividade</Label>
+              <p className="text-sm font-medium">{formatDateTime(conn.last_connected_at)}</p>
+            </div>
           </div>
 
-          {/* Instance not found alert */}
-          {!instanceFound && hasExistingInstance && (
-            <Alert className="border-destructive/50 bg-destructive/5">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              <AlertDescription className="text-destructive">
-                Instância <strong className="font-mono">"{integration?.instance_name}"</strong> não encontrada no servidor Evolution.
-                Você pode tentar novamente (gerar um novo QR) ou criar uma nova instância com outro nome.
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={handleReconnect}
-                    disabled={actionLoading}
-                    className="btn-gradient text-white font-poppins gap-2"
-                  >
-                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    Tentar novamente (Novo QR)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCreateNewInstance}
-                    disabled={actionLoading}
-                    className="font-poppins gap-2"
-                  >
-                    <QrCodeIcon className="h-4 w-4" />
-                    Criar outra instância
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={actionLoading}
-                        className="font-poppins gap-2 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Limpar configuração
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Limpar configuração do WhatsApp?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Isso vai remover completamente a instância configurada para esta organização. A tela voltará ao estado inicial e você poderá criar uma nova instância do zero.
-                          <br /><br />
-                          <strong>Esta ação não pode ser desfeita.</strong>
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={handleClearConfiguration}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Sim, limpar tudo
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Live error alert */}
-          {liveError && liveStatus !== "not_found" && (
-            <Alert className="border-destructive/30 bg-destructive/5">
-              <XCircle className="h-4 w-4 text-destructive" />
-              <AlertDescription className="text-destructive text-sm">
-                Erro ao verificar status: {liveError}
-                <br />
-                <span className="text-xs">Verifique Base URL / API Key / Instance.</span>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <Separator />
-
-          {/* ── CONNECTED STATE ── */}
-          {isConnected && (
-            <div className="space-y-6">
-              <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-700 dark:text-green-400">
-                  WhatsApp conectado e pronto para enviar mensagens!
-                  {integration?.connected_at && (
-                    <span className="block text-xs mt-1 opacity-70">
-                      Conectado em: {new Date(integration.connected_at).toLocaleString("pt-BR")}
-                    </span>
-                  )}
-                </AlertDescription>
-              </Alert>
-
-              {/* Instance name (disabled) */}
-              <div className="space-y-2">
-                <Label className="font-poppins font-medium">Nome da instância</Label>
-                <Input value={integration?.instance_name || ""} disabled className="font-mono bg-muted" />
-              </div>
-
-              <Separator />
-
-              {/* Send test */}
-              <div className="space-y-4">
-                <h3 className="font-poppins font-semibold text-sm">Enviar mensagem de teste</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="font-poppins">Número (E.164, com DDD)</Label>
-                    <Input value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="5511999999999" className="font-mono" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="font-poppins">Mensagem</Label>
-                    <Input value={testMessage} onChange={(e) => setTestMessage(e.target.value)} />
-                  </div>
-                </div>
-                <Button onClick={handleSendTest} disabled={actionLoading || !testPhone.trim()} variant="outline" className="font-poppins gap-2">
-                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Enviar Teste
-                </Button>
-              </div>
-
-              <Separator />
-
-              {/* Reconnect / Disconnect */}
-              <div className="flex justify-between items-center">
-                <Button variant="outline" size="sm" onClick={handleReconnect} disabled={actionLoading} className="font-poppins gap-2">
-                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Reconectar (Novo QR)
-                </Button>
-                <Button variant="destructive" size="sm" onClick={handleDisconnect} disabled={actionLoading} className="font-poppins gap-2">
-                  <XCircle className="h-4 w-4" />
-                  Desconectar
-                </Button>
-              </div>
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div className="space-y-0.5">
+              <Label htmlFor="mirror-toggle" className="text-sm font-medium">
+                Espelhar conversas no Inbox
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Quando ativo, todas as conversas aparecem no módulo Inbox.
+              </p>
             </div>
-          )}
+            <Switch
+              id="mirror-toggle"
+              checked={conn.mirror_enabled}
+              onCheckedChange={handleToggleMirror}
+            />
+          </div>
 
-          {/* ── QR PENDING STATE ── */}
-          {isPending && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <h3 className="font-poppins font-semibold mb-2">Escaneie o QR Code</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Abra o WhatsApp no celular → Menu (⋮) → Aparelhos conectados → Conectar
-                </p>
-                {integration?.qr_code_data ? (
-                  <div className="inline-block p-4 bg-white rounded-xl shadow-md">
-                    <QrRenderer qrData={integration.qr_code_data} qrFormat={qrFormat} />
-                  </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={busy === "disconnect"}>
+                {busy === "disconnect" ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Desconectando…</>
                 ) : (
-                  <div className="inline-flex flex-col items-center gap-3">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">QR ainda não disponível...</p>
-                  </div>
+                  <><WifiOff className="w-4 h-4 mr-2" />Desconectar</>
                 )}
-              </div>
-              <div className="flex justify-center gap-2">
-                <Button variant="outline" onClick={handleRefreshQR} disabled={actionLoading} className="font-poppins gap-2">
-                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  Atualizar QR
-                </Button>
-              </div>
-            </div>
-          )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Desconectar WhatsApp?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  O WhatsApp será desconectado e a instância removida da Evolution.
+                  O histórico de conversas permanece preservado.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDisconnect}>Desconectar</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
+      </Card>
+    );
+  }
 
-          {/* ── DISCONNECTED STATE ── */}
-          {isDisconnected && instanceFound && (
-            <div className="space-y-4">
-              {hasExistingInstance ? (
-                <>
-                  <Alert className="border-destructive/30 bg-destructive/5">
-                    <WifiOff className="h-4 w-4 text-destructive" />
-                    <AlertDescription className="text-destructive">
-                      A sessão do WhatsApp foi desconectada. Clique abaixo para gerar um novo QR e reconectar usando a mesma instância.
-                    </AlertDescription>
-                  </Alert>
-                  <div className="space-y-2">
-                    <Label className="font-poppins font-medium">Nome da instância</Label>
-                    <Input value={integration?.instance_name || ""} disabled className="font-mono bg-muted" />
-                  </div>
-                   <div className="flex flex-wrap gap-2">
-                     <Button onClick={handleReconnect} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
-                       {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCodeIcon className="h-4 w-4" />}
-                       Gerar novo QR
-                     </Button>
-                     <Button variant="outline" size="sm" onClick={handleRefreshLiveStatus} disabled={actionLoading} className="font-poppins gap-2">
-                       <RefreshCw className={`h-4 w-4 ${actionLoading ? "animate-spin" : ""}`} />
-                       Verificar status
-                     </Button>
-                     <AlertDialog>
-                       <AlertDialogTrigger asChild>
-                         <Button
-                           variant="outline"
-                           size="sm"
-                           disabled={actionLoading}
-                           className="font-poppins gap-2 text-destructive hover:text-destructive ml-auto"
-                         >
-                           <Trash2 className="h-4 w-4" />
-                           Limpar configuração
-                         </Button>
-                       </AlertDialogTrigger>
-                       <AlertDialogContent>
-                         <AlertDialogHeader>
-                           <AlertDialogTitle>Limpar configuração do WhatsApp?</AlertDialogTitle>
-                           <AlertDialogDescription>
-                             Isso vai remover completamente a instância configurada para esta organização. A tela voltará ao estado inicial e você poderá criar uma nova instância do zero.
-                             <br /><br />
-                             <strong>Esta ação não pode ser desfeita.</strong>
-                           </AlertDialogDescription>
-                         </AlertDialogHeader>
-                         <AlertDialogFooter>
-                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                           <AlertDialogAction
-                             onClick={handleClearConfiguration}
-                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                           >
-                             Sim, limpar tudo
-                           </AlertDialogAction>
-                         </AlertDialogFooter>
-                       </AlertDialogContent>
-                     </AlertDialog>
-                    </div>
-                </>
-              ) : (
-                <>
-                  <Alert>
-                    <MessageSquare className="h-4 w-4" />
-                    <AlertDescription>
-                      A instância do WhatsApp será criada automaticamente para esta organização.
-                      Cada organização tem sua própria instância isolada — o mesmo número não pode
-                      estar conectado em duas organizações ao mesmo tempo.
-                    </AlertDescription>
-                  </Alert>
-                  <Button onClick={() => handleConnect()} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
-                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
-                    Gerar QR e Conectar
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Debug Panel */}
-          <Separator />
+  /* ── D) Disconnected (com histórico) ── */
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
           <div>
-            <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="font-mono text-xs gap-1 text-muted-foreground">
-              <Bug className="h-3.5 w-3.5" />
-              {showDebug ? "Ocultar Debug" : "Debug (admin)"}
-            </Button>
-            {showDebug && (
-              <div className="mt-2 p-3 rounded-md bg-muted/50 border text-xs font-mono space-y-2 max-h-96 overflow-auto">
-                <div><span className="text-muted-foreground">Base URL:</span> {maskUrl(undefined)} (secret)</div>
-                <div><span className="text-muted-foreground">Instance Name:</span> {integration?.instance_name || instanceName || "N/A"}</div>
-                <div><span className="text-muted-foreground">DB Status:</span> {integration?.status || "none"}</div>
-                <div><span className="text-muted-foreground">Live Status (API):</span> <span className={liveStatus === "connected" ? "text-green-600" : liveStatus === "not_found" ? "text-red-500" : "text-yellow-600"}>{liveStatus || "not checked"}</span></div>
-                <div><span className="text-muted-foreground">Instance Found:</span> {instanceFound ? "✅" : "❌"}</div>
-                <div><span className="text-muted-foreground">Last Checked:</span> {lastCheckedAt ? new Date(lastCheckedAt).toLocaleString("pt-BR") : "N/A"}</div>
-                <div><span className="text-muted-foreground">Polling:</span> {polling ? `active (#${pollingCountRef.current})` : "off"}</div>
-                <div><span className="text-muted-foreground">QR Format:</span> {lastQrFormat || "N/A"}</div>
-                <div><span className="text-muted-foreground">QR in state:</span> {integration?.qr_code_data ? `present (${integration.qr_code_data.length} chars)` : "null"}</div>
-                {liveError && (
-                  <div><span className="text-muted-foreground">Live Error:</span> <span className="text-destructive">{liveError}</span></div>
-                )}
-                {availableInstances && (
-                  <div><span className="text-muted-foreground">Available Instances:</span> {availableInstances.join(", ") || "none"}</div>
-                )}
-                {debugInfo && (
-                  <>
-                    <Separator />
-                    <div><span className="text-muted-foreground">Last Request:</span> {debugInfo.timestamp}</div>
-                    <div><span className="text-muted-foreground">Endpoint:</span> {debugInfo.endpoint}</div>
-                    <div><span className="text-muted-foreground">HTTP Status:</span> {debugInfo.http_status}</div>
-                    <div>
-                      <span className="text-muted-foreground">Response:</span>
-                      <pre className="mt-1 whitespace-pre-wrap break-all text-[10px]">
-                        {JSON.stringify(debugInfo.response, null, 2)}
-                      </pre>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-muted-foreground" />
+              WhatsApp
+            </CardTitle>
+            <CardDescription>
+              Desconectado desde {formatDateTime(conn.last_disconnected_at)}
+            </CardDescription>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Instructions card */}
-      <Card className="card-gradient border-0">
-        <CardHeader>
-          <CardTitle className="font-poppins text-sm">Como funciona</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex items-start gap-3">
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">1</div>
-            <div>
-              <p className="font-medium">Instância automática por organização</p>
-              <p className="text-muted-foreground">Cada organização recebe sua própria instância isolada (autolead_&lt;org&gt;). O mesmo número não pode ser conectado em duas organizações ao mesmo tempo.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">2</div>
-            <div>
-              <p className="font-medium">Conecte via QR Code</p>
-              <p className="text-muted-foreground">Escaneie com o WhatsApp do celular para vincular</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">3</div>
-            <div>
-              <p className="font-medium">Automações prontas</p>
-              <p className="text-muted-foreground">As mensagens das automações serão enviadas automaticamente pelo WhatsApp conectado</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          <Badge variant="destructive" className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/10">
+            <WifiOff className="w-3 h-3 mr-1" />
+            Desconectado
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col items-center gap-4 py-6">
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Reconecte para voltar a enviar e receber mensagens. O histórico anterior permanece preservado.
+        </p>
+        <Button onClick={handleConnect} disabled={busy === "connect"} size="lg">
+          {busy === "connect" ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando QR…</>
+          ) : (
+            <><RefreshCw className="w-4 h-4 mr-2" />Reconectar</>
+          )}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
