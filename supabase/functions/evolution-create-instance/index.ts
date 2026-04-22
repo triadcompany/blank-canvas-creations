@@ -58,6 +58,16 @@ function buildWebhookUrl(supabaseUrl: string, token: string): string {
   return `${supabaseUrl}/functions/v1/evolution-webhook?token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * Build the canonical instance name for a given organization.
+ * Pattern enforced: autolead_{organization_id}
+ * This guarantees one instance per org and prevents collisions across tenants.
+ */
+function buildInstanceName(orgId: string): string {
+  // Evolution API typically allows letters, digits, "_" and "-". Hyphens in UUIDs are fine.
+  return `autolead_${orgId}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -81,15 +91,14 @@ serve(async (req) => {
       return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "EVOLUTION_API_KEY ou EVOLUTION_BASE_URL não configurados" }, 500);
     }
 
-    const { organization_id, instance_name } = await req.json();
+    const { organization_id } = await req.json();
 
-    if (!organization_id || !instance_name) {
-      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "organization_id e instance_name são obrigatórios" }, 400);
+    if (!organization_id) {
+      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "organization_id é obrigatório" }, 400);
     }
 
-    if (!/^[a-z0-9_-]{3,40}$/.test(instance_name)) {
-      return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "instance_name inválido" }, 400);
-    }
+    // ALWAYS force the canonical, org-scoped instance name. We do NOT accept user input.
+    const instance_name = buildInstanceName(organization_id);
 
     console.log(`[evolution-create] === START === org=${organization_id} instance=${instance_name}`);
 
@@ -243,11 +252,50 @@ serve(async (req) => {
     // ──── Step 4: Persist & respond ────
     if (connected) {
       console.log("[evolution-create] RESULT: connected");
+
+      // Try to fetch the connected phone number to enforce uniqueness across orgs
+      const connectedPhone = await fetchConnectedPhone(evolutionBaseUrl, evolutionApiKey, instance_name);
+      console.log(`[evolution-create] Detected phone after connect: ${connectedPhone}`);
+
+      // ── Cross-org duplicate guard ──
+      if (connectedPhone) {
+        const { data: dupe } = await supabase
+          .from("whatsapp_integrations")
+          .select("organization_id")
+          .eq("phone_number", connectedPhone)
+          .eq("status", "connected")
+          .neq("organization_id", organization_id)
+          .maybeSingle();
+
+        if (dupe) {
+          console.warn(`[evolution-create] BLOCKED: phone=${connectedPhone} already connected on org=${dupe.organization_id}`);
+          // Tear down the freshly created instance to avoid orphan + free the WA session
+          await teardownEvolutionInstance(evolutionBaseUrl, evolutionApiKey, instance_name);
+          // Mark our row as failed so the UI shows clearly
+          await supabase.from("whatsapp_integrations").upsert({
+            organization_id, provider: "evolution", instance_name,
+            status: "failed", qr_code_data: null,
+            webhook_token: webhookToken, is_active: false,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "organization_id" });
+
+          return respond({
+            ok: false,
+            status: "duplicate_phone",
+            qr_code_data: null,
+            qr_format: null,
+            message: "Este número de WhatsApp já está conectado em outra organização. Desconecte primeiro da outra organização para conectar aqui.",
+          }, 409);
+        }
+      }
+
       await supabase.from("whatsapp_integrations").upsert({
         organization_id, provider: "evolution", instance_name,
         status: "connected", qr_code_data: null,
+        phone_number: connectedPhone || null,
         webhook_token: webhookToken,
         connected_at: new Date().toISOString(), is_active: true,
+        last_disconnected_at: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id" });
 
@@ -310,4 +358,51 @@ async function updateEvolutionWebhook(baseUrl: string, apiKey: string, instanceN
     }
   }
   console.warn("[evolution-create] Could not update webhook via API — will rely on auto-repair");
+}
+
+/** Try to fetch the phone number that just connected to a given Evolution instance */
+async function fetchConnectedPhone(baseUrl: string, apiKey: string, instanceName: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${baseUrl}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`, {
+      headers: { apikey: apiKey },
+    });
+    if (!r.ok) return null;
+    const txt = await r.text();
+    let raw: any = null;
+    try { raw = JSON.parse(txt); } catch { return null; }
+    const arr = Array.isArray(raw) ? raw : [raw];
+    for (const item of arr) {
+      const candidates = [
+        item?.instance?.owner,
+        item?.instance?.wuid,
+        item?.instance?.profilePicUrl ? null : null,
+        item?.owner,
+        item?.wuid,
+        item?.number,
+        item?.instance?.number,
+      ].filter(Boolean) as string[];
+      for (const c of candidates) {
+        const digits = String(c).replace(/[^\d]/g, "");
+        if (digits.length >= 10) return digits;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error("[evolution-create] fetchConnectedPhone error:", err);
+    return null;
+  }
+}
+
+/** Logout + delete an Evolution instance (best-effort cleanup) */
+async function teardownEvolutionInstance(baseUrl: string, apiKey: string, instanceName: string) {
+  try {
+    await fetch(`${baseUrl}/instance/logout/${instanceName}`, { method: "DELETE", headers: { apikey: apiKey } });
+  } catch (err) {
+    console.error("[evolution-create] teardown logout error:", err);
+  }
+  try {
+    await fetch(`${baseUrl}/instance/delete/${instanceName}`, { method: "DELETE", headers: { apikey: apiKey } });
+  } catch (err) {
+    console.error("[evolution-create] teardown delete error:", err);
+  }
 }

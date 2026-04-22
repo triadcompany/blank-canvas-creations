@@ -186,11 +186,69 @@ async function handleConnectionUpdate(supabase: any, body: any, integration: any
   if (state === "open") {
     newStatus = "connected";
     connectedAt = new Date().toISOString();
-    phoneNumber = body.data?.phoneNumber || body.data?.wid?.user || null;
+    const rawPhone = body.data?.phoneNumber || body.data?.wid?.user || body.data?.owner || null;
+    phoneNumber = rawPhone ? String(rawPhone).replace(/[^\d]/g, "") : null;
   } else if (state === "connecting") {
     newStatus = "qr_pending";
   } else if (state === "close") {
     newStatus = "disconnected";
+  }
+
+  // ──── Cross-org phone uniqueness guard ────
+  // If a phone is now reported as connected and the SAME phone is already
+  // connected on a DIFFERENT organization, we refuse to mark this one as
+  // connected, tear down our Evolution instance, and mark our row as failed.
+  if (newStatus === "connected" && phoneNumber) {
+    const { data: dupe } = await supabase
+      .from("whatsapp_integrations")
+      .select("organization_id")
+      .eq("phone_number", phoneNumber)
+      .eq("status", "connected")
+      .neq("organization_id", integration.organization_id)
+      .maybeSingle();
+
+    if (dupe) {
+      console.warn(
+        `[evolution-webhook] BLOCKED dupe phone=${phoneNumber} already on org=${dupe.organization_id}, refusing to connect on org=${integration.organization_id}`,
+      );
+
+      // Best-effort: logout + delete the instance on Evolution to free the WA session
+      const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+      const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+      if (evolutionBaseUrl && evolutionApiKey) {
+        try {
+          await fetch(`${evolutionBaseUrl}/instance/logout/${integration.instance_name}`, {
+            method: "DELETE",
+            headers: { apikey: evolutionApiKey },
+          });
+        } catch (e) {
+          console.error("[evolution-webhook] dupe-guard logout failed:", e);
+        }
+        try {
+          await fetch(`${evolutionBaseUrl}/instance/delete/${integration.instance_name}`, {
+            method: "DELETE",
+            headers: { apikey: evolutionApiKey },
+          });
+        } catch (e) {
+          console.error("[evolution-webhook] dupe-guard delete failed:", e);
+        }
+      }
+
+      await supabase
+        .from("whatsapp_integrations")
+        .update({
+          status: "failed",
+          is_active: false,
+          qr_code_data: null,
+          connected_at: null,
+          phone_number: null,
+          last_webhook_error: `Duplicate phone ${phoneNumber} already connected on org ${dupe.organization_id}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", integration.id);
+
+      return respond({ ok: false, status: "duplicate_phone" }, 409);
+    }
   }
 
   const updateData: Record<string, unknown> = {
@@ -200,12 +258,14 @@ async function handleConnectionUpdate(supabase: any, body: any, integration: any
   if (connectedAt) {
     updateData.connected_at = connectedAt;
     updateData.qr_code_data = null;
+    updateData.last_disconnected_at = null;
   }
   if (phoneNumber) updateData.phone_number = phoneNumber;
   if (newStatus === "disconnected") {
     updateData.qr_code_data = null;
     updateData.connected_at = null;
     updateData.phone_number = null;
+    updateData.last_disconnected_at = new Date().toISOString();
   }
 
   await supabase
