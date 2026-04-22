@@ -435,6 +435,56 @@ serve(async (req) => {
   }
 });
 
+// Fetch group subject (name) from Evolution API
+async function fetchGroupSubject(
+  instanceName: string,
+  groupJid: string,
+): Promise<string | null> {
+  if (!EVOLUTION_BASE_URL || !EVOLUTION_API_KEY) return null;
+  try {
+    const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+    });
+    if (!res.ok) {
+      console.warn(`[wa-webhook-v2] findGroupInfos failed: ${res.status}`);
+      return null;
+    }
+    const data = await res.json().catch(() => ({} as any));
+    // Evolution returns { subject, ... } or array of groups
+    const node = Array.isArray(data) ? data[0] : data;
+    return (node?.subject || node?.name || node?.groupSubject || null) as string | null;
+  } catch (e) {
+    console.error("[wa-webhook-v2] fetchGroupSubject error:", e);
+    return null;
+  }
+}
+
+async function refreshGroupNameAsync(
+  supabase: any,
+  instanceName: string,
+  groupJid: string,
+  conversationId: string,
+): Promise<void> {
+  try {
+    const subject = await fetchGroupSubject(instanceName, groupJid);
+    if (subject) {
+      await supabase
+        .from("conversations")
+        .update({
+          group_name: subject,
+          contact_name: subject,
+          contact_name_source: "whatsapp_group",
+        })
+        .eq("id", conversationId);
+      console.log(`[wa-webhook-v2] group name refreshed: "${subject}" for conv ${conversationId}`);
+    }
+  } catch (e) {
+    console.error("[wa-webhook-v2] refreshGroupNameAsync error:", e);
+  }
+}
+
 // Fetch profile picture from Evolution API and save to conversations table
 async function fetchAndStoreProfilePicture(
   supabase: any,
