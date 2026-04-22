@@ -90,6 +90,8 @@ export function useInbox() {
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine');
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>(isAdmin ? 'all' : 'mine');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
