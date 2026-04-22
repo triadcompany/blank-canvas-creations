@@ -120,7 +120,6 @@ export function EvolutionIntegration() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [instanceName, setInstanceName] = useState("");
-  const [instanceNameError, setInstanceNameError] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste do AutoLead. 🚀");
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
@@ -226,11 +225,7 @@ export function EvolutionIntegration() {
     };
   }, []);
 
-  const validateInstanceName = (name: string): boolean => {
-    if (!name.trim()) { setInstanceNameError("Nome da instância é obrigatório"); return false; }
-    if (!/^[a-z0-9_-]{3,40}$/.test(name)) { setInstanceNameError("Use apenas letras minúsculas, números, - e _ (3-40 caracteres)"); return false; }
-    setInstanceNameError(""); return true;
-  };
+
 
   const sanitizeResponse = (data: Record<string, unknown>): Record<string, unknown> => {
     const sanitized = { ...data };
