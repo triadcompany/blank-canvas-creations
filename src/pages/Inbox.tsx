@@ -8,16 +8,13 @@ import { format, isToday, isYesterday, parseISO, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare,
-  Send,
   Search,
-  Phone,
   User,
   Users,
   CheckCheck,
   ArrowLeft,
   Loader2,
   Inbox as InboxIcon,
-  UserPlus,
   UserMinus,
   ChevronDown,
   ExternalLink,
@@ -43,7 +40,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
