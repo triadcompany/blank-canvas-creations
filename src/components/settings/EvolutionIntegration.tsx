@@ -471,7 +471,6 @@ export function EvolutionIntegration() {
 
       setIntegration(null);
       setInstanceName("");
-      setInstanceNameError("");
       setLiveStatus(null);
       setLiveError(null);
       setInstanceFound(true);
