@@ -8395,6 +8395,15 @@ export type Database = {
           out_name: string
         }[]
       }
+      update_user_role_rpc: {
+        Args: {
+          p_caller_clerk_user_id: string
+          p_new_role: string
+          p_organization_id: string
+          p_target_clerk_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "seller"
