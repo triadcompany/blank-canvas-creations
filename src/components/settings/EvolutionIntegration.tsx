@@ -462,7 +462,7 @@ export function EvolutionIntegration() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-delete-instance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId }),
+        body: JSON.stringify({ organization_id: orgId, wipe: true }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
