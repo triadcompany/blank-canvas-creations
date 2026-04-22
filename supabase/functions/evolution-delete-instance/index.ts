@@ -90,26 +90,18 @@ serve(async (req) => {
       console.log(`[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${!!evolutionApiKey && !!evolutionBaseUrl})`);
     }
 
-    // ── Step 3: wipe local row (always, even if Evolution failed) ──
+    // ── Step 3: remove local row (always, even if Evolution failed) ──
     if (integration?.id) {
-      const { error: updErr } = await supabase
+      const { error: deleteErr } = await supabase
         .from("whatsapp_integrations")
-        .update({
-          status: "disconnected",
-          is_active: false,
-          instance_name: null,
-          qr_code_data: null,
-          connected_at: null,
-          phone_number: null,
-          updated_at: new Date().toISOString(),
-        })
+        .delete()
         .eq("id", integration.id);
 
-      if (updErr) {
-        console.error("[evolution-delete] DB wipe error:", updErr);
+      if (deleteErr) {
+        console.error("[evolution-delete] DB delete error:", deleteErr);
         return respond({
           ok: false,
-          message: `Instância removida da Evolution mas falhou ao limpar banco: ${updErr.message}`,
+          message: `Instância removida da Evolution mas falhou ao remover integração local: ${deleteErr.message}`,
           evolution: evolutionResults,
         }, 500);
       }
