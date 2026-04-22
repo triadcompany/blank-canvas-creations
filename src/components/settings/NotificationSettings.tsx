@@ -162,7 +162,7 @@ export function NotificationSettings() {
             </div>
           </div>
           {notificationsGranted ? (
-            <span className="text-sm font-medium text-green-600 dark:text-green-400 font-poppins whitespace-nowrap">
+            <span className="text-sm font-medium text-primary font-poppins whitespace-nowrap">
               Ativadas
             </span>
           ) : (
