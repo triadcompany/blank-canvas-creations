@@ -25,7 +25,8 @@ import { toast } from 'sonner';
 
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 
-const MAX_FILE_MB = 16; // WhatsApp media limit
+const MAX_VIDEO_MB = 500; // Vídeos até 500MB
+const MAX_OTHER_MB = 16; // Demais mídias (WhatsApp media limit)
 
 export interface MediaPayload {
   file: File;
@@ -104,11 +105,12 @@ export function MessageComposer({
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande (máx. ${MAX_FILE_MB}MB)`);
+    const kind = inferKind(file);
+    const maxMb = kind === 'video' ? MAX_VIDEO_MB : MAX_OTHER_MB;
+    if (file.size > maxMb * 1024 * 1024) {
+      toast.error(`Arquivo muito grande (máx. ${maxMb}MB)`);
       return;
     }
-    const kind = inferKind(file);
     const previewUrl = kind === 'image' || kind === 'video' ? URL.createObjectURL(file) : undefined;
     setPending({ file, kind, previewUrl });
     setCaption('');
