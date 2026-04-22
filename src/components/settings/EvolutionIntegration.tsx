@@ -667,7 +667,7 @@ export function EvolutionIntegration() {
                         setInstanceName(val);
                         if (val) validateInstanceName(val);
                       }}
-                      placeholder="ex: minha-empresa ou org-vendas"
+                      placeholder="Ex: nome da minha empresa"
                       className="font-mono"
                       maxLength={40}
                     />
