@@ -19,10 +19,10 @@ const respond = (body: Record<string, unknown>, status = 200) =>
  * Steps:
  *  1. Logout the WhatsApp session (so the phone forgets this device).
  *  2. Delete the instance from Evolution (frees the instance_name globally).
- *  3. Wipe the row in `whatsapp_integrations` for this org.
+ *  3. Delete the row in `whatsapp_integrations` for this org.
  *
  * Even if Evolution returns 404 (instance already gone) or any non-fatal error,
- * we still wipe the local row so the UI returns to a clean state.
+ * we still remove the local row so the UI returns to a clean state.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -39,7 +39,10 @@ serve(async (req) => {
     const { organization_id } = await req.json();
 
     if (!organization_id) {
-      return respond({ ok: false, message: "organization_id obrigatório" }, 400);
+      return respond(
+        { ok: false, message: "organization_id obrigatório" },
+        400,
+      );
     }
 
     console.log(`[evolution-delete] === START === org=${organization_id}`);
@@ -64,8 +67,15 @@ serve(async (req) => {
           headers: { apikey: evolutionApiKey },
         });
         const text = await r.text();
-        console.log(`[evolution-delete] Logout: HTTP ${r.status} | ${text.substring(0, 200)}`);
-        evolutionResults.logout = { status: r.status, body: text.substring(0, 200) };
+        console.log(
+          `[evolution-delete] Logout: HTTP ${r.status} | ${
+            text.substring(0, 200)
+          }`,
+        );
+        evolutionResults.logout = {
+          status: r.status,
+          body: text.substring(0, 200),
+        };
       } catch (err) {
         console.error("[evolution-delete] Logout error:", err);
         evolutionResults.logout = { error: String(err) };
@@ -80,36 +90,40 @@ serve(async (req) => {
           headers: { apikey: evolutionApiKey },
         });
         const text = await r.text();
-        console.log(`[evolution-delete] Delete: HTTP ${r.status} | ${text.substring(0, 200)}`);
-        evolutionResults.delete = { status: r.status, body: text.substring(0, 200) };
+        console.log(
+          `[evolution-delete] Delete: HTTP ${r.status} | ${
+            text.substring(0, 200)
+          }`,
+        );
+        evolutionResults.delete = {
+          status: r.status,
+          body: text.substring(0, 200),
+        };
       } catch (err) {
         console.error("[evolution-delete] Delete error:", err);
         evolutionResults.delete = { error: String(err) };
       }
     } else {
-      console.log(`[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${!!evolutionApiKey && !!evolutionBaseUrl})`);
+      console.log(
+        `[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${
+          !!evolutionApiKey && !!evolutionBaseUrl
+        })`,
+      );
     }
 
-    // ── Step 3: wipe local row (always, even if Evolution failed) ──
+    // ── Step 3: remove local row (always, even if Evolution failed) ──
     if (integration?.id) {
-      const { error: updErr } = await supabase
+      const { error: deleteErr } = await supabase
         .from("whatsapp_integrations")
-        .update({
-          status: "disconnected",
-          is_active: false,
-          instance_name: null,
-          qr_code_data: null,
-          connected_at: null,
-          phone_number: null,
-          updated_at: new Date().toISOString(),
-        })
+        .delete()
         .eq("id", integration.id);
 
-      if (updErr) {
-        console.error("[evolution-delete] DB wipe error:", updErr);
+      if (deleteErr) {
+        console.error("[evolution-delete] DB delete error:", deleteErr);
         return respond({
           ok: false,
-          message: `Instância removida da Evolution mas falhou ao limpar banco: ${updErr.message}`,
+          message:
+            `Instância removida da Evolution mas falhou ao remover integração local: ${deleteErr.message}`,
           evolution: evolutionResults,
         }, 500);
       }
