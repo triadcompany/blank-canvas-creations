@@ -57,6 +57,8 @@ export interface OrgMember {
 }
 
 type FilterMode = 'all' | 'mine' | 'unassigned' | 'open' | 'in_progress' | 'waiting_customer' | 'closed' | 'meta_ads';
+export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
+export type StatusFilter = 'all' | 'open' | 'in_progress' | 'waiting_customer' | 'closed';
 
 // Deduplicate and sort messages
 function dedupeAndSort(msgs: InboxMessage[]): InboxMessage[] {
