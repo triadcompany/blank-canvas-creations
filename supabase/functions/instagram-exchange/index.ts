@@ -40,10 +40,10 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Parâmetros obrigatórios: code, organizationId, profileId' }), { status: 400, headers });
     }
 
-    // Validate profile
+    // Validate profile (resolve identity only — membership is validated via org_members below).
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('id, user_id, organization_id')
+      .select('id, user_id, clerk_user_id')
       .eq('id', profileId)
       .single();
 
@@ -52,9 +52,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Perfil não encontrado' }), { status: 401, headers });
     }
 
-    if (profile.organization_id !== organizationId) {
-      console.error("[instagram-exchange] Org mismatch", { profile: profile.organization_id, body: organizationId });
-      return new Response(JSON.stringify({ error: 'Organização não corresponde ao perfil' }), { status: 403, headers });
+    // Validate org membership against org_members (multi-org safe).
+    const clerkUserId = profile.clerk_user_id || req.headers.get('x-clerk-user-id');
+    if (!clerkUserId) {
+      console.error("[instagram-exchange] No clerk_user_id available for membership check");
+      return new Response(JSON.stringify({ error: 'Identidade Clerk não encontrada' }), { status: 401, headers });
+    }
+    const { data: membership } = await supabaseAdmin
+      .from('org_members')
+      .select('organization_id')
+      .eq('clerk_user_id', clerkUserId)
+      .eq('organization_id', organizationId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!membership) {
+      console.error("[instagram-exchange] User not member of requested org", { clerkUserId, organizationId });
+      return new Response(JSON.stringify({ error: 'Usuário não pertence à organização' }), { status: 403, headers });
     }
 
     const userId = profile.user_id || profile.id;

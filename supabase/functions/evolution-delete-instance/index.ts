@@ -47,6 +47,22 @@ serve(async (req) => {
       );
     }
 
+    // Validate caller membership via org_members (multi-org safe).
+    const callerClerkUserId = req.headers.get("x-clerk-user-id");
+    if (callerClerkUserId) {
+      const { data: member } = await supabase
+        .from("org_members")
+        .select("role, status")
+        .eq("clerk_user_id", callerClerkUserId)
+        .eq("organization_id", organization_id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!member) {
+        console.warn(`[evolution-delete] Forbidden: clerk_user_id=${callerClerkUserId} not member of org=${organization_id}`);
+        return respond({ ok: false, message: "Usuário não pertence à organização" }, 403);
+      }
+    }
+
     console.log(`[evolution-delete] === START === org=${organization_id} wipe=${!!wipe}`);
 
     const { data: integration } = await supabase
