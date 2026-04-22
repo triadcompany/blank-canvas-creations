@@ -327,6 +327,14 @@ function MessageBubble({ message, showSender }: { message: InboxMessage; showSen
           isOptimistic && 'opacity-70'
         )}
       >
+        {!isOutbound && showSender && senderLabel && (
+          <div
+            className="text-[11px] font-semibold mb-0.5 truncate"
+            style={{ color: senderColor }}
+          >
+            {senderLabel}
+          </div>
+        )}
         {isAiGenerated && (
           <div className={cn(
             'flex items-center gap-1 mb-1 text-[10px] font-medium px-2 pt-1',
