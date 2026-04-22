@@ -438,11 +438,13 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         }
       }
     } else {
-      const groupSubject = isGroup
+      const inlineGroupSubject = isGroup
         ? ((typeof body?.data?.subject === "string" && body.data.subject) ||
            (typeof msg?.subject === "string" && msg.subject) ||
-           `Grupo (${normalizedPhone.slice(-4)})`)
+           null)
         : null;
+      const groupFallback = isGroup ? `Grupo (${normalizedPhone.slice(-4)})` : null;
+      const groupSubject = inlineGroupSubject || groupFallback;
       const { data: newConv } = await supabase
         .from("conversations")
         .insert({
@@ -450,7 +452,9 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           instance_name: instanceName,
           contact_phone: normalizedPhone,
           contact_name: isGroup ? groupSubject : (pushName || null),
-          contact_name_source: isGroup ? "group_fallback" : (pushName ? "whatsapp" : null),
+          contact_name_source: isGroup
+            ? (inlineGroupSubject ? "whatsapp_group" : "group_fallback")
+            : (pushName ? "whatsapp" : null),
           last_message_at: now,
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,
@@ -466,6 +470,10 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (conversationId && !isFromMe && !isGroup) {
         fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+      }
+      if (conversationId && isGroup && !inlineGroupSubject) {
+        fetchAndSaveGroupName(supabase, instanceName, remoteJid, conversationId)
+          .catch((e: unknown) => console.error("[evolution-webhook] group name fetch error:", e));
       }
     }
 
