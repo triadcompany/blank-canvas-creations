@@ -287,11 +287,13 @@ async function handleMessagesUpsert(
           }
         }
       } else {
-        const groupSubject = isGroup
-          ? ((typeof body?.data?.subject === "string" && body.data.subject) ||
+        const inlineSubject = isGroup
+          ? ((typeof payload?.data?.subject === "string" && payload.data.subject) ||
              (typeof msg?.subject === "string" && msg.subject) ||
-             `Grupo (${phone.slice(-4)})`)
+             null)
           : null;
+        const groupFallback = isGroup ? `Grupo (${phone.slice(-4)})` : null;
+        const groupSubject = inlineSubject || groupFallback;
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
           .insert({
@@ -299,7 +301,9 @@ async function handleMessagesUpsert(
             instance_name: instanceName,
             contact_phone: phone,
             contact_name: isGroup ? groupSubject : (pushName || null),
-            contact_name_source: isGroup ? "group_fallback" : (pushName ? "whatsapp" : null),
+            contact_name_source: isGroup
+              ? (inlineSubject ? "whatsapp_group" : "group_fallback")
+              : (pushName ? "whatsapp" : null),
             last_message_at: now,
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
@@ -320,6 +324,12 @@ async function handleMessagesUpsert(
         if (conversationId && !isFromMe && !isGroup) {
           fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
             .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
+        }
+
+        // Fetch real group name from Evolution if we only have the fallback
+        if (conversationId && isGroup && !inlineSubject) {
+          refreshGroupNameAsync(supabase, instanceName, remoteJid, conversationId)
+            .catch((e) => console.error("[wa-webhook-v2] group fetch error:", e));
         }
       }
 
