@@ -13,6 +13,18 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Trash2 } from "lucide-react";
 import QRCodeLib from "qrcode";
 
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
@@ -421,6 +433,50 @@ export function EvolutionIntegration() {
     }
   };
 
+  const handleClearConfiguration = async () => {
+    setActionLoading(true);
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+      setPolling(false);
+    }
+    try {
+      if (integration?.id) {
+        await supabase
+          .from("whatsapp_integrations")
+          .update({
+            status: "disconnected",
+            is_active: false,
+            instance_name: null,
+            qr_code_data: null,
+            connected_at: null,
+            phone_number: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq("id", integration.id);
+      }
+
+      setIntegration(null);
+      setInstanceName("");
+      setInstanceNameError("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      setDebugInfo(null);
+      setLastQrFormat(null);
+
+      toast({
+        title: "Configuração limpa",
+        description: "Você pode criar uma nova instância agora.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro ao limpar", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleSendTest = async () => {
     if (!testPhone.trim()) { toast({ title: "Erro", description: "Informe o número", variant: "destructive" }); return; }
     setActionLoading(true);
@@ -546,6 +602,38 @@ export function EvolutionIntegration() {
                     <QrCodeIcon className="h-4 w-4" />
                     Criar outra instância
                   </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionLoading}
+                        className="font-poppins gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Limpar configuração
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Limpar configuração do WhatsApp?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Isso vai remover completamente a instância configurada para esta organização. A tela voltará ao estado inicial e você poderá criar uma nova instância do zero.
+                          <br /><br />
+                          <strong>Esta ação não pode ser desfeita.</strong>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleClearConfiguration}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Sim, limpar tudo
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </AlertDescription>
             </Alert>
