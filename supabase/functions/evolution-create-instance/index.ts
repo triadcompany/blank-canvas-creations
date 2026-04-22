@@ -97,6 +97,23 @@ serve(async (req) => {
       return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "organization_id é obrigatório" }, 400);
     }
 
+    // Validate caller membership via org_members (multi-org safe).
+    // Permissive: only enforces when x-clerk-user-id is present (browser calls).
+    const callerClerkUserId = req.headers.get("x-clerk-user-id");
+    if (callerClerkUserId) {
+      const { data: member } = await supabase
+        .from("org_members")
+        .select("role, status")
+        .eq("clerk_user_id", callerClerkUserId)
+        .eq("organization_id", organization_id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!member) {
+        console.warn(`[evolution-create] Forbidden: clerk_user_id=${callerClerkUserId} not member of org=${organization_id}`);
+        return respond({ ok: false, status: "error", qr_code_data: null, qr_format: null, message: "Usuário não pertence à organização" }, 403);
+      }
+    }
+
     // ALWAYS force the canonical, org-scoped instance name. We do NOT accept user input.
     const instance_name = buildInstanceName(organization_id);
 
