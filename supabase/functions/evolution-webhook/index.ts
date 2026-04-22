@@ -308,8 +308,20 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
   for (const msg of msgArray) {
     const isFromMe = msg.key?.fromMe === true;
-    const phone = (msg.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "");
+    const remoteJid: string = msg.key?.remoteJid || "";
+    const isGroup = remoteJid.endsWith("@g.us");
+    // For groups: conversation key is the group JID (without @g.us); sender comes from `participant`
+    const phone = isGroup
+      ? remoteJid.replace("@g.us", "")
+      : remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
     if (!phone) continue;
+
+    // Group sender info (only meaningful for inbound group messages)
+    const participantJid: string = msg.key?.participant || msg.participant || "";
+    const senderPhone = participantJid
+      ? participantJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "")
+      : (isFromMe ? "" : phone.replace(/\D/g, ""));
+    const senderName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || null;
 
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || null;
     const isAudio = !!msg.message?.audioMessage;
