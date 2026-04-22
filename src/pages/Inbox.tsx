@@ -61,6 +61,7 @@ import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
 import { AudioPlayer } from '@/components/inbox/AudioPlayer';
 import { MessageComposer } from '@/components/inbox/MessageComposer';
+import { ImageLightbox } from '@/components/inbox/ImageLightbox';
 import {
   AlertDialog,
   AlertDialogAction,
