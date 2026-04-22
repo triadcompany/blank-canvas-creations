@@ -76,11 +76,45 @@ const itemVariants = {
 export function Reports() {
   const { leads, stages, loading } = useSupabaseLeads();
   const { leadSources, loading: sourcesLoading } = useLeadSources();
+  const { profile, orgId: authOrgId } = useAuth();
+  const orgId = authOrgId || profile?.organization_id;
   
   const [selectedPeriod, setSelectedPeriod] = useState("este_mes");
   const [selectedSource, setSelectedSource] = useState("todas");
   const [selectedSeller, setSelectedSeller] = useState("todos");
+  const [selectedPipeline, setSelectedPipeline] = useState("todas");
   const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [pipelines, setPipelines] = useState<Array<{ id: string; name: string }>>([]);
+  const [pipelineStageMap, setPipelineStageMap] = useState<Record<string, string>>({}); // stage_id -> pipeline_id
+
+  // Fetch all pipelines and their stages (to map stages -> pipeline)
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: pipelineList } = await supabase.rpc('get_org_pipelines', { p_org_id: orgId });
+        const list = (pipelineList || []) as Array<{ id: string; name: string }>;
+        if (cancelled) return;
+        setPipelines(list);
+
+        const map: Record<string, string> = {};
+        await Promise.all(
+          list.map(async (p) => {
+            const { data: stageList } = await supabase.rpc('get_pipeline_stages', { p_pipeline_id: p.id });
+            (stageList || []).forEach((s: any) => {
+              map[s.id] = p.id;
+            });
+          })
+        );
+        if (!cancelled) setPipelineStageMap(map);
+      } catch (err) {
+        console.error('Error loading pipelines for reports filter:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId]);
+
 
   const getDateRange = (period: string) => {
     const now = new Date();
