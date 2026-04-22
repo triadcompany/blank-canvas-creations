@@ -69,7 +69,7 @@ export function EvolutionIntegration() {
   const { toast } = useToast();
   const { profile, isAdmin, orgId: authOrgId } = useAuth();
   const { user: clerkUser } = useUser();
-  const orgId = profile?.organization_id || authOrgId;
+  const orgId = authOrgId || profile?.organization_id;
   const clerkUserId = clerkUser?.id;
 
   const [conn, setConn] = useState<Connection | null>(null);
@@ -78,27 +78,51 @@ export function EvolutionIntegration() {
   const [qrStartedAt, setQrStartedAt] = useState<number | null>(null);
   const pollRef = useRef<number | null>(null);
   const lastOrgRef = useRef<string | null>(null);
+  const activeOrgRef = useRef<string | null>(orgId || null);
+
+  const resetConnectionState = useCallback((nextLoading = false) => {
+    setConn(null);
+    setBusy(null);
+    setQrStartedAt(null);
+    setLoading(nextLoading);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
   /* ── Fetch status ── */
   const fetchStatus = useCallback(async (refreshQr = false): Promise<Connection | null> => {
-    if (!orgId) return null;
+    const requestOrgId = orgId;
+    if (!requestOrgId) return null;
+
     try {
       const { data, error } = await supabase.functions.invoke("whatsapp-status", {
-        body: { organization_id: orgId, refresh_qr: refreshQr },
+        body: { organization_id: requestOrgId, refresh_qr: refreshQr },
         headers: clerkUserId ? { "x-clerk-user-id": clerkUserId } : {},
       });
       if (error) throw error;
 
+      if (activeOrgRef.current !== requestOrgId) {
+        return null;
+      }
+
       if (!data?.ok) return null;
       if (data.status === "not_configured" || !data.connection) {
-        setConn(null);
+        if (activeOrgRef.current === requestOrgId) {
+          setConn(null);
+        }
         return null;
       }
+
       // Defesa anti-vazamento entre orgs
-      if (data.connection.organization_id !== orgId) {
-        setConn(null);
+      if (data.connection.organization_id !== requestOrgId) {
+        if (activeOrgRef.current === requestOrgId) {
+          setConn(null);
+        }
         return null;
       }
+
       setConn(data.connection);
       return data.connection;
     } catch (err) {
@@ -109,22 +133,25 @@ export function EvolutionIntegration() {
 
   /* ── Reset on org switch ── */
   useEffect(() => {
+    activeOrgRef.current = orgId || null;
+    const requestOrgId = orgId || null;
+
     if (lastOrgRef.current !== orgId) {
       lastOrgRef.current = orgId || null;
-      setConn(null);
-      setLoading(true);
-      setQrStartedAt(null);
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      resetConnectionState(Boolean(orgId));
     }
+
     if (!orgId) {
-      setLoading(false);
+      resetConnectionState(false);
       return;
     }
-    fetchStatus().finally(() => setLoading(false));
-  }, [orgId, fetchStatus]);
+
+    fetchStatus().finally(() => {
+      if (activeOrgRef.current === requestOrgId) {
+        setLoading(false);
+      }
+    });
+  }, [orgId, fetchStatus, resetConnectionState]);
 
   /* ── Polling while connecting ── */
   useEffect(() => {
