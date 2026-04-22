@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   FileText,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -340,14 +341,24 @@ export function MessageComposer({
               <Paperclip className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-44">
+          <DropdownMenuContent align="start" side="top" className="w-52">
+            <DropdownMenuItem
+              onClick={() =>
+                openFilePicker(
+                  'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm'
+                )
+              }
+            >
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Foto ou vídeo
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openFilePicker('image/jpeg,image/png,image/webp,image/gif')}>
               <ImageIcon className="h-4 w-4 mr-2" />
-              Imagem
+              Apenas imagem
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openFilePicker('video/mp4,video/quicktime,video/webm')}>
               <VideoIcon className="h-4 w-4 mr-2" />
-              Vídeo
+              Apenas vídeo
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
