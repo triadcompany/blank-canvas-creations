@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
 import { useLeadSources } from "@/hooks/useLeadSources";
+import { useSalesStageIds } from "@/hooks/useSalesStageIds";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subWeeks, subMonths, isWithinInterval, parseISO, format } from "date-fns";
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -76,6 +77,7 @@ const itemVariants = {
 export function Reports() {
   const { leads, stages, loading } = useSupabaseLeads();
   const { leadSources, loading: sourcesLoading } = useLeadSources();
+  const { salesStageIds } = useSalesStageIds();
   const { profile, orgId: authOrgId } = useAuth();
   const orgId = authOrgId || profile?.organization_id;
   
@@ -190,31 +192,25 @@ export function Reports() {
     }
 
     const totalLeads = filteredLeads.length;
-    
-    const salesStages = stages.filter(stage => 
-      stage.name.toLowerCase().includes('fechado') || 
-      stage.name.toLowerCase().includes('venda') ||
-      stage.name.toLowerCase().includes('vendido')
+
+    // Usa o conjunto de stage_ids de venda de TODAS as pipelines da org
+    const soldLeads = filteredLeads.filter(lead =>
+      lead.stage_id && salesStageIds.has(lead.stage_id)
     );
-    
-    const soldLeads = filteredLeads.filter(lead => 
-      salesStages.some(stage => stage.id === lead.stage_id)
-    );
-    
+
     const salesCount = soldLeads.length;
     const conversionRate = totalLeads > 0 ? (salesCount / totalLeads * 100) : 0;
-    
+
     const totalRevenue = soldLeads.reduce((total, lead) => {
-      // Priorizar valor_negocio, senão usar price legado
-      if (lead.valor_negocio) {
-        return total + lead.valor_negocio;
-      }
-      const price = parseFloat(lead.price?.replace(/[^\d,]/g, '')?.replace(',', '.') || '0');
-      return total + price;
+      if (lead.valor_negocio) return total + lead.valor_negocio;
+      const price = parseFloat(
+        lead.price?.replace(/[^\d,]/g, '')?.replace(',', '.') || '0'
+      );
+      return total + (isNaN(price) ? 0 : price);
     }, 0);
-    
+
     const avgTicket = soldLeads.length > 0 ? totalRevenue / soldLeads.length : 0;
-    
+
     return {
       totalLeads,
       salesCount,
@@ -222,7 +218,7 @@ export function Reports() {
       avgTicket,
       totalRevenue
     };
-  }, [filteredLeads, stages, loading]);
+  }, [filteredLeads, salesStageIds, loading]);
 
   // Dados para o gráfico de barras por etapa
   const stageChartData = useMemo(() => {

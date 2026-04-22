@@ -13,16 +13,18 @@ import {
 } from "lucide-react";
 import heroImage from "@/assets/crm-hero.jpg";
 import { useSupabaseLeads } from "@/hooks/useSupabaseLeads";
+import { useSalesStageIds } from "@/hooks/useSalesStageIds";
 import { TasksWidget } from "@/components/tasks/TasksWidget";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function Dashboard() {
   const { leads, stages, loading } = useSupabaseLeads();
+  const { salesStageIds, loading: salesLoading } = useSalesStageIds();
   const { userName } = useAuth();
 
   // Calcular métricas reais baseadas nos dados
   const metrics = useMemo(() => {
-    if (loading || !leads.length) {
+    if (loading || salesLoading || !leads.length) {
       return [
         {
           title: "Total de Leads",
@@ -56,39 +58,32 @@ export function Dashboard() {
     }
 
     const totalLeads = leads.length;
-    
-    // Encontrar etapas de venda (fechado/vendido)
-    const salesStages = stages.filter(stage => 
-      stage.name.toLowerCase().includes('fechado') || 
-      stage.name.toLowerCase().includes('venda') ||
-      stage.name.toLowerCase().includes('vendido')
+
+    // Detectar leads vendidos usando o conjunto de stage_ids de TODAS as pipelines
+    const soldLeads = leads.filter(lead =>
+      lead.stage_id && salesStageIds.has(lead.stage_id)
     );
-    
-    const salesCount = leads.filter(lead => 
-      salesStages.some(stage => stage.id === lead.stage_id)
-    ).length;
-    
-    const conversionRate = totalLeads > 0 ? (salesCount / totalLeads * 100).toFixed(1) : 0;
-    
-    // Calcular receita baseada no valor_negocio dos leads vendidos (mês atual)
+    const salesCount = soldLeads.length;
+
+    const conversionRate = totalLeads > 0
+      ? (salesCount / totalLeads * 100).toFixed(1)
+      : '0.0';
+
+    // Receita do mês: somente vendas com data de criação dentro do mês corrente
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    const revenue = leads
+
+    const revenue = soldLeads
       .filter(lead => {
-        const isSalesStage = salesStages.some(stage => stage.id === lead.stage_id);
-        // Verificar se o lead foi atualizado neste mês (indicando que foi movido para venda)
-        const leadDate = lead.created_at ? new Date(lead.created_at) : null;
-        const isThisMonth = leadDate ? leadDate >= startOfMonth : false;
-        return isSalesStage && (lead.valor_negocio || lead.price);
+        if (!lead.created_at) return false;
+        return new Date(lead.created_at) >= startOfMonth;
       })
       .reduce((total, lead) => {
-        // Priorizar valor_negocio, senão usar price legado
-        if (lead.valor_negocio) {
-          return total + lead.valor_negocio;
-        }
-        const price = parseFloat(lead.price?.replace(/[^\d,]/g, '')?.replace(',', '.') || '0');
-        return total + price;
+        if (lead.valor_negocio) return total + lead.valor_negocio;
+        const price = parseFloat(
+          lead.price?.replace(/[^\d,]/g, '')?.replace(',', '.') || '0'
+        );
+        return total + (isNaN(price) ? 0 : price);
       }, 0);
 
     return [
@@ -121,7 +116,7 @@ export function Dashboard() {
         gradient: "from-amber-500 to-amber-400"
       }
     ];
-  }, [leads, stages, loading]);
+  }, [leads, salesStageIds, loading, salesLoading]);
 
   const displayName = userName || 'Usuário';
 
