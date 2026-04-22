@@ -204,8 +204,8 @@ export function useSupabaseProfiles() {
       // Remover do estado local apenas se a exclusão foi bem-sucedida
       setProfiles(prev => prev.filter(profile => profile.id !== profileId));
       toast({
-        title: "Sucesso",
-        description: "Usuário excluído com sucesso",
+        title: "Usuário removido",
+        description: "O usuário foi removido desta organização. A conta dele continua ativa.",
       });
     } catch (error) {
       console.error("Erro ao excluir usuário:", error);
