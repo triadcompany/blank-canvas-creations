@@ -433,7 +433,49 @@ export function EvolutionIntegration() {
     }
   };
 
-  const handleSendTest = async () => {
+  const handleClearConfiguration = async () => {
+    setActionLoading(true);
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+      setPolling(false);
+    }
+    try {
+      if (integration?.id) {
+        await supabase
+          .from("whatsapp_integrations")
+          .update({
+            status: "disconnected",
+            is_active: false,
+            instance_name: null,
+            qr_code_data: null,
+            connected_at: null,
+            phone_number: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq("id", integration.id);
+      }
+
+      setIntegration(null);
+      setInstanceName("");
+      setInstanceNameError("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      setDebugInfo(null);
+      setLastQrFormat(null);
+
+      toast({
+        title: "Configuração limpa",
+        description: "Você pode criar uma nova instância agora.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro ao limpar", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
     if (!testPhone.trim()) { toast({ title: "Erro", description: "Informe o número", variant: "destructive" }); return; }
     setActionLoading(true);
     try {
