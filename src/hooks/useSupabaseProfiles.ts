@@ -138,6 +138,11 @@ export function useSupabaseProfiles() {
 
         if (fnError) throw new Error(fnError.message || 'Erro ao atualizar papel');
         if (data && (data as any).error) throw new Error((data as any).error);
+
+        // Aviso opcional caso a sincronização com Clerk não tenha sido aplicada
+        if (data && (data as any).clerkWarning) {
+          console.warn('Clerk sync warning:', (data as any).clerkWarning);
+        }
       }
 
       setProfiles((prev) =>
