@@ -172,9 +172,31 @@ export function EvolutionIntegration() {
       }
 
       if (result.ok && result.integration) {
+        // Defensive guard: ensure the returned integration belongs to the current org.
+        // Prevents any stale/cross-org data from being displayed.
+        if (result.integration.organization_id !== orgId) {
+          console.warn("[EvolutionIntegration] Org mismatch in response, discarding", {
+            expected: orgId,
+            received: result.integration.organization_id,
+          });
+          setIntegration(null);
+          setInstanceName("");
+          setLiveStatus(null);
+          setLiveError(null);
+          return { integration: null, live_status: null, live_error: null };
+        }
         setIntegration(result.integration as Integration);
         setInstanceName(result.integration.instance_name || "");
         return { integration: result.integration as Integration, live_status: resultLiveStatus, live_error: resultLiveError };
+      }
+      // No integration for this org — clear any stale state from a previously viewed org
+      setIntegration(null);
+      setInstanceName("");
+      if (checkLive) {
+        setLiveStatus(null);
+        setLiveError(null);
+        setInstanceFound(true);
+        setAvailableInstances(null);
       }
       return { integration: null, live_status: resultLiveStatus, live_error: resultLiveError };
     } catch {
@@ -184,10 +206,18 @@ export function EvolutionIntegration() {
     }
   }, [orgId]);
 
-  // Initial load: fetch DB + live check
+  // Reset state immediately when org changes, then fetch fresh data
   useEffect(() => {
+    setIntegration(null);
+    setInstanceName("");
+    setLiveStatus(null);
+    setLiveError(null);
+    setInstanceFound(true);
+    setAvailableInstances(null);
+    setDebugInfo(null);
+    setLoading(true);
     fetchIntegration(true);
-  }, [fetchIntegration]);
+  }, [orgId, fetchIntegration]);
 
   // Start polling for connection status (3s intervals, max 90s)
   const startPolling = useCallback(() => {
