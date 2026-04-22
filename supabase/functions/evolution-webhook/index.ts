@@ -354,7 +354,11 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
     const pushName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || "";
-    const messagePreview = displayBody.substring(0, 100);
+    // For groups: prefix preview with sender name (e.g. "Thiago: Bom dia")
+    const previewBase = (isGroup && !isFromMe && (senderName || senderPhone))
+      ? `${senderName || senderPhone}: ${displayBody}`
+      : displayBody;
+    const messagePreview = previewBase.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
     const direction = isFromMe ? "outbound" : "inbound";
 
