@@ -1,13 +1,19 @@
 // whatsapp-webhook-v2: recebe eventos da Evolution para a nova tabela whatsapp_connections.
 // Atualiza o estado da conexão e espelha mensagens recebidas/enviadas no Inbox
 // (tabelas `conversations` e `messages`) quando `mirror_enabled = true`.
+// Para mensagens com mídia, baixa o conteúdo da Evolution e persiste no bucket `chat-media`.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "";
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+const MEDIA_BUCKET = "chat-media";
 
 function normalizePhone(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -17,7 +23,16 @@ function normalizePhone(raw: string | null | undefined): string {
     .replace(/\D/g, "");
 }
 
-function extractMessageContent(msg: any): { body: string | null; messageType: string; mediaLabel: string | null } {
+type MediaInfo = {
+  body: string | null;
+  messageType: string;
+  mediaLabel: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  hasMedia: boolean;
+};
+
+function extractMessageContent(msg: any): MediaInfo {
   const m = msg?.message || {};
   const text = m.conversation || m.extendedTextMessage?.text || null;
   const isImage = !!m.imageMessage;
@@ -55,7 +70,102 @@ function extractMessageContent(msg: any): { body: string | null; messageType: st
   const body =
     text ||
     (caption ? `${mediaLabel ? `${mediaLabel} ` : ""}${caption}` : mediaLabel);
-  return { body, messageType, mediaLabel };
+  const mediaNode =
+    m.imageMessage || m.videoMessage || m.audioMessage || m.documentMessage || m.stickerMessage;
+  const mimeType = mediaNode?.mimetype || null;
+  const fileName = m.documentMessage?.fileName || m.documentMessage?.title || null;
+  const hasMedia = isImage || isVideo || isAudio || isDocument;
+  return { body, messageType, mediaLabel, mimeType, fileName, hasMedia };
+}
+
+function pickExtension(messageType: string, mimeType: string | null, fileName: string | null): string {
+  if (fileName && fileName.includes(".")) {
+    const ext = fileName.split(".").pop();
+    if (ext && ext.length <= 6) return ext.toLowerCase();
+  }
+  if (mimeType) {
+    const sub = mimeType.split("/")[1]?.split(";")[0];
+    if (sub) {
+      if (sub === "jpeg") return "jpg";
+      if (sub === "ogg") return "ogg";
+      if (sub === "mp4") return "mp4";
+      if (sub === "webm") return "webm";
+      if (sub === "pdf") return "pdf";
+      if (sub === "png") return "png";
+      if (sub === "webp") return "webp";
+      return sub;
+    }
+  }
+  return messageType === "image"
+    ? "jpg"
+    : messageType === "video"
+    ? "mp4"
+    : messageType === "audio"
+    ? "ogg"
+    : "bin";
+}
+
+// Download media from Evolution, upload to Supabase Storage, return public URL.
+async function downloadAndStoreMedia(
+  supabase: any,
+  instanceName: string,
+  msg: any,
+  info: MediaInfo,
+  organizationId: string,
+  conversationId: string,
+): Promise<string | null> {
+  if (!info.hasMedia) return null;
+  if (!EVOLUTION_BASE_URL || !EVOLUTION_API_KEY) {
+    console.warn("[wa-webhook-v2] Evolution env not set — skipping media download");
+    return null;
+  }
+
+  try {
+    const res = await fetch(
+      `${EVOLUTION_BASE_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ message: { key: msg.key } }),
+      },
+    );
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error(`[wa-webhook-v2] media download failed status=${res.status} body=${errText.substring(0, 200)}`);
+      return null;
+    }
+
+    const data = await res.json().catch(() => ({} as any));
+    const base64: string | undefined = data?.base64 || data?.media || data?.file;
+    if (!base64) {
+      console.error("[wa-webhook-v2] media response missing base64", Object.keys(data || {}));
+      return null;
+    }
+
+    const bytes = decodeBase64(base64);
+    const mime = info.mimeType || data?.mimetype || null;
+    const ext = pickExtension(info.messageType, mime, info.fileName);
+    const ts = Date.now();
+    const safeName = info.fileName ? info.fileName.replace(/[^a-zA-Z0-9._-]/g, "_") : `${ts}.${ext}`;
+    const path = `${organizationId}/${conversationId}/${ts}_${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage.from(MEDIA_BUCKET).upload(path, bytes, {
+      contentType: mime || "application/octet-stream",
+      upsert: false,
+    });
+
+    if (uploadErr) {
+      console.error("[wa-webhook-v2] storage upload error:", uploadErr);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+    return urlData?.publicUrl || null;
+  } catch (err) {
+    console.error("[wa-webhook-v2] downloadAndStoreMedia error:", err);
+    return null;
+  }
 }
 
 async function handleMessagesUpsert(
@@ -82,14 +192,14 @@ async function handleMessagesUpsert(
 
       const externalId = msg?.key?.id || null;
       const pushName = msg?.pushName || msg?.notifyName || null;
-      const { body, messageType } = extractMessageContent(msg);
-      if (!body) {
+      const info = extractMessageContent(msg);
+      if (!info.body) {
         console.log(`[wa-webhook-v2] empty message for ${phone} — skipping`);
         continue;
       }
 
       const now = new Date().toISOString();
-      const preview = body.substring(0, 100);
+      const preview = info.body.substring(0, 100);
 
       // ── Find or create conversation ──
       const { data: existingConv } = await supabase
@@ -154,13 +264,28 @@ async function handleMessagesUpsert(
         if (dupe) continue;
       }
 
+      // ── Persist media if any ──
+      let mediaUrl: string | null = null;
+      if (info.hasMedia) {
+        mediaUrl = await downloadAndStoreMedia(
+          supabase,
+          instanceName,
+          msg,
+          info,
+          conn.organization_id,
+          conversationId,
+        );
+      }
+
       const { error: msgErr } = await supabase.from("messages").insert({
         organization_id: conn.organization_id,
         conversation_id: conversationId,
         direction: isFromMe ? "outbound" : "inbound",
-        body,
+        body: info.body,
         external_message_id: externalId,
-        message_type: messageType,
+        message_type: info.messageType,
+        media_url: mediaUrl,
+        mime_type: info.mimeType,
       });
 
       if (msgErr) {
@@ -169,7 +294,7 @@ async function handleMessagesUpsert(
         console.log(
           `[wa-webhook-v2] message saved org=${conn.organization_id} conv=${conversationId} dir=${
             isFromMe ? "outbound" : "inbound"
-          } type=${messageType}`,
+          } type=${info.messageType} media=${mediaUrl ? "yes" : "no"}`,
         );
       }
     } catch (err) {
