@@ -392,8 +392,6 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       }
       if (isGroup) {
         // For groups, NEVER overwrite contact_name with the sender's pushName.
-        // The real group subject must come from a `groups.upsert` event or
-        // `data.subject`. Until we have it, keep what's there or use a generic label.
         convUpdate.is_group = true;
         const groupSubject =
           (typeof body?.data?.subject === "string" && body.data.subject) ||
@@ -405,10 +403,10 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           convUpdate.contact_name_source = "whatsapp_group";
         } else if (
           !existingConv.contact_name ||
-          existingConv.contact_name_source === "whatsapp"
+          existingConv.contact_name_source === "whatsapp" ||
+          existingConv.contact_name_source === "group_fallback"
         ) {
-          // If contact_name was previously set from a participant pushName, replace
-          // with a neutral group label so the UI doesn't impersonate the sender.
+          // Replace participant pushName / placeholder with a neutral fallback.
           const fallback = `Grupo (${normalizedPhone.slice(-4)})`;
           convUpdate.contact_name = fallback;
           convUpdate.contact_name_source = "group_fallback";
@@ -423,6 +421,12 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         }
       }
       await supabase.from("conversations").update(convUpdate).eq("id", conversationId);
+
+      // For groups: if we still don't have the real subject, fetch it from Evolution (background).
+      if (isGroup && existingConv.contact_name_source !== "whatsapp_group" && convUpdate.contact_name_source !== "whatsapp_group") {
+        fetchAndSaveGroupName(supabase, instanceName, remoteJid, conversationId)
+          .catch((e: unknown) => console.error("[evolution-webhook] group name fetch error:", e));
+      }
 
       if (!isFromMe && !isGroup) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
