@@ -143,6 +143,8 @@ export function useInbox() {
         p_filter: filter,
         p_search: search.trim(),
         p_limit: 100,
+        p_assignment_filter: assignmentFilter,
+        p_status_filter: statusFilter,
       });
 
       if (error) throw error;
@@ -162,7 +164,7 @@ export function useInbox() {
     } finally {
       setLoadingThreads(false);
     }
-  }, [orgId, clerkUserId, filter, search, myProfileId, isAdmin]);
+  }, [orgId, clerkUserId, filter, search, myProfileId, isAdmin, assignmentFilter, statusFilter]);
 
   useEffect(() => {
     fetchThreads();
