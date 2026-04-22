@@ -65,7 +65,7 @@ function formatDateTime(iso: string | null): string {
   }
 }
 
-export default function EvolutionIntegration() {
+export function EvolutionIntegration() {
   const { toast } = useToast();
   const { profile, isAdmin, orgId: authOrgId } = useAuth();
   const { user: clerkUser } = useUser();
