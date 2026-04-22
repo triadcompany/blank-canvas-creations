@@ -1,4 +1,4 @@
-import { Home, Kanban, Users, MessageSquare, Menu, CalendarClock } from "lucide-react";
+import { Home, Kanban, Users, MessageSquare, Menu, CalendarClock, ListTodo } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -13,6 +13,7 @@ const mainTabs = [
 ];
 
 const moreItems = [
+  { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
   { icon: CalendarClock, label: "Follow-ups", path: "/follow-ups" },
   { icon: FileText, label: "Relatórios", path: "/relatorios" },
   { icon: Settings, label: "Configurações", path: "/settings" },

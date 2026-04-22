@@ -22,6 +22,7 @@ import {
   Inbox,
   Bot,
   Radio,
+  ListTodo,
 } from "lucide-react";
 import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,6 +37,7 @@ const principalItems: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Leads", url: "/leads", icon: List },
   { title: "Oportunidades", url: "/oportunidades", icon: Workflow },
+  { title: "Tarefas", url: "/tarefas", icon: ListTodo },
   { title: "Inbox", url: "/inbox", icon: Inbox },
   { title: "Disparos", url: "/broadcasts", icon: Radio },
 ];
