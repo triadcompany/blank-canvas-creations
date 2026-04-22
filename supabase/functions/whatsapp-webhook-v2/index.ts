@@ -330,6 +330,8 @@ async function handleMessagesUpsert(
         message_type: info.messageType,
         media_url: mediaUrl,
         mime_type: info.mimeType,
+        sender_name: !isFromMe ? (senderName || null) : null,
+        sender_phone: !isFromMe ? (senderPhone || null) : null,
       });
 
       if (msgErr) {
