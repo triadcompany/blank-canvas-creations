@@ -25,7 +25,8 @@ import { toast } from 'sonner';
 
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 
-const MAX_FILE_MB = 16; // WhatsApp media limit
+const MAX_VIDEO_MB = 500; // Vídeos até 500MB
+const MAX_OTHER_MB = 16; // Demais mídias (WhatsApp media limit)
 
 export interface MediaPayload {
   file: File;
