@@ -204,7 +204,7 @@ async function handleMessagesUpsert(
       // ── Find or create conversation ──
       const { data: existingConv } = await supabase
         .from("conversations")
-        .select("id, unread_count, contact_name, contact_name_source")
+        .select("id, unread_count, contact_name, contact_name_source, profile_picture_url, profile_picture_updated_at")
         .eq("organization_id", conn.organization_id)
         .eq("instance_name", instanceName)
         .eq("contact_phone", phone)
@@ -227,6 +227,18 @@ async function handleMessagesUpsert(
           update.contact_name_source = "whatsapp";
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
+
+        // Refresh profile picture (background, non-blocking) every 24h or if missing
+        if (!isFromMe) {
+          const picUpdatedAt = existingConv.profile_picture_updated_at;
+          const needsRefresh = !existingConv.profile_picture_url ||
+            !picUpdatedAt ||
+            (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
+          if (needsRefresh) {
+            fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, existingConv.id)
+              .catch((e) => console.error("[wa-webhook-v2] picture refresh error:", e));
+          }
+        }
       } else {
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
@@ -249,6 +261,12 @@ async function handleMessagesUpsert(
           continue;
         }
         conversationId = newConv?.id || null;
+
+        // Fetch profile picture for new conversation (background)
+        if (conversationId && !isFromMe) {
+          fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
+            .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
+        }
       }
 
       if (!conversationId) continue;
