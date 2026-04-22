@@ -907,7 +907,47 @@ async function fetchAndSaveProfilePicture(supabase: any, instanceName: string, p
   }
 }
 
-// ── Helper: Publish first message event to Event Bus ──
+// ── Helper: Fetch group name (subject) from Evolution API ──
+async function fetchAndSaveGroupName(
+  supabase: any,
+  instanceName: string,
+  groupJid: string,
+  conversationId: string,
+): Promise<void> {
+  try {
+    const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
+    const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
+    if (!evolutionBaseUrl || !evolutionApiKey) return;
+
+    const url = `${evolutionBaseUrl}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+    });
+    if (!res.ok) {
+      console.warn(`[evolution-webhook] findGroupInfos failed for ${groupJid}: ${res.status}`);
+      return;
+    }
+    const data = await res.json().catch(() => ({} as any));
+    const node = Array.isArray(data) ? data[0] : data;
+    const subject: string | null = node?.subject || node?.name || node?.groupSubject || null;
+    if (subject) {
+      await supabase
+        .from("conversations")
+        .update({
+          group_name: subject,
+          contact_name: subject,
+          contact_name_source: "whatsapp_group",
+        })
+        .eq("id", conversationId);
+      console.log(`[evolution-webhook] Group name saved: "${subject}" for conv ${conversationId}`);
+    } else {
+      console.log(`[evolution-webhook] No subject in findGroupInfos response for ${groupJid}`);
+    }
+  } catch (err) {
+    console.error(`[evolution-webhook] fetchAndSaveGroupName error for ${groupJid}:`, err);
+  }
+}
 // Returns true if event was published (= active first_message automations exist + first-touch didn't exist)
 async function publishFirstMessageEvent(
   supabase: any,
