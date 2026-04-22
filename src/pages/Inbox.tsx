@@ -280,13 +280,24 @@ function MessageBubble({ message }: { message: InboxMessage }) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
   const isAiGenerated = message.ai_generated === true;
-  const isAudio = message.message_type === 'audio' && message.media_url;
+  const mediaUrl = message.media_url || null;
+  const type = message.message_type || 'text';
+  const isImage = type === 'image' && mediaUrl;
+  const isVideo = type === 'video' && mediaUrl;
+  const isAudio = type === 'audio' && mediaUrl;
+  const isDocument = type === 'document' && mediaUrl;
+
+  // Caption: body text minus the auto-prefix label (e.g. "📷 Foto ")
+  const stripped = (message.body || '').replace(/^(📷 Foto|🎥 Vídeo|🎵 Áudio|📄 Documento)\s*/u, '');
+  const captionText = stripped && stripped !== (message.body || '') ? stripped : '';
+  const fileName = (message.body || '').replace(/^📄 Documento\s*/u, '') || 'Arquivo';
 
   return (
     <div className={cn('flex mb-1.5', isOutbound ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm',
+          'max-w-[75%] rounded-2xl text-sm shadow-sm overflow-hidden',
+          (isImage || isVideo) ? 'p-1' : 'px-3.5 py-2',
           isOutbound
             ? isAiGenerated
               ? 'bg-primary/80 text-primary-foreground rounded-br-md border border-primary/30'
@@ -297,25 +308,88 @@ function MessageBubble({ message }: { message: InboxMessage }) {
       >
         {isAiGenerated && (
           <div className={cn(
-            'flex items-center gap-1 mb-1 text-[10px] font-medium',
+            'flex items-center gap-1 mb-1 text-[10px] font-medium px-2 pt-1',
             isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
           )}>
             <Bot className="h-3 w-3" />
             <span>IA</span>
           </div>
         )}
-        {isAudio ? (
+
+        {isImage && (
+          <a href={mediaUrl!} target="_blank" rel="noopener noreferrer" className="block">
+            <img
+              src={mediaUrl!}
+              alt={captionText || 'Imagem'}
+              loading="lazy"
+              className="rounded-xl max-h-80 w-auto object-cover"
+            />
+          </a>
+        )}
+
+        {isVideo && (
+          <video
+            src={mediaUrl!}
+            controls
+            preload="metadata"
+            className="rounded-xl max-h-80 w-full"
+          />
+        )}
+
+        {isAudio && (
           <AudioPlayer
-            src={message.media_url!}
+            src={mediaUrl!}
             durationMs={message.duration_ms}
             isOutbound={isOutbound}
           />
-        ) : (
+        )}
+
+        {isDocument && (
+          <a
+            href={mediaUrl!}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className={cn(
+              'flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors',
+              isOutbound
+                ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15'
+                : 'bg-muted/60 hover:bg-muted'
+            )}
+          >
+            <div className={cn(
+              'h-9 w-9 rounded-md flex items-center justify-center shrink-0',
+              isOutbound ? 'bg-primary-foreground/15' : 'bg-background'
+            )}>
+              <FileText className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate">{fileName}</p>
+              <p className={cn(
+                'text-[10px]',
+                isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
+              )}>
+                Toque para abrir
+              </p>
+            </div>
+            <Download className="h-3.5 w-3.5 opacity-70 shrink-0" />
+          </a>
+        )}
+
+        {type === 'text' && (
           <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
         )}
+
+        {(isImage || isVideo) && captionText && (
+          <p className="whitespace-pre-wrap break-words leading-relaxed px-2.5 pt-1.5 pb-0.5 text-sm">
+            {captionText}
+          </p>
+        )}
+
         <div
           className={cn(
-            'flex items-center justify-end gap-1 mt-0.5',
+            'flex items-center justify-end gap-1',
+            (isImage || isVideo) ? 'px-2.5 pb-1.5 pt-0.5' : 'mt-0.5',
             isOutbound ? 'text-primary-foreground/50' : 'text-muted-foreground/60'
           )}
         >
