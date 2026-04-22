@@ -7265,6 +7265,96 @@ export type Database = {
           },
         ]
       }
+      whatsapp_connections: {
+        Row: {
+          connected_at: string | null
+          created_at: string
+          created_by_clerk_user_id: string
+          evolution_api_key: string | null
+          id: string
+          instance_name: string
+          last_connected_at: string | null
+          last_disconnected_at: string | null
+          mirror_enabled: boolean
+          mirror_enabled_at: string | null
+          organization_id: string
+          phone_number: string | null
+          qr_code: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string | null
+          created_at?: string
+          created_by_clerk_user_id: string
+          evolution_api_key?: string | null
+          id?: string
+          instance_name: string
+          last_connected_at?: string | null
+          last_disconnected_at?: string | null
+          mirror_enabled?: boolean
+          mirror_enabled_at?: string | null
+          organization_id: string
+          phone_number?: string | null
+          qr_code?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string | null
+          created_at?: string
+          created_by_clerk_user_id?: string
+          evolution_api_key?: string | null
+          id?: string
+          instance_name?: string
+          last_connected_at?: string | null
+          last_disconnected_at?: string | null
+          mirror_enabled?: boolean
+          mirror_enabled_at?: string | null
+          organization_id?: string
+          phone_number?: string | null
+          qr_code?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "crm_funnel"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "dashboard_stats"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_dashboard"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "financial_summary"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_first_touch: {
         Row: {
           created_at: string
