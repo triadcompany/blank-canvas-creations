@@ -112,7 +112,8 @@ function formatPhone(phone: string): string {
 function getContactDisplay(thread: InboxThread): { name: string; subtitle: string } {
   const formattedPhone = formatPhone(thread.contact_phone);
   if (thread.is_group) {
-    const groupLabel = thread.group_name || thread.contact_name || 'Grupo';
+    const fallback = `Grupo (${(thread.contact_phone || '').slice(-4) || '?'})`;
+    const groupLabel = thread.group_name || thread.contact_name || fallback;
     return { name: groupLabel, subtitle: 'Grupo do WhatsApp' };
   }
   if (thread.contact_name) {
@@ -294,7 +295,7 @@ function DateSeparator({ date }: { date: string }) {
 
 function renderWithMentions(
   text: string,
-  participants: Map<string, string>,
+  participants?: Map<string, string>,
 ): React.ReactNode {
   if (!text) return text;
   const parts: React.ReactNode[] = [];
@@ -309,9 +310,9 @@ function renderWithMentions(
     }
     const digits = match[1];
     const name =
-      participants.get(digits) ||
-      participants.get(digits.slice(-11)) ||
-      participants.get(digits.slice(-10)) ||
+      participants?.get(digits) ||
+      participants?.get(digits.slice(-11)) ||
+      participants?.get(digits.slice(-10)) ||
       null;
     const display = name ? `@${name}` : `@${formatPhone(digits)}`;
     parts.push(

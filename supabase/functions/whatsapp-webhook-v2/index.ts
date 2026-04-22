@@ -236,12 +236,24 @@ async function handleMessagesUpsert(
           update.unread_count = (existingConv.unread_count || 0) + 1;
         }
         if (isGroup) {
-          if (pushName && pushName !== phone) {
-            update.group_name = pushName;
-            update.contact_name = pushName;
-            update.contact_name_source = "whatsapp";
-          }
+          // Never use participant pushName as the group name.
           update.is_group = true;
+          const groupSubject =
+            (typeof body?.data?.subject === "string" && body.data.subject) ||
+            (typeof msg?.subject === "string" && msg.subject) ||
+            null;
+          if (groupSubject) {
+            update.group_name = groupSubject;
+            update.contact_name = groupSubject;
+            update.contact_name_source = "whatsapp_group";
+          } else if (
+            !existingConv.contact_name ||
+            existingConv.contact_name_source === "whatsapp"
+          ) {
+            const fallback = `Grupo (${phone.slice(-4)})`;
+            update.contact_name = fallback;
+            update.contact_name_source = "group_fallback";
+          }
         } else {
           const currentName = existingConv.contact_name || "";
           const isPlaceholder = !currentName || currentName === phone;
@@ -264,20 +276,25 @@ async function handleMessagesUpsert(
           }
         }
       } else {
+        const groupSubject = isGroup
+          ? ((typeof body?.data?.subject === "string" && body.data.subject) ||
+             (typeof msg?.subject === "string" && msg.subject) ||
+             `Grupo (${phone.slice(-4)})`)
+          : null;
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
           .insert({
             organization_id: conn.organization_id,
             instance_name: instanceName,
             contact_phone: phone,
-            contact_name: pushName || null,
-            contact_name_source: pushName ? "whatsapp" : null,
+            contact_name: isGroup ? groupSubject : (pushName || null),
+            contact_name_source: isGroup ? "group_fallback" : (pushName ? "whatsapp" : null),
             last_message_at: now,
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
             assigned_to: null,
             is_group: isGroup,
-            group_name: isGroup ? (pushName || null) : null,
+            group_name: isGroup ? groupSubject : null,
           })
           .select("id")
           .single();
