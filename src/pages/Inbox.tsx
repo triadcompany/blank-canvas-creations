@@ -796,21 +796,46 @@ export default function InboxPage() {
             />
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-1">
-            {filters
-              .filter((f) => !f.adminOnly || isAdmin)
-              .map((f) => (
-                <Button
+          {/* Filters — Group 1: Assignment (chips) */}
+          <div className="flex flex-wrap gap-1.5">
+            {assignmentOptions.map((f) => {
+              const active = assignmentFilter === f.key;
+              return (
+                <button
                   key={f.key}
-                  size="sm"
-                  variant={filter === f.key ? 'default' : 'ghost'}
-                  className="h-7 text-xs px-2.5 rounded-full whitespace-nowrap"
-                  onClick={() => setFilter(f.key as any)}
+                  onClick={() => setAssignmentFilter(f.key)}
+                  className={cn(
+                    'h-7 px-3 text-xs font-medium rounded-full border transition-colors whitespace-nowrap',
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted'
+                  )}
                 >
                   {f.label}
-                </Button>
-              ))}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Filters — Group 2: Status (tabs with underline) */}
+          <div className="flex items-center gap-0 border-b border-border -mb-px overflow-x-auto">
+            {statusOptions.map((f) => {
+              const active = statusFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
+                    active
+                      ? 'text-primary border-primary'
+                      : 'text-muted-foreground border-transparent hover:text-foreground'
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
