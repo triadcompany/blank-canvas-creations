@@ -308,8 +308,20 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
   for (const msg of msgArray) {
     const isFromMe = msg.key?.fromMe === true;
-    const phone = (msg.key?.remoteJid || "").replace("@s.whatsapp.net", "").replace("@c.us", "");
+    const remoteJid: string = msg.key?.remoteJid || "";
+    const isGroup = remoteJid.endsWith("@g.us");
+    // For groups: conversation key is the group JID (without @g.us); sender comes from `participant`
+    const phone = isGroup
+      ? remoteJid.replace("@g.us", "")
+      : remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
     if (!phone) continue;
+
+    // Group sender info (only meaningful for inbound group messages)
+    const participantJid: string = msg.key?.participant || msg.participant || "";
+    const senderPhone = participantJid
+      ? participantJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "")
+      : (isFromMe ? "" : phone.replace(/\D/g, ""));
+    const senderName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || null;
 
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || null;
     const isAudio = !!msg.message?.audioMessage;
@@ -342,7 +354,11 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
     const normalizedPhone = phone.replace(/[\s\-\+\(\)]/g, "");
     const now = new Date().toISOString();
     const pushName = msg.pushName || msg.notifyName || msg.senderName || msg.profileName || "";
-    const messagePreview = displayBody.substring(0, 100);
+    // For groups: prefix preview with sender name (e.g. "Thiago: Bom dia")
+    const previewBase = (isGroup && !isFromMe && (senderName || senderPhone))
+      ? `${senderName || senderPhone}: ${displayBody}`
+      : displayBody;
+    const messagePreview = previewBase.substring(0, 100);
     const externalMessageId = msg.key?.id || null;
     const direction = isFromMe ? "outbound" : "inbound";
 
@@ -374,7 +390,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       if (!isFromMe) {
         convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
       }
-      if (pushName && pushName !== normalizedPhone) {
+      if (isGroup) {
+        // For groups, contact_name should be the group name (use pushName as group name fallback)
+        if (pushName && pushName !== normalizedPhone) {
+          convUpdate.group_name = pushName;
+          convUpdate.contact_name = pushName;
+          convUpdate.contact_name_source = "whatsapp";
+        }
+        convUpdate.is_group = true;
+      } else if (pushName && pushName !== normalizedPhone) {
         const currentName = existingConv.contact_name || "";
         const nameSource = existingConv.contact_name_source || "whatsapp";
         const nameIsPhoneOrEmpty = !currentName || currentName === normalizedPhone || currentName === phone;
@@ -385,7 +409,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       }
       await supabase.from("conversations").update(convUpdate).eq("id", conversationId);
 
-      if (!isFromMe) {
+      if (!isFromMe && !isGroup) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
         const needsRefresh = !existingConv.profile_picture_url ||
           !picUpdatedAt ||
@@ -407,14 +431,16 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,
           assigned_to: null,
+          is_group: isGroup,
+          group_name: isGroup ? (pushName || null) : null,
         })
         .select("id")
         .single();
 
       conversationId = newConv?.id || null;
-      console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
+      console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId} (group=${isGroup})`);
 
-      if (conversationId && !isFromMe) {
+      if (conversationId && !isFromMe && !isGroup) {
         fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
       }
     }
@@ -444,6 +470,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           media_url: mediaUrl,
           mime_type: audioMimetype,
           duration_ms: audioDurationMs,
+          sender_name: !isFromMe ? (senderName || null) : null,
+          sender_phone: !isFromMe ? (senderPhone || null) : null,
         });
       }
     } else if (conversationId) {
@@ -452,6 +480,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         conversation_id: conversationId,
         direction,
         body: displayBody,
+        sender_name: !isFromMe ? (senderName || null) : null,
+        sender_phone: !isFromMe ? (senderPhone || null) : null,
       });
     }
 

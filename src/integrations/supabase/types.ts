@@ -1803,8 +1803,11 @@ export type Database = {
           contact_name_source: string | null
           contact_phone: string
           created_at: string
+          group_name: string | null
+          group_participants_count: number | null
           id: string
           instance_name: string
+          is_group: boolean
           last_ai_reply_at: string | null
           last_message_at: string | null
           last_message_preview: string | null
@@ -1831,8 +1834,11 @@ export type Database = {
           contact_name_source?: string | null
           contact_phone: string
           created_at?: string
+          group_name?: string | null
+          group_participants_count?: number | null
           id?: string
           instance_name: string
+          is_group?: boolean
           last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
@@ -1859,8 +1865,11 @@ export type Database = {
           contact_name_source?: string | null
           contact_phone?: string
           created_at?: string
+          group_name?: string | null
+          group_participants_count?: number | null
           id?: string
           instance_name?: string
+          is_group?: boolean
           last_ai_reply_at?: string | null
           last_message_at?: string | null
           last_message_preview?: string | null
@@ -4197,6 +4206,9 @@ export type Database = {
           message_type: string
           mime_type: string | null
           organization_id: string
+          sender_avatar_url: string | null
+          sender_name: string | null
+          sender_phone: string | null
         }
         Insert: {
           ai_generated?: boolean
@@ -4213,6 +4225,9 @@ export type Database = {
           message_type?: string
           mime_type?: string | null
           organization_id: string
+          sender_avatar_url?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
         }
         Update: {
           ai_generated?: boolean
@@ -4229,6 +4244,9 @@ export type Database = {
           message_type?: string
           mime_type?: string | null
           organization_id?: string
+          sender_avatar_url?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
         }
         Relationships: [
           {

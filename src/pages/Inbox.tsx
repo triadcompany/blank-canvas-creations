@@ -12,6 +12,7 @@ import {
   Search,
   Phone,
   User,
+  Users,
   CheckCheck,
   ArrowLeft,
   Loader2,
@@ -113,6 +114,10 @@ function formatPhone(phone: string): string {
 
 function getContactDisplay(thread: InboxThread): { name: string; subtitle: string } {
   const formattedPhone = formatPhone(thread.contact_phone);
+  if (thread.is_group) {
+    const groupLabel = thread.group_name || thread.contact_name || 'Grupo';
+    return { name: groupLabel, subtitle: 'Grupo do WhatsApp' };
+  }
   if (thread.contact_name) {
     return { name: thread.contact_name, subtitle: formattedPhone };
   }
@@ -127,6 +132,17 @@ function getInitials(name: string): string {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+// Deterministic HSL color from a string (group participant identification)
+function colorFromString(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = input.charCodeAt(i) + ((hash << 5) - hash);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 65%, 45%)`;
 }
 
 function formatMessageTime(dateStr: string) {
@@ -195,11 +211,14 @@ function ThreadItem({
     >
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
-          {thread.profile_picture_url && (
+          {!thread.is_group && thread.profile_picture_url && (
             <AvatarImage src={thread.profile_picture_url} alt={name} />
           )}
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-            {initials}
+          <AvatarFallback className={cn(
+            'text-xs font-semibold',
+            thread.is_group ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-primary/10 text-primary'
+          )}>
+            {thread.is_group ? <Users className="h-4 w-4" /> : initials}
           </AvatarFallback>
         </Avatar>
 
@@ -276,10 +295,12 @@ function DateSeparator({ date }: { date: string }) {
 
 // ── Message Bubble ──
 
-function MessageBubble({ message }: { message: InboxMessage }) {
+function MessageBubble({ message, showSender }: { message: InboxMessage; showSender?: boolean }) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
   const isAiGenerated = message.ai_generated === true;
+  const senderLabel = message.sender_name || message.sender_phone || '';
+  const senderColor = senderLabel ? colorFromString(senderLabel) : undefined;
   const mediaUrl = message.media_url || null;
   const type = message.message_type || 'text';
   const isImage = type === 'image' && mediaUrl;
@@ -306,6 +327,14 @@ function MessageBubble({ message }: { message: InboxMessage }) {
           isOptimistic && 'opacity-70'
         )}
       >
+        {!isOutbound && showSender && senderLabel && (
+          <div
+            className="text-[11px] font-semibold mb-0.5 truncate"
+            style={{ color: senderColor }}
+          >
+            {senderLabel}
+          </div>
+        )}
         {isAiGenerated && (
           <div className={cn(
             'flex items-center gap-1 mb-1 text-[10px] font-medium px-2 pt-1',

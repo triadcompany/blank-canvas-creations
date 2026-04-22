@@ -33,6 +33,10 @@ export interface InboxThread {
   locked_by: string | null;
   locked_at: string | null;
   last_status_change_at: string | null;
+  // Group support
+  is_group?: boolean;
+  group_name?: string | null;
+  group_participants_count?: number | null;
 }
 
 export interface InboxMessage {
@@ -49,6 +53,9 @@ export interface InboxMessage {
   media_url?: string | null;
   mime_type?: string | null;
   duration_ms?: number | null;
+  sender_name?: string | null;
+  sender_phone?: string | null;
+  sender_avatar_url?: string | null;
 }
 
 export interface OrgMember {

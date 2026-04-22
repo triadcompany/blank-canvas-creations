@@ -186,9 +186,20 @@ async function handleMessagesUpsert(
   for (const msg of list) {
     try {
       const isFromMe = msg?.key?.fromMe === true;
-      const remoteJid = msg?.key?.remoteJid || "";
-      const phone = normalizePhone(remoteJid);
+      const remoteJid: string = msg?.key?.remoteJid || "";
+      const isGroup = remoteJid.endsWith("@g.us");
+      // For groups: keep the group JID (without suffix) as conversation key
+      const phone = isGroup
+        ? remoteJid.replace("@g.us", "")
+        : normalizePhone(remoteJid);
       if (!phone) continue;
+
+      // Group sender info (only meaningful for inbound group messages)
+      const participantJid: string = msg?.key?.participant || msg?.participant || "";
+      const senderPhone = participantJid
+        ? participantJid.replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "")
+        : (isFromMe ? "" : phone.replace(/\D/g, ""));
+      const senderName = msg?.pushName || msg?.notifyName || null;
 
       const externalId = msg?.key?.id || null;
       const pushName = msg?.pushName || msg?.notifyName || null;
@@ -199,7 +210,11 @@ async function handleMessagesUpsert(
       }
 
       const now = new Date().toISOString();
-      const preview = info.body.substring(0, 100);
+      // For groups, prefix preview with sender name
+      const previewBase = (isGroup && !isFromMe && (senderName || senderPhone))
+        ? `${senderName || senderPhone}: ${info.body}`
+        : info.body;
+      const preview = previewBase.substring(0, 100);
 
       // ── Find or create conversation ──
       const { data: existingConv } = await supabase
@@ -220,16 +235,25 @@ async function handleMessagesUpsert(
         if (!isFromMe) {
           update.unread_count = (existingConv.unread_count || 0) + 1;
         }
-        const currentName = existingConv.contact_name || "";
-        const isPlaceholder = !currentName || currentName === phone;
-        if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
-          update.contact_name = pushName;
-          update.contact_name_source = "whatsapp";
+        if (isGroup) {
+          if (pushName && pushName !== phone) {
+            update.group_name = pushName;
+            update.contact_name = pushName;
+            update.contact_name_source = "whatsapp";
+          }
+          update.is_group = true;
+        } else {
+          const currentName = existingConv.contact_name || "";
+          const isPlaceholder = !currentName || currentName === phone;
+          if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
+            update.contact_name = pushName;
+            update.contact_name_source = "whatsapp";
+          }
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
 
-        // Refresh profile picture (background, non-blocking) every 24h or if missing
-        if (!isFromMe) {
+        // Refresh profile picture (only for individual conversations)
+        if (!isFromMe && !isGroup) {
           const picUpdatedAt = existingConv.profile_picture_updated_at;
           const needsRefresh = !existingConv.profile_picture_url ||
             !picUpdatedAt ||
@@ -252,6 +276,8 @@ async function handleMessagesUpsert(
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
             assigned_to: null,
+            is_group: isGroup,
+            group_name: isGroup ? (pushName || null) : null,
           })
           .select("id")
           .single();
@@ -262,8 +288,8 @@ async function handleMessagesUpsert(
         }
         conversationId = newConv?.id || null;
 
-        // Fetch profile picture for new conversation (background)
-        if (conversationId && !isFromMe) {
+        // Fetch profile picture for new conversation (background) — only for individuals
+        if (conversationId && !isFromMe && !isGroup) {
           fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
             .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
         }
@@ -304,6 +330,8 @@ async function handleMessagesUpsert(
         message_type: info.messageType,
         media_url: mediaUrl,
         mime_type: info.mimeType,
+        sender_name: !isFromMe ? (senderName || null) : null,
+        sender_phone: !isFromMe ? (senderPhone || null) : null,
       });
 
       if (msgErr) {
