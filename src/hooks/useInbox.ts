@@ -672,6 +672,9 @@ export function useInbox() {
       setSending(false);
     }
   }, [orgId, selectedThreadId]);
+
+  // Assign conversation
+  const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
     if (!orgId) return;
 
     setThreads(prev =>
