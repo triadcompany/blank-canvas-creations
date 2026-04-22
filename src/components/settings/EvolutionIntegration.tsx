@@ -13,13 +13,6 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import QRCodeLib from "qrcode";
 
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
@@ -387,20 +380,44 @@ export function EvolutionIntegration() {
     }
   };
 
-  const handleSelectInstance = (name: string) => {
-    setInstanceName(name);
-    // Also update the integration's instance_name in DB if we have one
-    if (integration?.id) {
-      supabase
+  const handleCreateNewInstance = async () => {
+    if (!integration?.id) {
+      setIntegration(null);
+      setInstanceName("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await supabase
         .from("whatsapp_integrations")
-        .update({ instance_name: name, updated_at: new Date().toISOString() } as any)
-        .eq("id", integration.id)
-        .then(() => {
-          setIntegration((prev) => prev ? { ...prev, instance_name: name } : prev);
-          toast({ title: "Instância atualizada", description: `Instância alterada para "${name}". Clique em Reconectar.` });
-          // Re-check live status
-          fetchIntegration(true);
-        });
+        .update({
+          status: "disconnected",
+          is_active: false,
+          qr_code_data: null,
+          connected_at: null,
+          phone_number: null,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq("id", integration.id);
+
+      setIntegration(null);
+      setInstanceName("");
+      setLiveStatus(null);
+      setLiveError(null);
+      setInstanceFound(true);
+      setAvailableInstances(null);
+      toast({
+        title: "Pronto para criar nova instância",
+        description: "Digite um nome novo e clique em Gerar QR e Conectar.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -508,24 +525,28 @@ export function EvolutionIntegration() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
               <AlertDescription className="text-destructive">
                 Instância <strong className="font-mono">"{integration?.instance_name}"</strong> não encontrada no servidor Evolution.
-                Verifique o nome e o ambiente.
-                {availableInstances && availableInstances.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-sm font-medium">Instâncias disponíveis:</p>
-                    <Select onValueChange={handleSelectInstance}>
-                      <SelectTrigger className="w-full max-w-xs">
-                        <SelectValue placeholder="Selecione uma instância" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableInstances.map((name) => (
-                          <SelectItem key={name} value={name}>
-                            {name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                Você pode tentar novamente (gerar um novo QR) ou criar uma nova instância com outro nome.
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleReconnect}
+                    disabled={actionLoading}
+                    className="btn-gradient text-white font-poppins gap-2"
+                  >
+                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Tentar novamente (Novo QR)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCreateNewInstance}
+                    disabled={actionLoading}
+                    className="font-poppins gap-2"
+                  >
+                    <QrCodeIcon className="h-4 w-4" />
+                    Criar outra instância
+                  </Button>
+                </div>
               </AlertDescription>
             </Alert>
           )}
