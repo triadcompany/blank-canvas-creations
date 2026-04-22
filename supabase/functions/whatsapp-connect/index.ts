@@ -145,11 +145,23 @@ serve(async (req) => {
       console.log(`[whatsapp-connect] Cleaned orphan record ${existing.id} (${existing.instance_name})`);
     }
 
-    // Gerar instance_name único
-    const instanceName = `autolead_${organization_id.replace(/-/g, "")}_${Date.now()}`;
+    // Gerar instance_name baseado no nome da org (slug + timestamp curto)
+    // Garante unicidade tentando até 5 vezes em caso improvável de colisão
+    let instanceName = buildInstanceName(org?.name ?? null, organization_id);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: clash } = await supabase
+        .from("whatsapp_connections")
+        .select("id")
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+      if (!clash) break;
+      // Colisão: regenera (timestamp diferente após pequena espera)
+      await new Promise((r) => setTimeout(r, 50));
+      instanceName = buildInstanceName(org?.name ?? null, organization_id);
+    }
     const webhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook-v2`;
 
-    console.log(`[whatsapp-connect] Creating instance: ${instanceName}`);
+    console.log(`[whatsapp-connect] Creating instance: ${instanceName} (org: ${org?.name ?? "?"})`);
 
     const createRes = await fetch(`${evoUrl}/instance/create`, {
       method: "POST",
