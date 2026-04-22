@@ -158,10 +158,13 @@ export function Reports() {
       const isInDateRange = isWithinInterval(leadDate, { start, end });
       const sourceMatch = selectedSource === "todas" || lead.source === selectedSource;
       const sellerMatch = selectedSeller === "todos" || lead.seller_name === selectedSeller;
+      const pipelineMatch =
+        selectedPipeline === "todas" ||
+        (lead.stage_id && pipelineStageMap[lead.stage_id] === selectedPipeline);
       
-      return isInDateRange && sourceMatch && sellerMatch;
+      return isInDateRange && sourceMatch && sellerMatch && pipelineMatch;
     });
-  }, [leads, selectedPeriod, selectedSource, selectedSeller, loading, customDateRange]);
+  }, [leads, selectedPeriod, selectedSource, selectedSeller, selectedPipeline, pipelineStageMap, loading, customDateRange]);
 
   const uniqueSources = useMemo(() => {
     const registeredSources = leadSources.map(source => source.name);
