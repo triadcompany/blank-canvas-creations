@@ -191,13 +191,37 @@ export function EvolutionIntegration() {
         headers: { "x-clerk-user-id": clerkUserId },
       });
       if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Falha ao iniciar conexão");
+      if (!data?.ok) {
+        // Caso o backend detecte que já existe conexão ativa, sincronize a UI
+        const errMsg = String(data?.error || "");
+        if (/já existe|already/i.test(errMsg)) {
+          await fetchStatus();
+          toast({
+            title: "WhatsApp já está conectado",
+            description: "Sincronizamos o status atual da sua conexão.",
+          });
+          return;
+        }
+        throw new Error(errMsg || "Falha ao iniciar conexão");
+      }
 
       setConn(data.connection);
       setQrStartedAt(Date.now());
       toast({ title: "QR Code gerado", description: "Escaneie com seu WhatsApp." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Tratamento amigável: se a Edge Function devolveu non-2xx (ex.: 409), o supabase-js
+      // joga FunctionsHttpError sem o body. Tentamos sincronizar antes de mostrar erro feio.
+      if (/non-2xx|FunctionsHttpError|409/i.test(msg)) {
+        const synced = await fetchStatus();
+        if (synced?.status === "connected") {
+          toast({
+            title: "WhatsApp já está conectado",
+            description: "Sincronizamos o status atual da sua conexão.",
+          });
+          return;
+        }
+      }
       toast({ title: "Erro ao conectar", description: msg, variant: "destructive" });
     } finally {
       setBusy(null);
