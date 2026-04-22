@@ -77,6 +77,22 @@ serve(async (req) => {
       return respond({ error: "organization_id e thread_id são obrigatórios" }, 400);
     }
 
+    // Validate caller membership via org_members (multi-org safe).
+    const callerClerkUserId = req.headers.get("x-clerk-user-id");
+    if (callerClerkUserId) {
+      const { data: member } = await supabase
+        .from("org_members")
+        .select("role, status")
+        .eq("clerk_user_id", callerClerkUserId)
+        .eq("organization_id", organization_id)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!member) {
+        console.warn(`[whatsapp-send] Forbidden: clerk_user_id=${callerClerkUserId} not member of org=${organization_id}`);
+        return respond({ error: "Usuário não pertence à organização" }, 403);
+      }
+    }
+
     const kind: string = message_type || (media_url ? "media" : "text");
     if (kind === "text" && !text) {
       return respond({ error: "text é obrigatório para mensagens de texto" }, 400);
