@@ -63,7 +63,7 @@ import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInbox
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
 import { AudioPlayer } from '@/components/inbox/AudioPlayer';
-import { AudioRecorder } from '@/components/inbox/AudioRecorder';
+import { MessageComposer } from '@/components/inbox/MessageComposer';
 import {
   AlertDialog,
   AlertDialogAction,
