@@ -93,7 +93,28 @@ serve(async (req) => {
 
     console.log(`[evolution-create] === START === org=${organization_id} instance=${instance_name}`);
 
-    // ──── Step 0: Ensure org exists in organizations table (FK requirement) ────
+    // ──── Step 0a: Block reuse of an instance_name already owned by another organization ────
+    {
+      const { data: existingOwner } = await supabase
+        .from("whatsapp_integrations")
+        .select("organization_id")
+        .eq("instance_name", instance_name)
+        .neq("organization_id", organization_id)
+        .maybeSingle();
+
+      if (existingOwner) {
+        console.warn(`[evolution-create] BLOCKED: instance_name="${instance_name}" already belongs to org=${existingOwner.organization_id}`);
+        return respond({
+          ok: false,
+          status: "error",
+          qr_code_data: null,
+          qr_format: null,
+          message: "Este nome de instância já está em uso por outra organização. Escolha um nome diferente.",
+        }, 409);
+      }
+    }
+
+    // ──── Step 0b: Ensure org exists in organizations table (FK requirement) ────
     {
       const { data: orgRow } = await supabase
         .from("organizations")
