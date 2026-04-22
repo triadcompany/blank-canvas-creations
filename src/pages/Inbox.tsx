@@ -112,7 +112,8 @@ function formatPhone(phone: string): string {
 function getContactDisplay(thread: InboxThread): { name: string; subtitle: string } {
   const formattedPhone = formatPhone(thread.contact_phone);
   if (thread.is_group) {
-    const groupLabel = thread.group_name || thread.contact_name || 'Grupo';
+    const fallback = `Grupo (${(thread.contact_phone || '').slice(-4) || '?'})`;
+    const groupLabel = thread.group_name || thread.contact_name || fallback;
     return { name: groupLabel, subtitle: 'Grupo do WhatsApp' };
   }
   if (thread.contact_name) {
