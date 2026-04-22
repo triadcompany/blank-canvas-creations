@@ -38,7 +38,7 @@ serve(async (req) => {
     const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { organization_id } = await req.json();
+    const { organization_id, wipe } = await req.json();
 
     if (!organization_id) {
       return respond(
@@ -47,7 +47,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[evolution-delete] === START === org=${organization_id}`);
+    console.log(`[evolution-delete] === START === org=${organization_id} wipe=${!!wipe}`);
 
     const { data: integration } = await supabase
       .from("whatsapp_integrations")
@@ -106,29 +106,47 @@ serve(async (req) => {
       );
     }
 
-    // ── Step 3: mark local row as disconnected (preserve history, free phone_number) ──
+    // ── Step 3: update local row ──
+    // wipe=true  → fully delete the row so the UI returns to a clean "no integration" state.
+    // wipe=false → keep the row but mark it disconnected (preserve history, free phone_number).
     if (integration?.id) {
-      const nowIso = new Date().toISOString();
-      const { error: updateErr } = await supabase
-        .from("whatsapp_integrations")
-        .update({
-          status: "disconnected",
-          is_active: false,
-          qr_code_data: null,
-          connected_at: null,
-          phone_number: null,
-          last_disconnected_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq("id", integration.id);
+      if (wipe) {
+        const { error: deleteErr } = await supabase
+          .from("whatsapp_integrations")
+          .delete()
+          .eq("id", integration.id);
 
-      if (updateErr) {
-        console.error("[evolution-delete] DB update error:", updateErr);
-        return respond({
-          ok: false,
-          message: `Instância removida da Evolution mas falhou ao atualizar integração local: ${updateErr.message}`,
-          evolution: evolutionResults,
-        }, 500);
+        if (deleteErr) {
+          console.error("[evolution-delete] DB delete error:", deleteErr);
+          return respond({
+            ok: false,
+            message: `Instância removida da Evolution mas falhou ao apagar integração local: ${deleteErr.message}`,
+            evolution: evolutionResults,
+          }, 500);
+        }
+      } else {
+        const nowIso = new Date().toISOString();
+        const { error: updateErr } = await supabase
+          .from("whatsapp_integrations")
+          .update({
+            status: "disconnected",
+            is_active: false,
+            qr_code_data: null,
+            connected_at: null,
+            phone_number: null,
+            last_disconnected_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq("id", integration.id);
+
+        if (updateErr) {
+          console.error("[evolution-delete] DB update error:", updateErr);
+          return respond({
+            ok: false,
+            message: `Instância removida da Evolution mas falhou ao atualizar integração local: ${updateErr.message}`,
+            evolution: evolutionResults,
+          }, 500);
+        }
       }
     }
 
