@@ -103,7 +103,13 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     await clerkSignOut();
   }, [clerkSignOut]);
 
-  const isAdmin = role === 'admin' || org?.role === 'admin';
+  // SECURITY: derive isAdmin from a SINGLE source of truth (the active org
+  // membership returned by sync-login) when available. Falling back to
+  // user_roles only when bootstrap hasn't returned yet. Never use OR with
+  // both sources — that allows privilege escalation when one of them is
+  // stale (e.g. after switching organizations).
+  const effectiveRole = org?.role ?? role;
+  const isAdmin = effectiveRole === 'admin';
 
   const combinedError = error || (bootstrapError ? new Error(bootstrapError) : null);
 
