@@ -357,7 +357,7 @@ export function EvolutionIntegration() {
               </CardTitle>
               <CardDescription>Conexão ativa com a Evolution API</CardDescription>
             </div>
-            <Badge className="bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/10">
+            <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
               <CheckCircle className="w-3 h-3 mr-1" />
               Conectado
             </Badge>
