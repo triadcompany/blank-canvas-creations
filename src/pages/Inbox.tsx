@@ -113,6 +113,10 @@ function formatPhone(phone: string): string {
 
 function getContactDisplay(thread: InboxThread): { name: string; subtitle: string } {
   const formattedPhone = formatPhone(thread.contact_phone);
+  if (thread.is_group) {
+    const groupLabel = thread.group_name || thread.contact_name || 'Grupo';
+    return { name: groupLabel, subtitle: 'Grupo do WhatsApp' };
+  }
   if (thread.contact_name) {
     return { name: thread.contact_name, subtitle: formattedPhone };
   }
@@ -127,6 +131,17 @@ function getInitials(name: string): string {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+}
+
+// Deterministic HSL color from a string (group participant identification)
+function colorFromString(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = input.charCodeAt(i) + ((hash << 5) - hash);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 65%, 45%)`;
 }
 
 function formatMessageTime(dateStr: string) {
