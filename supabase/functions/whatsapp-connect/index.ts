@@ -30,6 +30,26 @@ function extractQr(data: any): string | null {
   return null;
 }
 
+function slugifyOrgName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")     // não-alfanumérico → hífen
+    .replace(/^-+|-+$/g, "")          // remove hífens nas pontas
+    .replace(/-+/g, "-");             // colapsa hífens duplicados
+}
+
+function buildInstanceName(orgName: string | null, organizationId: string): string {
+  const shortTs = String(Date.now()).slice(-8); // últimos 8 dígitos
+  const baseSlug = orgName ? slugifyOrgName(orgName) : "";
+  const slug = baseSlug || `org-${organizationId.slice(0, 8)}`;
+  // Limita a 50 chars total: slug + "_" + 8 dígitos = máx 50
+  const maxSlugLen = 50 - 1 - shortTs.length; // 41
+  const trimmedSlug = slug.slice(0, maxSlugLen).replace(/-+$/g, "");
+  return `${trimmedSlug}_${shortTs}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -50,13 +70,20 @@ serve(async (req) => {
     if (!organization_id) return respond({ ok: false, error: "organization_id obrigatório" }, 400);
     if (!clerkUserId) return respond({ ok: false, error: "x-clerk-user-id header ausente" }, 401);
 
-    // Validar admin da org
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("clerk_user_id", clerkUserId)
-      .eq("organization_id", organization_id)
-      .maybeSingle();
+    // Validar admin da org + buscar nome da org para gerar instance_name legível
+    const [{ data: profile }, { data: org }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("clerk_user_id", clerkUserId)
+        .eq("organization_id", organization_id)
+        .maybeSingle(),
+      supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", organization_id)
+        .maybeSingle(),
+    ]);
 
     if (!profile) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
 
@@ -118,11 +145,23 @@ serve(async (req) => {
       console.log(`[whatsapp-connect] Cleaned orphan record ${existing.id} (${existing.instance_name})`);
     }
 
-    // Gerar instance_name único
-    const instanceName = `autolead_${organization_id.replace(/-/g, "")}_${Date.now()}`;
+    // Gerar instance_name baseado no nome da org (slug + timestamp curto)
+    // Garante unicidade tentando até 5 vezes em caso improvável de colisão
+    let instanceName = buildInstanceName(org?.name ?? null, organization_id);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: clash } = await supabase
+        .from("whatsapp_connections")
+        .select("id")
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+      if (!clash) break;
+      // Colisão: regenera (timestamp diferente após pequena espera)
+      await new Promise((r) => setTimeout(r, 50));
+      instanceName = buildInstanceName(org?.name ?? null, organization_id);
+    }
     const webhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook-v2`;
 
-    console.log(`[whatsapp-connect] Creating instance: ${instanceName}`);
+    console.log(`[whatsapp-connect] Creating instance: ${instanceName} (org: ${org?.name ?? "?"})`);
 
     const createRes = await fetch(`${evoUrl}/instance/create`, {
       method: "POST",
