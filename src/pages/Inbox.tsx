@@ -1224,42 +1224,18 @@ export default function InboxPage() {
             )}
 
             {/* Send Bar */}
-            <div className="p-3 border-t border-border bg-card/30">
-              {canSend ? (
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Digite sua mensagem..."
-                    className="min-h-[40px] max-h-[120px] resize-none text-sm bg-background"
-                    rows={1}
-                  />
-                  {messageText.trim() ? (
-                    <Button
-                      size="icon"
-                      onClick={handleSend}
-                      disabled={!messageText.trim() || sending}
-                      className="h-10 w-10 flex-shrink-0 rounded-full"
-                    >
-                      {sending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : (
-                    profile?.organization_id && (
-                      <AudioRecorder
-                        organizationId={profile.organization_id}
-                        conversationId={selectedThread.id}
-                        onAudioSent={() => {}}
-                        disabled={sending}
-                      />
-                    )
-                  )}
-                </div>
-              ) : (
+            {canSend ? (
+              <MessageComposer
+                value={messageText}
+                onChange={setMessageText}
+                sending={sending}
+                onSendText={handleSend}
+                onSendMedia={async (payload) => {
+                  await sendMedia(payload);
+                }}
+              />
+            ) : (
+              <div className="p-3 border-t border-border bg-card/30">
                 <div className="text-center py-2">
                   {(() => {
                     const lockedName = getLockedByName(selectedThread);
@@ -1280,8 +1256,8 @@ export default function InboxPage() {
                     );
                   })()}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
       </div>
