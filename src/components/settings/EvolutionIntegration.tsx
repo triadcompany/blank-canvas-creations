@@ -134,6 +134,7 @@ export function EvolutionIntegration() {
   /* ── Reset on org switch ── */
   useEffect(() => {
     activeOrgRef.current = orgId || null;
+    const requestOrgId = orgId || null;
 
     if (lastOrgRef.current !== orgId) {
       lastOrgRef.current = orgId || null;
@@ -145,7 +146,11 @@ export function EvolutionIntegration() {
       return;
     }
 
-    fetchStatus().finally(() => setLoading(false));
+    fetchStatus().finally(() => {
+      if (activeOrgRef.current === requestOrgId) {
+        setLoading(false);
+      }
+    });
   }, [orgId, fetchStatus, resetConnectionState]);
 
   /* ── Polling while connecting ── */
