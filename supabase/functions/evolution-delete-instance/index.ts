@@ -14,15 +14,17 @@ const respond = (body: Record<string, unknown>, status = 200) =>
   });
 
 /**
- * Fully tear down a WhatsApp Evolution instance for a given organization.
+ * Disconnect a WhatsApp Evolution instance for a given organization.
  *
  * Steps:
  *  1. Logout the WhatsApp session (so the phone forgets this device).
  *  2. Delete the instance from Evolution (frees the instance_name globally).
- *  3. Delete the row in `whatsapp_integrations` for this org.
+ *  3. Mark the local row as `disconnected` and stamp `last_disconnected_at`.
+ *     We keep the row to preserve history (audit + ability to reconnect later)
+ *     and to free up `phone_number` so it can be connected on another org.
  *
  * Even if Evolution returns 404 (instance already gone) or any non-fatal error,
- * we still remove the local row so the UI returns to a clean state.
+ * we still mark the row as disconnected so the UI returns to a clean state.
  */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -47,7 +49,6 @@ serve(async (req) => {
 
     console.log(`[evolution-delete] === START === org=${organization_id}`);
 
-    // ── Load current integration to know which instance_name to tear down ──
     const { data: integration } = await supabase
       .from("whatsapp_integrations")
       .select("id, instance_name")
@@ -68,9 +69,7 @@ serve(async (req) => {
         });
         const text = await r.text();
         console.log(
-          `[evolution-delete] Logout: HTTP ${r.status} | ${
-            text.substring(0, 200)
-          }`,
+          `[evolution-delete] Logout: HTTP ${r.status} | ${text.substring(0, 200)}`,
         );
         evolutionResults.logout = {
           status: r.status,
@@ -91,9 +90,7 @@ serve(async (req) => {
         });
         const text = await r.text();
         console.log(
-          `[evolution-delete] Delete: HTTP ${r.status} | ${
-            text.substring(0, 200)
-          }`,
+          `[evolution-delete] Delete: HTTP ${r.status} | ${text.substring(0, 200)}`,
         );
         evolutionResults.delete = {
           status: r.status,
@@ -105,25 +102,31 @@ serve(async (req) => {
       }
     } else {
       console.log(
-        `[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${
-          !!evolutionApiKey && !!evolutionBaseUrl
-        })`,
+        `[evolution-delete] Skipping Evolution calls (instance=${instanceName}, hasSecrets=${!!evolutionApiKey && !!evolutionBaseUrl})`,
       );
     }
 
-    // ── Step 3: remove local row (always, even if Evolution failed) ──
+    // ── Step 3: mark local row as disconnected (preserve history, free phone_number) ──
     if (integration?.id) {
-      const { error: deleteErr } = await supabase
+      const nowIso = new Date().toISOString();
+      const { error: updateErr } = await supabase
         .from("whatsapp_integrations")
-        .delete()
+        .update({
+          status: "disconnected",
+          is_active: false,
+          qr_code_data: null,
+          connected_at: null,
+          phone_number: null,
+          last_disconnected_at: nowIso,
+          updated_at: nowIso,
+        })
         .eq("id", integration.id);
 
-      if (deleteErr) {
-        console.error("[evolution-delete] DB delete error:", deleteErr);
+      if (updateErr) {
+        console.error("[evolution-delete] DB update error:", updateErr);
         return respond({
           ok: false,
-          message:
-            `Instância removida da Evolution mas falhou ao remover integração local: ${deleteErr.message}`,
+          message: `Instância removida da Evolution mas falhou ao atualizar integração local: ${updateErr.message}`,
           evolution: evolutionResults,
         }, 500);
       }
@@ -132,7 +135,7 @@ serve(async (req) => {
     console.log("[evolution-delete] === DONE ===");
     return respond({
       ok: true,
-      message: "Configuração limpa com sucesso",
+      message: "WhatsApp desconectado com sucesso",
       instance_name: instanceName,
       evolution: evolutionResults,
     });

@@ -120,7 +120,6 @@ export function EvolutionIntegration() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [instanceName, setInstanceName] = useState("");
-  const [instanceNameError, setInstanceNameError] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste do AutoLead. 🚀");
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
@@ -226,11 +225,7 @@ export function EvolutionIntegration() {
     };
   }, []);
 
-  const validateInstanceName = (name: string): boolean => {
-    if (!name.trim()) { setInstanceNameError("Nome da instância é obrigatório"); return false; }
-    if (!/^[a-z0-9_-]{3,40}$/.test(name)) { setInstanceNameError("Use apenas letras minúsculas, números, - e _ (3-40 caracteres)"); return false; }
-    setInstanceNameError(""); return true;
-  };
+
 
   const sanitizeResponse = (data: Record<string, unknown>): Record<string, unknown> => {
     const sanitized = { ...data };
@@ -240,25 +235,26 @@ export function EvolutionIntegration() {
     return sanitized;
   };
 
-  const handleConnect = async (existingInstanceName?: string) => {
-    const nameToUse = existingInstanceName || instanceName;
-    if (!validateInstanceName(nameToUse)) return;
+  const handleConnect = async (_existingInstanceName?: string) => {
     setActionLoading(true);
     setDebugInfo(null);
 
     const endpoint = `${SUPABASE_URL}/functions/v1/evolution-create-instance`;
+    // Instance name is now derived server-side as `autolead_{orgId}`.
+    // We only display it here for debug info.
+    const derivedName = `autolead_${orgId}`;
 
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organization_id: orgId, instance_name: nameToUse }),
+        body: JSON.stringify({ organization_id: orgId }),
       });
 
       const data = await res.json();
 
       setDebugInfo({
-        instance_name: nameToUse,
+        instance_name: derivedName,
         endpoint,
         http_status: res.status,
         response: sanitizeResponse(data),
@@ -267,13 +263,24 @@ export function EvolutionIntegration() {
 
       if (data.qr_format) setLastQrFormat(data.qr_format);
 
+      // Cross-org duplicate phone block
+      if (res.status === 409 && data.status === "duplicate_phone") {
+        toast({
+          title: "Número já em uso",
+          description: data.message || "Este número de WhatsApp já está conectado em outra organização.",
+          variant: "destructive",
+        });
+        fetchIntegration(true);
+        return;
+      }
+
       if (data.status === "connected") {
         setIntegration((prev) => ({
-          ...(prev || { id: "", organization_id: orgId, provider: "evolution", instance_name: nameToUse, is_active: true, phone_number: null }),
+          ...(prev || { id: "", organization_id: orgId, provider: "evolution", instance_name: derivedName, is_active: true, phone_number: null }),
           status: "connected",
           qr_code_data: null,
           connected_at: new Date().toISOString(),
-          instance_name: nameToUse,
+          instance_name: derivedName,
         } as Integration));
         setLiveStatus("connected");
         toast({ title: "WhatsApp conectado!", description: "Instância já estava conectada" });
@@ -282,7 +289,7 @@ export function EvolutionIntegration() {
           ...(prev || { id: "", organization_id: orgId, provider: "evolution", is_active: true, phone_number: null, connected_at: null }),
           status: "qr_pending",
           qr_code_data: data.qr_code_data,
-          instance_name: nameToUse,
+          instance_name: derivedName,
         } as Integration));
         setLiveStatus("pairing");
         toast({ title: "QR Code gerado!", description: "Escaneie o QR code para conectar" });
@@ -298,7 +305,7 @@ export function EvolutionIntegration() {
       fetchIntegration(false);
     } catch (err: any) {
       toast({ title: "Erro ao conectar", description: err.message, variant: "destructive" });
-      setDebugInfo({ instance_name: nameToUse, endpoint, http_status: 0, response: { error: err.message }, timestamp: new Date().toISOString() });
+      setDebugInfo({ instance_name: derivedName, endpoint, http_status: 0, response: { error: err.message }, timestamp: new Date().toISOString() });
     } finally {
       setActionLoading(false);
     }
@@ -346,13 +353,22 @@ export function EvolutionIntegration() {
     setActionLoading(true);
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; setPolling(false); }
     try {
-      await supabase
-        .from("whatsapp_integrations")
-        .update({ status: "disconnected", is_active: false, qr_code_data: null, connected_at: null, phone_number: null, updated_at: new Date().toISOString() } as any)
-        .eq("id", integration.id);
+      // Calls the edge function which:
+      //  1) logs out the WhatsApp session on Evolution
+      //  2) deletes the Evolution instance (frees the WA session)
+      //  3) marks the local row as disconnected (preserves history, frees phone_number for other orgs)
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/evolution-delete-instance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || "Erro ao desconectar");
+      }
       setIntegration((prev) => prev ? { ...prev, status: "disconnected", qr_code_data: null, connected_at: null, phone_number: null } : prev);
       setLiveStatus("disconnected");
-      toast({ title: "Desconectado", description: "Integração WhatsApp desativada" });
+      toast({ title: "Desconectado", description: "WhatsApp desconectado. O número está livre para ser usado em outra organização." });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -455,7 +471,6 @@ export function EvolutionIntegration() {
 
       setIntegration(null);
       setInstanceName("");
-      setInstanceNameError("");
       setLiveStatus(null);
       setLiveError(null);
       setInstanceFound(true);
@@ -796,23 +811,15 @@ export function EvolutionIntegration() {
                 </>
               ) : (
                 <>
-                  <div className="space-y-2">
-                    <Label className="font-poppins font-medium">Nome da instância</Label>
-                    <Input
-                      value={instanceName}
-                      onChange={(e) => {
-                        const val = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
-                        setInstanceName(val);
-                        if (val) validateInstanceName(val);
-                      }}
-                      placeholder="Ex: nome da minha empresa"
-                      className="font-mono"
-                      maxLength={40}
-                    />
-                    {instanceNameError && <p className="text-xs text-destructive">{instanceNameError}</p>}
-                    <p className="text-xs text-muted-foreground">Identificador único, apenas minúsculas, números, - e _ (3-40 caracteres)</p>
-                  </div>
-                  <Button onClick={() => handleConnect()} disabled={actionLoading || !instanceName.trim()} className="btn-gradient text-white font-poppins gap-2">
+                  <Alert>
+                    <MessageSquare className="h-4 w-4" />
+                    <AlertDescription>
+                      A instância do WhatsApp será criada automaticamente para esta organização.
+                      Cada organização tem sua própria instância isolada — o mesmo número não pode
+                      estar conectado em duas organizações ao mesmo tempo.
+                    </AlertDescription>
+                  </Alert>
+                  <Button onClick={() => handleConnect()} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
                     {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
                     Gerar QR e Conectar
                   </Button>
@@ -874,8 +881,8 @@ export function EvolutionIntegration() {
           <div className="flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">1</div>
             <div>
-              <p className="font-medium">Defina o nome da instância</p>
-              <p className="text-muted-foreground">Um identificador único para sua organização (ex: minha-empresa)</p>
+              <p className="font-medium">Instância automática por organização</p>
+              <p className="text-muted-foreground">Cada organização recebe sua própria instância isolada (autolead_&lt;org&gt;). O mesmo número não pode ser conectado em duas organizações ao mesmo tempo.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
