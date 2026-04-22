@@ -12,6 +12,7 @@ import {
   Search,
   Phone,
   User,
+  Users,
   CheckCheck,
   ArrowLeft,
   Loader2,
@@ -210,11 +211,14 @@ function ThreadItem({
     >
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
-          {thread.profile_picture_url && (
+          {!thread.is_group && thread.profile_picture_url && (
             <AvatarImage src={thread.profile_picture_url} alt={name} />
           )}
-          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-            {initials}
+          <AvatarFallback className={cn(
+            'text-xs font-semibold',
+            thread.is_group ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-primary/10 text-primary'
+          )}>
+            {thread.is_group ? <Users className="h-4 w-4" /> : initials}
           </AvatarFallback>
         </Avatar>
 
