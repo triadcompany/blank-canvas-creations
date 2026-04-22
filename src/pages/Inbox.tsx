@@ -548,6 +548,18 @@ function EmptyChat() {
 // ── Messages with date groups ──
 
 function MessagesList({ messages, isGroup }: { messages: InboxMessage[]; isGroup?: boolean }) {
+  // Build participants map (phone digits -> display name) from message history
+  const participants = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of messages) {
+      if (m.sender_phone && m.sender_name) {
+        const digits = m.sender_phone.replace(/\D/g, '');
+        if (digits && !map.has(digits)) map.set(digits, m.sender_name);
+      }
+    }
+    return map;
+  }, [messages]);
+
   const grouped = useMemo(() => {
     const result: {
       type: 'date' | 'message';
@@ -565,7 +577,7 @@ function MessagesList({ messages, isGroup }: { messages: InboxMessage[]; isGroup
       if (isNewDay) {
         result.push({ type: 'date', date: msgDate });
         lastDate = msgDate;
-        lastSenderKey = null; // reset grouping at day change
+        lastSenderKey = null;
       }
 
       const senderKey =
@@ -573,7 +585,6 @@ function MessagesList({ messages, isGroup }: { messages: InboxMessage[]; isGroup
           ? '__me__'
           : msg.sender_phone || msg.sender_name || '__unknown__';
 
-      // Only show sender label on first message of a consecutive block from the same sender (group inbound only)
       const showSender =
         !!isGroup && msg.direction !== 'outbound' && senderKey !== lastSenderKey;
 
@@ -593,6 +604,8 @@ function MessagesList({ messages, isGroup }: { messages: InboxMessage[]; isGroup
             key={item.message!.id}
             message={item.message!}
             showSender={item.showSender}
+            isGroup={isGroup}
+            participants={participants}
           />
         )
       )}
