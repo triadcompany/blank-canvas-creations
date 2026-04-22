@@ -40,6 +40,7 @@ import { N8nIntegration } from "@/components/settings/N8nIntegration";
 import { WebhookIntegration } from "@/components/settings/WebhookIntegration";
 import BillingSettings from "@/components/settings/BillingSettings";
 import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
+import { NotificationSettings } from "@/components/settings/NotificationSettings";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
@@ -188,16 +189,7 @@ export function Settings() {
       case "meta-ads":
         return <MetaAdsSettings />;
       case "notifications":
-        return (
-          <Card className="card-gradient border-0">
-            <CardContent className="p-8 text-center">
-              <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground font-poppins">
-                Configurações de notificações serão implementadas em breve.
-              </p>
-            </CardContent>
-          </Card>
-        );
+        return <NotificationSettings />;
       default:
         return <UserProfile />;
     }
