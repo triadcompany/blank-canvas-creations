@@ -470,6 +470,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           media_url: mediaUrl,
           mime_type: audioMimetype,
           duration_ms: audioDurationMs,
+          sender_name: !isFromMe ? (senderName || null) : null,
+          sender_phone: !isFromMe ? (senderPhone || null) : null,
         });
       }
     } else if (conversationId) {
@@ -478,6 +480,8 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         conversation_id: conversationId,
         direction,
         body: displayBody,
+        sender_name: !isFromMe ? (senderName || null) : null,
+        sender_phone: !isFromMe ? (senderPhone || null) : null,
       });
     }
 
