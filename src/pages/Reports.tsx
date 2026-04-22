@@ -500,6 +500,21 @@ export function Reports() {
                 </Select>
               </div>
 
+              <div className="flex items-center gap-2 bg-background/50 rounded-lg px-3 py-1">
+                <Target className="h-4 w-4 text-primary" />
+                <Select value={selectedPipeline} onValueChange={setSelectedPipeline}>
+                  <SelectTrigger className="w-44 border-0 bg-transparent font-poppins text-sm shadow-none focus:ring-0">
+                    <SelectValue placeholder="Pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas as pipelines</SelectItem>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="ml-auto flex items-center gap-2 bg-primary/10 rounded-full px-4 py-2">
                 <Activity className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium text-primary">{filteredLeads.length} leads</span>
