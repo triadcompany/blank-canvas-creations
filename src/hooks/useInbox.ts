@@ -603,8 +603,75 @@ export function useInbox() {
     }
   }, [orgId, selectedThreadId]);
 
-  // Assign conversation
-  const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
+  // Send media (image, video, audio, document) — uploads file to chat-media bucket
+  // and lets the edge function deliver via Evolution + persist as outbound message.
+  const sendMedia = useCallback(async (params: {
+    file: File;
+    kind: 'image' | 'video' | 'audio' | 'document';
+    caption?: string;
+  }) => {
+    if (!orgId || !selectedThreadId) return;
+    setSending(true);
+
+    const previewBody =
+      params.caption?.trim() ||
+      (params.kind === 'image' ? '📷 Foto'
+        : params.kind === 'video' ? '🎥 Vídeo'
+        : params.kind === 'audio' ? '🎵 Áudio'
+        : '📄 Documento');
+
+    const optimisticMsg: InboxMessage = {
+      id: `temp-${Date.now()}`,
+      organization_id: orgId,
+      conversation_id: selectedThreadId,
+      direction: 'outbound',
+      body: previewBody,
+      external_message_id: null,
+      created_at: new Date().toISOString(),
+      message_type: params.kind,
+      media_url: URL.createObjectURL(params.file),
+      mime_type: params.file.type || null,
+    } as InboxMessage;
+    setMessages(prev => dedupeAndSort([...prev, optimisticMsg]));
+
+    try {
+      // Upload to chat-media bucket
+      const ext = (params.file.name.split('.').pop() || '').toLowerCase() || 'bin';
+      const path = `${orgId}/${selectedThreadId}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('chat-media')
+        .upload(path, params.file, {
+          contentType: params.file.type || undefined,
+          upsert: false,
+        });
+      if (upErr) throw new Error(upErr.message || 'Falha no upload');
+
+      const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) throw new Error('URL pública indisponível');
+
+      const res = await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          organization_id: orgId,
+          thread_id: selectedThreadId,
+          message_type: params.kind,
+          media_url: publicUrl,
+          mime_type: params.file.type || null,
+          filename: params.file.name,
+          caption: params.caption?.trim() || undefined,
+        },
+      });
+      if (res.error) throw new Error(res.error.message || 'Erro ao enviar');
+      const data = res.data as any;
+      if (data?.error) throw new Error(data.error);
+    } catch (err: any) {
+      console.error('Error sending media:', err);
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      toast.error(err.message || 'Erro ao enviar mídia');
+    } finally {
+      setSending(false);
+    }
+  }, [orgId, selectedThreadId]);
     if (!orgId) return;
 
     setThreads(prev =>
