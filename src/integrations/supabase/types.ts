@@ -8089,6 +8089,10 @@ export type Database = {
         Args: { p_clerk_user_id: string; p_lead_id: string }
         Returns: boolean
       }
+      delete_pipeline_rpc: {
+        Args: { p_clerk_user_id: string; p_pipeline_id: string }
+        Returns: Json
+      }
       distribute_instagram_conversation: {
         Args: { p_conversation_id: string; p_organization_id: string }
         Returns: Json
