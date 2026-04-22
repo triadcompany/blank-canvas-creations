@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.evolution-get-status]
 verify_jwt = false
 
+[functions.evolution-delete-instance]
+verify_jwt = false
+
 [functions.automation-worker]
 verify_jwt = false
 
