@@ -30,6 +30,26 @@ function extractQr(data: any): string | null {
   return null;
 }
 
+function slugifyOrgName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")     // não-alfanumérico → hífen
+    .replace(/^-+|-+$/g, "")          // remove hífens nas pontas
+    .replace(/-+/g, "-");             // colapsa hífens duplicados
+}
+
+function buildInstanceName(orgName: string | null, organizationId: string): string {
+  const shortTs = String(Date.now()).slice(-8); // últimos 8 dígitos
+  const baseSlug = orgName ? slugifyOrgName(orgName) : "";
+  const slug = baseSlug || `org-${organizationId.slice(0, 8)}`;
+  // Limita a 50 chars total: slug + "_" + 8 dígitos = máx 50
+  const maxSlugLen = 50 - 1 - shortTs.length; // 41
+  const trimmedSlug = slug.slice(0, maxSlugLen).replace(/-+$/g, "");
+  return `${trimmedSlug}_${shortTs}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
