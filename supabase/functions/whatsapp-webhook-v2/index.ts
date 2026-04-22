@@ -239,7 +239,7 @@ async function handleMessagesUpsert(
           // Never use participant pushName as the group name.
           update.is_group = true;
           const groupSubject =
-            (typeof body?.data?.subject === "string" && body.data.subject) ||
+            (typeof payload?.data?.subject === "string" && payload.data.subject) ||
             (typeof msg?.subject === "string" && msg.subject) ||
             null;
           if (groupSubject) {
@@ -248,7 +248,8 @@ async function handleMessagesUpsert(
             update.contact_name_source = "whatsapp_group";
           } else if (
             !existingConv.contact_name ||
-            existingConv.contact_name_source === "whatsapp"
+            existingConv.contact_name_source === "whatsapp" ||
+            existingConv.contact_name_source === "group_fallback"
           ) {
             const fallback = `Grupo (${phone.slice(-4)})`;
             update.contact_name = fallback;
@@ -264,6 +265,16 @@ async function handleMessagesUpsert(
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
 
+        // If we still don't have a real group subject, fetch it from Evolution (background).
+        if (
+          isGroup &&
+          existingConv.contact_name_source !== "whatsapp_group" &&
+          update.contact_name_source !== "whatsapp_group"
+        ) {
+          refreshGroupNameAsync(supabase, instanceName, remoteJid, existingConv.id)
+            .catch((e) => console.error("[wa-webhook-v2] group refresh error:", e));
+        }
+
         // Refresh profile picture (only for individual conversations)
         if (!isFromMe && !isGroup) {
           const picUpdatedAt = existingConv.profile_picture_updated_at;
@@ -276,11 +287,13 @@ async function handleMessagesUpsert(
           }
         }
       } else {
-        const groupSubject = isGroup
-          ? ((typeof body?.data?.subject === "string" && body.data.subject) ||
+        const inlineSubject = isGroup
+          ? ((typeof payload?.data?.subject === "string" && payload.data.subject) ||
              (typeof msg?.subject === "string" && msg.subject) ||
-             `Grupo (${phone.slice(-4)})`)
+             null)
           : null;
+        const groupFallback = isGroup ? `Grupo (${phone.slice(-4)})` : null;
+        const groupSubject = inlineSubject || groupFallback;
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
           .insert({
@@ -288,7 +301,9 @@ async function handleMessagesUpsert(
             instance_name: instanceName,
             contact_phone: phone,
             contact_name: isGroup ? groupSubject : (pushName || null),
-            contact_name_source: isGroup ? "group_fallback" : (pushName ? "whatsapp" : null),
+            contact_name_source: isGroup
+              ? (inlineSubject ? "whatsapp_group" : "group_fallback")
+              : (pushName ? "whatsapp" : null),
             last_message_at: now,
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
@@ -309,6 +324,12 @@ async function handleMessagesUpsert(
         if (conversationId && !isFromMe && !isGroup) {
           fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
             .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
+        }
+
+        // Fetch real group name from Evolution if we only have the fallback
+        if (conversationId && isGroup && !inlineSubject) {
+          refreshGroupNameAsync(supabase, instanceName, remoteJid, conversationId)
+            .catch((e) => console.error("[wa-webhook-v2] group fetch error:", e));
         }
       }
 
@@ -434,6 +455,56 @@ serve(async (req) => {
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 });
+
+// Fetch group subject (name) from Evolution API
+async function fetchGroupSubject(
+  instanceName: string,
+  groupJid: string,
+): Promise<string | null> {
+  if (!EVOLUTION_BASE_URL || !EVOLUTION_API_KEY) return null;
+  try {
+    const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+    });
+    if (!res.ok) {
+      console.warn(`[wa-webhook-v2] findGroupInfos failed: ${res.status}`);
+      return null;
+    }
+    const data = await res.json().catch(() => ({} as any));
+    // Evolution returns { subject, ... } or array of groups
+    const node = Array.isArray(data) ? data[0] : data;
+    return (node?.subject || node?.name || node?.groupSubject || null) as string | null;
+  } catch (e) {
+    console.error("[wa-webhook-v2] fetchGroupSubject error:", e);
+    return null;
+  }
+}
+
+async function refreshGroupNameAsync(
+  supabase: any,
+  instanceName: string,
+  groupJid: string,
+  conversationId: string,
+): Promise<void> {
+  try {
+    const subject = await fetchGroupSubject(instanceName, groupJid);
+    if (subject) {
+      await supabase
+        .from("conversations")
+        .update({
+          group_name: subject,
+          contact_name: subject,
+          contact_name_source: "whatsapp_group",
+        })
+        .eq("id", conversationId);
+      console.log(`[wa-webhook-v2] group name refreshed: "${subject}" for conv ${conversationId}`);
+    }
+  } catch (e) {
+    console.error("[wa-webhook-v2] refreshGroupNameAsync error:", e);
+  }
+}
 
 // Fetch profile picture from Evolution API and save to conversations table
 async function fetchAndStoreProfilePicture(
