@@ -105,11 +105,12 @@ export function MessageComposer({
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande (máx. ${MAX_FILE_MB}MB)`);
+    const kind = inferKind(file);
+    const maxMb = kind === 'video' ? MAX_VIDEO_MB : MAX_OTHER_MB;
+    if (file.size > maxMb * 1024 * 1024) {
+      toast.error(`Arquivo muito grande (máx. ${maxMb}MB)`);
       return;
     }
-    const kind = inferKind(file);
     const previewUrl = kind === 'image' || kind === 'video' ? URL.createObjectURL(file) : undefined;
     setPending({ file, kind, previewUrl });
     setCaption('');
