@@ -754,7 +754,7 @@ export function EvolutionIntegration() {
                     <Label className="font-poppins font-medium">Nome da instância</Label>
                     <Input value={integration?.instance_name || ""} disabled className="font-mono bg-muted" />
                   </div>
-                   <div className="flex gap-2">
+                   <div className="flex flex-wrap gap-2">
                      <Button onClick={handleReconnect} disabled={actionLoading} className="btn-gradient text-white font-poppins gap-2">
                        {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCodeIcon className="h-4 w-4" />}
                        Gerar novo QR
@@ -763,7 +763,39 @@ export function EvolutionIntegration() {
                        <RefreshCw className={`h-4 w-4 ${actionLoading ? "animate-spin" : ""}`} />
                        Verificar status
                      </Button>
-                   </div>
+                     <AlertDialog>
+                       <AlertDialogTrigger asChild>
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           disabled={actionLoading}
+                           className="font-poppins gap-2 text-destructive hover:text-destructive ml-auto"
+                         >
+                           <Trash2 className="h-4 w-4" />
+                           Limpar configuração
+                         </Button>
+                       </AlertDialogTrigger>
+                       <AlertDialogContent>
+                         <AlertDialogHeader>
+                           <AlertDialogTitle>Limpar configuração do WhatsApp?</AlertDialogTitle>
+                           <AlertDialogDescription>
+                             Isso vai remover completamente a instância configurada para esta organização. A tela voltará ao estado inicial e você poderá criar uma nova instância do zero.
+                             <br /><br />
+                             <strong>Esta ação não pode ser desfeita.</strong>
+                           </AlertDialogDescription>
+                         </AlertDialogHeader>
+                         <AlertDialogFooter>
+                           <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                           <AlertDialogAction
+                             onClick={handleClearConfiguration}
+                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                           >
+                             Sim, limpar tudo
+                           </AlertDialogAction>
+                         </AlertDialogFooter>
+                       </AlertDialogContent>
+                     </AlertDialog>
+                    </div>
                 </>
               ) : (
                 <>
