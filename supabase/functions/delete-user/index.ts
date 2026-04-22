@@ -1,3 +1,6 @@
+// delete-user: REMOVE o usuário da organização atual.
+// NÃO deleta a conta Clerk nem o profile global — apenas revoga o vínculo
+// com a organização, para que ele saia de "Gerenciar Usuários".
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
@@ -12,162 +15,165 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Clerk Backend API - para deletar usuário do Clerk
 const CLERK_SECRET_KEY = Deno.env.get("CLERK_SECRET_KEY");
 
-async function deleteClerkUser(clerkUserId: string): Promise<boolean> {
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+
+// Remove o usuário da organização no Clerk (não deleta a conta).
+async function removeFromClerkOrg(clerkOrgId: string, clerkUserId: string) {
   if (!CLERK_SECRET_KEY) {
-    console.log("⚠️ CLERK_SECRET_KEY not configured, skipping Clerk deletion");
-    return true; // Continue even without Clerk deletion
+    console.log("⚠️ CLERK_SECRET_KEY não configurado — pulando Clerk");
+    return { ok: true, skipped: true };
   }
-
   try {
-    const response = await fetch(`https://api.clerk.com/v1/users/${clerkUserId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${CLERK_SECRET_KEY}`,
-        'Content-Type': 'application/json',
+    const r = await fetch(
+      `https://api.clerk.com/v1/organizations/${clerkOrgId}/memberships/${clerkUserId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
-
-    if (response.ok || response.status === 404) {
-      console.log("✅ User deleted from Clerk (or didn't exist)");
-      return true;
+    );
+    if (r.ok || r.status === 404) {
+      console.log("✅ Membership removido do Clerk (ou inexistente)");
+      return { ok: true };
     }
-
-    const errorData = await response.text();
-    console.error("❌ Clerk deletion failed:", errorData);
-    return false;
-  } catch (error) {
-    console.error("❌ Error calling Clerk API:", error);
-    return false;
+    const t = await r.text();
+    console.error("❌ Falha ao remover membership do Clerk:", r.status, t);
+    return { ok: false, error: `Clerk ${r.status}: ${t.slice(0, 200)}` };
+  } catch (e) {
+    console.error("❌ Erro chamando Clerk:", e);
+    return { ok: false, error: String(e) };
   }
 }
 
-const handler = async (req: Request): Promise<Response> => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { profileId, clerkUserId } = await req.json();
-    
-    if (!profileId) {
-      return new Response(
-        JSON.stringify({ error: "profileId é obrigatório" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+    const requesterClerkUserId = req.headers.get("x-clerk-user-id");
+    const orgIdHeader = req.headers.get("x-organization-id");
+    const body = await req.json().catch(() => ({}));
+    const { profileId, clerkUserId, organizationId } = body as {
+      profileId?: string;
+      clerkUserId?: string;
+      organizationId?: string;
+    };
+
+    if (!profileId) return json({ error: "profileId é obrigatório" }, 400);
+    if (!requesterClerkUserId) {
+      return json({ error: "x-clerk-user-id ausente" }, 401);
     }
 
-    console.log("🗑️ Deletando usuário:", { profileId, clerkUserId });
+    // Resolver org alvo: header > body > org do solicitante
+    let targetOrgId = organizationId || orgIdHeader || null;
+    if (!targetOrgId) {
+      const { data: requester } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("clerk_user_id", requesterClerkUserId)
+        .maybeSingle();
+      targetOrgId = requester?.organization_id ?? null;
+    }
+    if (!targetOrgId) return json({ error: "organization_id não encontrado" }, 400);
 
-    // Verificar se o perfil existe no banco
-    const { data: profile, error: profileCheckError } = await supabase
-      .from('profiles')
-      .select('id, clerk_user_id')
-      .eq('id', profileId)
-      .single();
+    // Validar que solicitante é admin da org alvo
+    const { data: requesterRole } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("clerk_user_id", requesterClerkUserId)
+      .eq("organization_id", targetOrgId)
+      .maybeSingle();
 
-    if (profileCheckError || !profile) {
-      console.log("Perfil não encontrado:", profileCheckError);
-      return new Response(
-        JSON.stringify({ error: "Perfil não encontrado" }),
-        {
-          status: 404,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+    if (!requesterRole || requesterRole.role !== "admin") {
+      return json({ error: "Apenas administradores podem remover usuários" }, 403);
     }
 
-    // Usar clerk_user_id do profile se não foi passado
-    const clerkId = clerkUserId || profile.clerk_user_id;
+    // Buscar perfil alvo (precisa ser da mesma org)
+    const { data: target, error: targetErr } = await supabase
+      .from("profiles")
+      .select("id, clerk_user_id, organization_id")
+      .eq("id", profileId)
+      .maybeSingle();
 
-    // Deletar do Clerk se tiver clerk_user_id
-    if (clerkId) {
-      const clerkDeleted = await deleteClerkUser(clerkId);
-      if (!clerkDeleted) {
-        console.warn("⚠️ Failed to delete from Clerk, continuing with database deletion");
-      }
+    if (targetErr || !target) return json({ error: "Perfil não encontrado" }, 404);
+    if (target.organization_id !== targetOrgId) {
+      return json({ error: "Perfil não pertence à organização atual" }, 403);
     }
 
-    // Deletar roles primeiro (evitar constraint)
-    if (clerkId) {
-      await supabase
-        .from('user_roles')
+    const targetClerkId = target.clerk_user_id || clerkUserId;
+    if (targetClerkId === requesterClerkUserId) {
+      return json({ error: "Você não pode remover a si mesmo" }, 400);
+    }
+
+    console.log("👋 Removendo usuário da organização:", {
+      profileId,
+      targetClerkId,
+      targetOrgId,
+    });
+
+    // 1) Roles desta org
+    if (targetClerkId) {
+      const { error: rolesErr } = await supabase
+        .from("user_roles")
         .delete()
-        .eq('clerk_user_id', clerkId);
-
-      // Remover membership(s) da organização — sem isso o usuário continua aparecendo
-      // na listagem de "Gerenciar Usuários", que é construída a partir de org_members.
-      const { error: orgMemberError } = await supabase
-        .from('org_members')
-        .delete()
-        .eq('clerk_user_id', clerkId);
-
-      if (orgMemberError) {
-        console.warn("⚠️ Erro ao remover org_members:", orgMemberError);
-      }
-
-      // Remover users_profile (espelho do Clerk usado pelas listagens)
-      const { error: usersProfileError } = await supabase
-        .from('users_profile')
-        .delete()
-        .eq('clerk_user_id', clerkId);
-
-      if (usersProfileError) {
-        console.warn("⚠️ Erro ao remover users_profile:", usersProfileError);
-      }
+        .eq("clerk_user_id", targetClerkId)
+        .eq("organization_id", targetOrgId);
+      if (rolesErr) console.warn("⚠️ user_roles:", rolesErr.message);
     }
 
-    // Deletar o perfil do banco de dados
-    const { error: profileDeleteError } = await supabase
-      .from('profiles')
+    // 2) Vínculo em org_members (se existir tabela)
+    if (targetClerkId) {
+      const { error: omErr } = await supabase
+        .from("org_members")
+        .delete()
+        .eq("clerk_user_id", targetClerkId)
+        .eq("organization_id", targetOrgId);
+      if (omErr) console.warn("⚠️ org_members:", omErr.message);
+    }
+
+    // 3) Profile da org (deleta apenas o registro de profile vinculado a essa org).
+    // NÃO removemos users_profile (espelho global do Clerk) nem deletamos a conta.
+    const { error: profErr } = await supabase
+      .from("profiles")
       .delete()
-      .eq('id', profileId);
-
-    if (profileDeleteError) {
-      console.error("Erro ao deletar perfil:", profileDeleteError);
-      return new Response(
-        JSON.stringify({ 
-          error: "Erro ao excluir perfil do usuário",
-          details: profileDeleteError.message 
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+      .eq("id", profileId);
+    if (profErr) {
+      console.error("❌ profiles:", profErr);
+      return json({ error: "Erro ao remover perfil", details: profErr.message }, 500);
     }
 
-    console.log("✅ Usuário deletado com sucesso");
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: "Usuário excluído com sucesso" 
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+    // 4) Remover membership no Clerk (não deleta a conta do usuário)
+    let clerkResult: any = { skipped: true };
+    if (targetClerkId) {
+      // Resolver clerk_org_id a partir da org interna
+      const { data: clerkOrg } = await supabase
+        .from("clerk_organizations")
+        .select("clerk_org_id")
+        .eq("id", targetOrgId)
+        .maybeSingle();
+      if (clerkOrg?.clerk_org_id) {
+        clerkResult = await removeFromClerkOrg(clerkOrg.clerk_org_id, targetClerkId);
+      } else {
+        console.warn("⚠️ clerk_org_id não encontrado para org", targetOrgId);
       }
-    );
+    }
 
-  } catch (error: any) {
-    console.error("Erro no delete-user:", error);
-    return new Response(
-      JSON.stringify({ 
-        error: "Erro interno do servidor",
-        details: error.message 
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
-    );
+    return json({
+      success: true,
+      message: "Usuário removido da organização",
+      clerk: clerkResult,
+    });
+  } catch (err: any) {
+    console.error("❌ delete-user erro:", err);
+    return json({ error: "Erro interno", details: err?.message ?? String(err) }, 500);
   }
-};
-
-serve(handler);
+});
