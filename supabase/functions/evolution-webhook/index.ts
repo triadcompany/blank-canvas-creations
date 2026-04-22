@@ -391,13 +391,28 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
       }
       if (isGroup) {
-        // For groups, contact_name should be the group name (use pushName as group name fallback)
-        if (pushName && pushName !== normalizedPhone) {
-          convUpdate.group_name = pushName;
-          convUpdate.contact_name = pushName;
-          convUpdate.contact_name_source = "whatsapp";
-        }
+        // For groups, NEVER overwrite contact_name with the sender's pushName.
+        // The real group subject must come from a `groups.upsert` event or
+        // `data.subject`. Until we have it, keep what's there or use a generic label.
         convUpdate.is_group = true;
+        const groupSubject =
+          (typeof body?.data?.subject === "string" && body.data.subject) ||
+          (typeof msg?.subject === "string" && msg.subject) ||
+          null;
+        if (groupSubject) {
+          convUpdate.group_name = groupSubject;
+          convUpdate.contact_name = groupSubject;
+          convUpdate.contact_name_source = "whatsapp_group";
+        } else if (
+          !existingConv.contact_name ||
+          existingConv.contact_name_source === "whatsapp"
+        ) {
+          // If contact_name was previously set from a participant pushName, replace
+          // with a neutral group label so the UI doesn't impersonate the sender.
+          const fallback = `Grupo (${normalizedPhone.slice(-4)})`;
+          convUpdate.contact_name = fallback;
+          convUpdate.contact_name_source = "group_fallback";
+        }
       } else if (pushName && pushName !== normalizedPhone) {
         const currentName = existingConv.contact_name || "";
         const nameSource = existingConv.contact_name_source || "whatsapp";
@@ -419,20 +434,25 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         }
       }
     } else {
+      const groupSubject = isGroup
+        ? ((typeof body?.data?.subject === "string" && body.data.subject) ||
+           (typeof msg?.subject === "string" && msg.subject) ||
+           `Grupo (${normalizedPhone.slice(-4)})`)
+        : null;
       const { data: newConv } = await supabase
         .from("conversations")
         .insert({
           organization_id: orgId,
           instance_name: instanceName,
           contact_phone: normalizedPhone,
-          contact_name: pushName || null,
-          contact_name_source: pushName ? "whatsapp" : null,
+          contact_name: isGroup ? groupSubject : (pushName || null),
+          contact_name_source: isGroup ? "group_fallback" : (pushName ? "whatsapp" : null),
           last_message_at: now,
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,
           assigned_to: null,
           is_group: isGroup,
-          group_name: isGroup ? (pushName || null) : null,
+          group_name: isGroup ? groupSubject : null,
         })
         .select("id")
         .single();
