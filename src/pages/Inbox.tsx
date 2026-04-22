@@ -295,10 +295,12 @@ function DateSeparator({ date }: { date: string }) {
 
 // ── Message Bubble ──
 
-function MessageBubble({ message }: { message: InboxMessage }) {
+function MessageBubble({ message, showSender }: { message: InboxMessage; showSender?: boolean }) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
   const isAiGenerated = message.ai_generated === true;
+  const senderLabel = message.sender_name || message.sender_phone || '';
+  const senderColor = senderLabel ? colorFromString(senderLabel) : undefined;
   const mediaUrl = message.media_url || null;
   const type = message.message_type || 'text';
   const isImage = type === 'image' && mediaUrl;
