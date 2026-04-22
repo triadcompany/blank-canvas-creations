@@ -390,7 +390,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       if (!isFromMe) {
         convUpdate.unread_count = (existingConv.unread_count || 0) + 1;
       }
-      if (pushName && pushName !== normalizedPhone) {
+      if (isGroup) {
+        // For groups, contact_name should be the group name (use pushName as group name fallback)
+        if (pushName && pushName !== normalizedPhone) {
+          convUpdate.group_name = pushName;
+          convUpdate.contact_name = pushName;
+          convUpdate.contact_name_source = "whatsapp";
+        }
+        convUpdate.is_group = true;
+      } else if (pushName && pushName !== normalizedPhone) {
         const currentName = existingConv.contact_name || "";
         const nameSource = existingConv.contact_name_source || "whatsapp";
         const nameIsPhoneOrEmpty = !currentName || currentName === normalizedPhone || currentName === phone;
@@ -401,7 +409,7 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
       }
       await supabase.from("conversations").update(convUpdate).eq("id", conversationId);
 
-      if (!isFromMe) {
+      if (!isFromMe && !isGroup) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
         const needsRefresh = !existingConv.profile_picture_url ||
           !picUpdatedAt ||
@@ -423,14 +431,16 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,
           assigned_to: null,
+          is_group: isGroup,
+          group_name: isGroup ? (pushName || null) : null,
         })
         .select("id")
         .single();
 
       conversationId = newConv?.id || null;
-      console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId}`);
+      console.log(`[evolution-webhook] Conversation created for ${normalizedPhone}: ${conversationId} (group=${isGroup})`);
 
-      if (conversationId && !isFromMe) {
+      if (conversationId && !isFromMe && !isGroup) {
         fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
       }
     }
