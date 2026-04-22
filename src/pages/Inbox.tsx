@@ -466,21 +466,41 @@ function EmptyChat() {
 
 // ── Messages with date groups ──
 
-function MessagesList({ messages }: { messages: InboxMessage[] }) {
+function MessagesList({ messages, isGroup }: { messages: InboxMessage[]; isGroup?: boolean }) {
   const grouped = useMemo(() => {
-    const result: { type: 'date' | 'message'; date?: string; message?: InboxMessage }[] = [];
+    const result: {
+      type: 'date' | 'message';
+      date?: string;
+      message?: InboxMessage;
+      showSender?: boolean;
+    }[] = [];
     let lastDate: string | null = null;
+    let lastSenderKey: string | null = null;
 
     for (const msg of messages) {
       const msgDate = msg.created_at;
-      if (!lastDate || !isSameDay(parseISO(lastDate), parseISO(msgDate))) {
+      const isNewDay =
+        !lastDate || !isSameDay(parseISO(lastDate), parseISO(msgDate));
+      if (isNewDay) {
         result.push({ type: 'date', date: msgDate });
         lastDate = msgDate;
+        lastSenderKey = null; // reset grouping at day change
       }
-      result.push({ type: 'message', message: msg });
+
+      const senderKey =
+        msg.direction === 'outbound'
+          ? '__me__'
+          : msg.sender_phone || msg.sender_name || '__unknown__';
+
+      // Only show sender label on first message of a consecutive block from the same sender (group inbound only)
+      const showSender =
+        !!isGroup && msg.direction !== 'outbound' && senderKey !== lastSenderKey;
+
+      result.push({ type: 'message', message: msg, showSender });
+      lastSenderKey = senderKey;
     }
     return result;
-  }, [messages]);
+  }, [messages, isGroup]);
 
   return (
     <>
@@ -488,7 +508,11 @@ function MessagesList({ messages }: { messages: InboxMessage[] }) {
         item.type === 'date' ? (
           <DateSeparator key={`date-${i}`} date={item.date!} />
         ) : (
-          <MessageBubble key={item.message!.id} message={item.message!} />
+          <MessageBubble
+            key={item.message!.id}
+            message={item.message!}
+            showSender={item.showSender}
+          />
         )
       )}
     </>
@@ -932,11 +956,26 @@ export default function InboxPage() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-sm truncate leading-tight">{selectedContact?.name}</h3>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {selectedContact?.subtitle && (
-                      <span className="text-[11px] text-muted-foreground truncate">{selectedContact.subtitle}</span>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-semibold text-sm truncate leading-tight">{selectedContact?.name}</h3>
+                    {selectedThread.is_group && (
+                      <Badge
+                        variant="secondary"
+                        className="h-4 px-1.5 text-[9px] font-medium gap-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                      >
+                        <Users className="h-2.5 w-2.5" />
+                        Grupo
+                      </Badge>
                     )}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {selectedThread.is_group && selectedThread.group_participants_count ? (
+                      <span className="text-[11px] text-muted-foreground truncate">
+                        {selectedThread.group_participants_count} participantes
+                      </span>
+                    ) : selectedContact?.subtitle ? (
+                      <span className="text-[11px] text-muted-foreground truncate">{selectedContact.subtitle}</span>
+                    ) : null}
                     {assignedMemberName ? (
                       <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium">
                         {assignedMemberName}
@@ -1216,7 +1255,7 @@ export default function InboxPage() {
                   <p className="text-sm">Nenhuma mensagem nesta conversa</p>
                 </div>
               ) : (
-                <MessagesList messages={messages} />
+                <MessagesList messages={messages} isGroup={selectedThread.is_group} />
               )}
 
               {/* AI Thinking Indicator */}
