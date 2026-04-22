@@ -60,20 +60,54 @@ serve(async (req) => {
 
     if (!profile) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
 
-    // Verifica se já existe conexão ativa
-    const { data: existing } = await supabase
+    // Busca QUALQUER registro existente (connected/connecting/disconnected/error)
+    // e valida live na Evolution antes de decidir bloquear ou limpar.
+    const { data: existingRows } = await supabase
       .from("whatsapp_connections")
       .select("id, status, instance_name")
-      .eq("organization_id", organization_id)
-      .in("status", ["connected", "connecting"])
-      .maybeSingle();
+      .eq("organization_id", organization_id);
 
-    if (existing && existing.status === "connected") {
-      return respond({ ok: false, error: "Já existe WhatsApp conectado para esta organização" }, 409);
-    }
+    for (const existing of existingRows || []) {
+      let aliveOnEvolution = false;
+      let stateOnEvolution: string | null = null;
 
-    // Se existir uma "connecting" antiga, deleta na Evolution e reaproveita
-    if (existing && existing.status === "connecting") {
+      // Verifica live na Evolution
+      try {
+        const stateRes = await fetch(
+          `${evoUrl}/instance/connectionState/${existing.instance_name}`,
+          { method: "GET", headers: { apikey: evoKey } },
+        );
+        if (stateRes.ok) {
+          const stateData = await stateRes.json();
+          stateOnEvolution = stateData?.instance?.state || stateData?.state || null;
+          aliveOnEvolution = stateOnEvolution === "open";
+        } else if (stateRes.status === 404) {
+          aliveOnEvolution = false;
+        }
+      } catch (e) {
+        console.error(`[whatsapp-connect] connectionState check failed for ${existing.instance_name}:`, e);
+      }
+
+      console.log(
+        `[whatsapp-connect] Existing instance ${existing.instance_name}: db_status=${existing.status} live_state=${stateOnEvolution} alive=${aliveOnEvolution}`,
+      );
+
+      // Se está realmente conectado na Evolution, bloqueia
+      if (aliveOnEvolution) {
+        // Sincroniza status no banco caso esteja divergente
+        if (existing.status !== "connected") {
+          await supabase
+            .from("whatsapp_connections")
+            .update({ status: "connected", last_connected_at: new Date().toISOString() })
+            .eq("id", existing.id);
+        }
+        return respond(
+          { ok: false, error: "Já existe WhatsApp conectado para esta organização" },
+          409,
+        );
+      }
+
+      // Não está vivo — tenta deletar instância órfã na Evolution e remove do banco
       try {
         await fetch(`${evoUrl}/instance/delete/${existing.instance_name}`, {
           method: "DELETE",
@@ -81,6 +115,7 @@ serve(async (req) => {
         });
       } catch (_) { /* ignore */ }
       await supabase.from("whatsapp_connections").delete().eq("id", existing.id);
+      console.log(`[whatsapp-connect] Cleaned orphan record ${existing.id} (${existing.instance_name})`);
     }
 
     // Gerar instance_name único
