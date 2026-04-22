@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -74,11 +76,45 @@ const itemVariants = {
 export function Reports() {
   const { leads, stages, loading } = useSupabaseLeads();
   const { leadSources, loading: sourcesLoading } = useLeadSources();
+  const { profile, orgId: authOrgId } = useAuth();
+  const orgId = authOrgId || profile?.organization_id;
   
   const [selectedPeriod, setSelectedPeriod] = useState("este_mes");
   const [selectedSource, setSelectedSource] = useState("todas");
   const [selectedSeller, setSelectedSeller] = useState("todos");
+  const [selectedPipeline, setSelectedPipeline] = useState("todas");
   const [customDateRange, setCustomDateRange] = useState<{ from?: Date; to?: Date }>({});
+  const [pipelines, setPipelines] = useState<Array<{ id: string; name: string }>>([]);
+  const [pipelineStageMap, setPipelineStageMap] = useState<Record<string, string>>({}); // stage_id -> pipeline_id
+
+  // Fetch all pipelines and their stages (to map stages -> pipeline)
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: pipelineList } = await supabase.rpc('get_org_pipelines', { p_org_id: orgId });
+        const list = (pipelineList || []) as Array<{ id: string; name: string }>;
+        if (cancelled) return;
+        setPipelines(list);
+
+        const map: Record<string, string> = {};
+        await Promise.all(
+          list.map(async (p) => {
+            const { data: stageList } = await supabase.rpc('get_pipeline_stages', { p_pipeline_id: p.id });
+            (stageList || []).forEach((s: any) => {
+              map[s.id] = p.id;
+            });
+          })
+        );
+        if (!cancelled) setPipelineStageMap(map);
+      } catch (err) {
+        console.error('Error loading pipelines for reports filter:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId]);
+
 
   const getDateRange = (period: string) => {
     const now = new Date();
@@ -122,10 +158,13 @@ export function Reports() {
       const isInDateRange = isWithinInterval(leadDate, { start, end });
       const sourceMatch = selectedSource === "todas" || lead.source === selectedSource;
       const sellerMatch = selectedSeller === "todos" || lead.seller_name === selectedSeller;
+      const pipelineMatch =
+        selectedPipeline === "todas" ||
+        (lead.stage_id && pipelineStageMap[lead.stage_id] === selectedPipeline);
       
-      return isInDateRange && sourceMatch && sellerMatch;
+      return isInDateRange && sourceMatch && sellerMatch && pipelineMatch;
     });
-  }, [leads, selectedPeriod, selectedSource, selectedSeller, loading, customDateRange]);
+  }, [leads, selectedPeriod, selectedSource, selectedSeller, selectedPipeline, pipelineStageMap, loading, customDateRange]);
 
   const uniqueSources = useMemo(() => {
     const registeredSources = leadSources.map(source => source.name);
@@ -456,6 +495,21 @@ export function Reports() {
                     <SelectItem value="todas">Todas as origens</SelectItem>
                     {uniqueSources.map((source) => (
                       <SelectItem key={source} value={source}>{source}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2 bg-background/50 rounded-lg px-3 py-1">
+                <Target className="h-4 w-4 text-primary" />
+                <Select value={selectedPipeline} onValueChange={setSelectedPipeline}>
+                  <SelectTrigger className="w-44 border-0 bg-transparent font-poppins text-sm shadow-none focus:ring-0">
+                    <SelectValue placeholder="Pipeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas as pipelines</SelectItem>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
