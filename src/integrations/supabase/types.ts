@@ -7338,6 +7338,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean | null
+          last_disconnected_at: string | null
           last_webhook_error: string | null
           last_webhook_event_at: string | null
           n8n_webhook_evolution_notify: string | null
@@ -7359,6 +7360,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean | null
+          last_disconnected_at?: string | null
           last_webhook_error?: string | null
           last_webhook_event_at?: string | null
           n8n_webhook_evolution_notify?: string | null
@@ -7380,6 +7382,7 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean | null
+          last_disconnected_at?: string | null
           last_webhook_error?: string | null
           last_webhook_event_at?: string | null
           n8n_webhook_evolution_notify?: string | null
