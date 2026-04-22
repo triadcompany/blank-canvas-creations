@@ -13,13 +13,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import QRCodeLib from "qrcode";
 import QRCodeLib from "qrcode";
 
 const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
