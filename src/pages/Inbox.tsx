@@ -290,20 +290,70 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
+// ── Mention formatter (replace @<digits> with @Name or @(formatted phone)) ──
+
+function renderWithMentions(
+  text: string,
+  participants: Map<string, string>,
+): React.ReactNode {
+  if (!text) return text;
+  const parts: React.ReactNode[] = [];
+  const regex = /@(\d{6,})/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const digits = match[1];
+    const name =
+      participants.get(digits) ||
+      participants.get(digits.slice(-11)) ||
+      participants.get(digits.slice(-10)) ||
+      null;
+    const display = name ? `@${name}` : `@${formatPhone(digits)}`;
+    parts.push(
+      <span key={`m-${key++}`} className="text-primary font-semibold">
+        {display}
+      </span>,
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
 // ── Message Bubble ──
 
-function MessageBubble({ message, showSender }: { message: InboxMessage; showSender?: boolean }) {
+function MessageBubble({
+  message,
+  showSender,
+  isGroup,
+  participants,
+}: {
+  message: InboxMessage;
+  showSender?: boolean;
+  isGroup?: boolean;
+  participants: Map<string, string>;
+}) {
   const isOutbound = message.direction === 'outbound';
   const isOptimistic = message.id.startsWith('temp-');
   const isAiGenerated = message.ai_generated === true;
-  const senderLabel = message.sender_name || message.sender_phone || '';
+  const senderLabel = message.sender_name || (message.sender_phone ? formatPhone(message.sender_phone) : '');
   const senderColor = senderLabel ? colorFromString(senderLabel) : undefined;
+  const senderInitials = senderLabel ? getInitials(senderLabel) : '';
   const mediaUrl = message.media_url || null;
   const type = message.message_type || 'text';
   const isImage = type === 'image' && mediaUrl;
   const isVideo = type === 'video' && mediaUrl;
   const isAudio = type === 'audio' && mediaUrl;
   const isDocument = type === 'document' && mediaUrl;
+  const showGroupSenderHeader = !!isGroup && !isOutbound && !!showSender && !!senderLabel;
+  const indentForAvatar = !!isGroup && !isOutbound;
+
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   // Caption: body text minus the auto-prefix label (e.g. "📷 Foto ")
   const stripped = (message.body || '').replace(/^(📷 Foto|🎥 Vídeo|🎵 Áudio|📄 Documento)\s*/u, '');
@@ -312,121 +362,155 @@ function MessageBubble({ message, showSender }: { message: InboxMessage; showSen
 
   return (
     <div className={cn('flex mb-1.5', isOutbound ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'max-w-[75%] rounded-2xl text-sm shadow-sm overflow-hidden',
-          (isImage || isVideo) ? 'p-1' : 'px-3.5 py-2',
-          isOutbound
-            ? isAiGenerated
-              ? 'bg-primary/80 text-primary-foreground rounded-br-md border border-primary/30'
-              : 'bg-primary text-primary-foreground rounded-br-md'
-            : 'bg-card border border-border/50 rounded-bl-md',
-          isOptimistic && 'opacity-70'
-        )}
-      >
-        {!isOutbound && showSender && senderLabel && (
+      {indentForAvatar && (
+        <div className="w-8 mr-2 flex-shrink-0 flex items-end">
+          {showGroupSenderHeader ? (
+            <div
+              className="h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+              style={{ backgroundColor: senderColor }}
+              aria-label={senderLabel}
+            >
+              {senderInitials || '?'}
+            </div>
+          ) : (
+            <div className="h-7 w-7" aria-hidden />
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col max-w-[75%] min-w-0">
+        {showGroupSenderHeader && (
           <div
-            className="text-[11px] font-semibold mb-0.5 truncate"
+            className="text-[11px] font-semibold mb-0.5 truncate px-1"
             style={{ color: senderColor }}
           >
             {senderLabel}
           </div>
         )}
-        {isAiGenerated && (
-          <div className={cn(
-            'flex items-center gap-1 mb-1 text-[10px] font-medium px-2 pt-1',
-            isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
-          )}>
-            <Bot className="h-3 w-3" />
-            <span>IA</span>
-          </div>
-        )}
-
-        {isImage && (
-          <a href={mediaUrl!} target="_blank" rel="noopener noreferrer" className="block">
-            <img
-              src={mediaUrl!}
-              alt={captionText || 'Imagem'}
-              loading="lazy"
-              className="rounded-xl max-h-80 w-auto object-cover"
-            />
-          </a>
-        )}
-
-        {isVideo && (
-          <video
-            src={mediaUrl!}
-            controls
-            preload="metadata"
-            className="rounded-xl max-h-80 w-full"
-          />
-        )}
-
-        {isAudio && (
-          <AudioPlayer
-            src={mediaUrl!}
-            durationMs={message.duration_ms}
-            isOutbound={isOutbound}
-          />
-        )}
-
-        {isDocument && (
-          <a
-            href={mediaUrl!}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className={cn(
-              'flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors',
-              isOutbound
-                ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15'
-                : 'bg-muted/60 hover:bg-muted'
-            )}
-          >
-            <div className={cn(
-              'h-9 w-9 rounded-md flex items-center justify-center shrink-0',
-              isOutbound ? 'bg-primary-foreground/15' : 'bg-background'
-            )}>
-              <FileText className="h-4 w-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{fileName}</p>
-              <p className={cn(
-                'text-[10px]',
-                isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
-              )}>
-                Toque para abrir
-              </p>
-            </div>
-            <Download className="h-3.5 w-3.5 opacity-70 shrink-0" />
-          </a>
-        )}
-
-        {type === 'text' && (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
-        )}
-
-        {(isImage || isVideo) && captionText && (
-          <p className="whitespace-pre-wrap break-words leading-relaxed px-2.5 pt-1.5 pb-0.5 text-sm">
-            {captionText}
-          </p>
-        )}
 
         <div
           className={cn(
-            'flex items-center justify-end gap-1',
-            (isImage || isVideo) ? 'px-2.5 pb-1.5 pt-0.5' : 'mt-0.5',
-            isOutbound ? 'text-primary-foreground/50' : 'text-muted-foreground/60'
+            'rounded-2xl text-sm shadow-sm overflow-hidden',
+            (isImage || isVideo) ? 'p-1' : 'px-3.5 py-2',
+            isOutbound
+              ? isAiGenerated
+                ? 'bg-primary/80 text-primary-foreground rounded-br-md border border-primary/30'
+                : 'bg-primary text-primary-foreground rounded-br-md'
+              : 'bg-card border border-border/50 rounded-bl-md',
+            isOptimistic && 'opacity-70'
           )}
         >
-          <span className="text-[10px]">{formatMessageTime(message.created_at)}</span>
-          {isOutbound && (
-            isOptimistic
-              ? <Loader2 className="h-3 w-3 animate-spin" />
-              : <CheckCheck className="h-3 w-3" />
+          {isAiGenerated && (
+            <div className={cn(
+              'flex items-center gap-1 mb-1 text-[10px] font-medium px-2 pt-1',
+              isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
+            )}>
+              <Bot className="h-3 w-3" />
+              <span>IA</span>
+            </div>
           )}
+
+          {isImage && (
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="block rounded-xl overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Abrir imagem"
+            >
+              <img
+                src={mediaUrl!}
+                alt={captionText || 'Imagem'}
+                loading="lazy"
+                className="block max-w-[280px] max-h-[200px] w-auto h-auto object-cover"
+              />
+            </button>
+          )}
+
+          {isVideo && (
+            <video
+              src={mediaUrl!}
+              controls
+              preload="metadata"
+              className="rounded-xl max-h-80 w-full"
+            />
+          )}
+
+          {isAudio && (
+            <AudioPlayer
+              src={mediaUrl!}
+              durationMs={message.duration_ms}
+              isOutbound={isOutbound}
+            />
+          )}
+
+          {isDocument && (
+            <a
+              href={mediaUrl!}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors',
+                isOutbound
+                  ? 'bg-primary-foreground/10 hover:bg-primary-foreground/15'
+                  : 'bg-muted/60 hover:bg-muted'
+              )}
+            >
+              <div className={cn(
+                'h-9 w-9 rounded-md flex items-center justify-center shrink-0',
+                isOutbound ? 'bg-primary-foreground/15' : 'bg-background'
+              )}>
+                <FileText className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{fileName}</p>
+                <p className={cn(
+                  'text-[10px]',
+                  isOutbound ? 'text-primary-foreground/60' : 'text-muted-foreground'
+                )}>
+                  Toque para abrir
+                </p>
+              </div>
+              <Download className="h-3.5 w-3.5 opacity-70 shrink-0" />
+            </a>
+          )}
+
+          {type === 'text' && (
+            <p className="whitespace-pre-wrap break-words leading-relaxed">
+              {renderWithMentions(message.body, participants)}
+            </p>
+          )}
+
+          {(isImage || isVideo) && captionText && (
+            <p className="whitespace-pre-wrap break-words leading-relaxed px-2.5 pt-1.5 pb-0.5 text-sm">
+              {renderWithMentions(captionText, participants)}
+            </p>
+          )}
+
+          <div
+            className={cn(
+              'flex items-center justify-end gap-1',
+              (isImage || isVideo) ? 'px-2.5 pb-1.5 pt-0.5' : 'mt-0.5',
+              isOutbound ? 'text-primary-foreground/50' : 'text-muted-foreground/60'
+            )}
+          >
+            <span className="text-[10px]">{formatMessageTime(message.created_at)}</span>
+            {isOutbound && (
+              isOptimistic
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <CheckCheck className="h-3 w-3" />
+            )}
+          </div>
         </div>
       </div>
+
+      {isImage && lightboxOpen && (
+        <ImageLightbox
+          src={mediaUrl!}
+          alt={captionText || 'Imagem'}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </div>
   );
 }
