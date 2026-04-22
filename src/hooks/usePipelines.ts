@@ -189,25 +189,36 @@ export function usePipelines() {
     }
   };
 
-  // Delete pipeline (soft delete)
+  // Delete pipeline (soft delete) — cascata: desativa estágios + pipeline
   const deletePipeline = async (pipelineId: string) => {
     if (pipelines.length <= 1) {
       toast({ title: "Erro", description: "Você deve manter pelo menos um pipeline", variant: "destructive" });
       return false;
     }
-    if (stages.length > 0) {
-      toast({ title: "Erro", description: "Remova todos os estágios antes de excluir o pipeline", variant: "destructive" });
-      return false;
-    }
 
     try {
+      // Desativa todos os estágios do pipeline
+      const { error: stagesError } = await supabase
+        .from('pipeline_stages')
+        .update({ is_active: false })
+        .eq('pipeline_id', pipelineId);
+      if (stagesError) throw stagesError;
+
+      // Desativa o pipeline
       const { error } = await supabase.from('pipelines').update({ is_active: false }).eq('id', pipelineId);
       if (error) throw error;
-      toast({ title: "Sucesso", description: "Pipeline excluído com sucesso" });
+
+      toast({ title: "Sucesso", description: "Pipeline e estágios excluídos com sucesso" });
+
+      // Limpa seleção se for o pipeline atual
+      if (selectedPipeline?.id === pipelineId) {
+        setSelectedPipeline(null);
+      }
       await fetchPipelines();
       return true;
     } catch (error: any) {
       toast({ title: "Erro", description: "Erro ao excluir pipeline", variant: "destructive" });
+      console.error('Error deleting pipeline:', error);
       return false;
     }
   };
