@@ -739,11 +739,14 @@ export default function InboxPage() {
     }
   };
 
-  const filters: { key: string; label: string; adminOnly?: boolean }[] = [
+  const assignmentOptions: { key: 'all' | 'mine' | 'unassigned'; label: string }[] = [
     { key: 'all', label: 'Todas' },
     { key: 'mine', label: 'Minhas' },
     { key: 'unassigned', label: 'Não atribuídas' },
-    { key: 'meta_ads', label: 'Meta Ads' },
+  ];
+
+  const statusOptions: { key: 'all' | 'open' | 'in_progress' | 'waiting_customer' | 'closed'; label: string }[] = [
+    { key: 'all', label: 'Todas' },
     { key: 'open', label: 'Abertas' },
     { key: 'in_progress', label: 'Em atendimento' },
     { key: 'waiting_customer', label: 'Aguardando' },
