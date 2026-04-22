@@ -63,7 +63,7 @@ import { CreateLeadFromInboxModal } from '@/components/inbox/CreateLeadFromInbox
 import { AiSuggestionPanel } from '@/components/inbox/AiSuggestionPanel';
 import { ConversationIntelligenceBadge } from '@/components/inbox/ConversationIntelligenceBadge';
 import { AudioPlayer } from '@/components/inbox/AudioPlayer';
-import { AudioRecorder } from '@/components/inbox/AudioRecorder';
+import { MessageComposer } from '@/components/inbox/MessageComposer';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -517,7 +517,8 @@ export default function InboxPage() {
     messages,
     selectedThread,
     selectedThreadId,
-    filter,
+    assignmentFilter,
+    statusFilter,
     search,
     loadingThreads,
     loadingMessages,
@@ -526,10 +527,12 @@ export default function InboxPage() {
     orgMembers,
     profile,
     myProfileId,
-    setFilter,
+    setAssignmentFilter,
+    setStatusFilter,
     setSearch,
     selectThread,
     sendMessage,
+    sendMedia,
     assignThread,
     canSendMessage,
     getLockedByName,
@@ -538,7 +541,6 @@ export default function InboxPage() {
     resumeAi,
     refreshThreads,
     newMessageFlag,
-    updateStatus,
     assumeConversation,
     releaseConversation,
     closeConversation,
@@ -737,11 +739,14 @@ export default function InboxPage() {
     }
   };
 
-  const filters: { key: string; label: string; adminOnly?: boolean }[] = [
+  const assignmentOptions: { key: 'all' | 'mine' | 'unassigned'; label: string }[] = [
     { key: 'all', label: 'Todas' },
     { key: 'mine', label: 'Minhas' },
     { key: 'unassigned', label: 'Não atribuídas' },
-    { key: 'meta_ads', label: 'Meta Ads' },
+  ];
+
+  const statusOptions: { key: 'all' | 'open' | 'in_progress' | 'waiting_customer' | 'closed'; label: string }[] = [
+    { key: 'all', label: 'Todas' },
     { key: 'open', label: 'Abertas' },
     { key: 'in_progress', label: 'Em atendimento' },
     { key: 'waiting_customer', label: 'Aguardando' },
@@ -791,21 +796,46 @@ export default function InboxPage() {
             />
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-1">
-            {filters
-              .filter((f) => !f.adminOnly || isAdmin)
-              .map((f) => (
-                <Button
+          {/* Filters — Group 1: Assignment (chips) */}
+          <div className="flex flex-wrap gap-1.5">
+            {assignmentOptions.map((f) => {
+              const active = assignmentFilter === f.key;
+              return (
+                <button
                   key={f.key}
-                  size="sm"
-                  variant={filter === f.key ? 'default' : 'ghost'}
-                  className="h-7 text-xs px-2.5 rounded-full whitespace-nowrap"
-                  onClick={() => setFilter(f.key as any)}
+                  onClick={() => setAssignmentFilter(f.key)}
+                  className={cn(
+                    'h-7 px-3 text-xs font-medium rounded-full border transition-colors whitespace-nowrap',
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/40 text-muted-foreground border-transparent hover:bg-muted'
+                  )}
                 >
                   {f.label}
-                </Button>
-              ))}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Filters — Group 2: Status (tabs with underline) */}
+          <div className="flex items-center gap-0 border-b border-border -mb-px overflow-x-auto">
+            {statusOptions.map((f) => {
+              const active = statusFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  className={cn(
+                    'px-2.5 py-1.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors',
+                    active
+                      ? 'text-primary border-primary'
+                      : 'text-muted-foreground border-transparent hover:text-foreground'
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1194,42 +1224,18 @@ export default function InboxPage() {
             )}
 
             {/* Send Bar */}
-            <div className="p-3 border-t border-border bg-card/30">
-              {canSend ? (
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Digite sua mensagem..."
-                    className="min-h-[40px] max-h-[120px] resize-none text-sm bg-background"
-                    rows={1}
-                  />
-                  {messageText.trim() ? (
-                    <Button
-                      size="icon"
-                      onClick={handleSend}
-                      disabled={!messageText.trim() || sending}
-                      className="h-10 w-10 flex-shrink-0 rounded-full"
-                    >
-                      {sending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : (
-                    profile?.organization_id && (
-                      <AudioRecorder
-                        organizationId={profile.organization_id}
-                        conversationId={selectedThread.id}
-                        onAudioSent={() => {}}
-                        disabled={sending}
-                      />
-                    )
-                  )}
-                </div>
-              ) : (
+            {canSend ? (
+              <MessageComposer
+                value={messageText}
+                onChange={setMessageText}
+                sending={sending}
+                onSendText={handleSend}
+                onSendMedia={async (payload) => {
+                  await sendMedia(payload);
+                }}
+              />
+            ) : (
+              <div className="p-3 border-t border-border bg-card/30">
                 <div className="text-center py-2">
                   {(() => {
                     const lockedName = getLockedByName(selectedThread);
@@ -1250,8 +1256,8 @@ export default function InboxPage() {
                     );
                   })()}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </>
         )}
       </div>

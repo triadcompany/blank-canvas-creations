@@ -57,6 +57,8 @@ export interface OrgMember {
 }
 
 type FilterMode = 'all' | 'mine' | 'unassigned' | 'open' | 'in_progress' | 'waiting_customer' | 'closed' | 'meta_ads';
+export type AssignmentFilter = 'all' | 'mine' | 'unassigned';
+export type StatusFilter = 'all' | 'open' | 'in_progress' | 'waiting_customer' | 'closed';
 
 // Deduplicate and sort messages
 function dedupeAndSort(msgs: InboxMessage[]): InboxMessage[] {
@@ -88,6 +90,8 @@ export function useInbox() {
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>(isAdmin ? 'all' : 'mine');
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>(isAdmin ? 'all' : 'mine');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -139,6 +143,8 @@ export function useInbox() {
         p_filter: filter,
         p_search: search.trim(),
         p_limit: 100,
+        p_assignment_filter: assignmentFilter,
+        p_status_filter: statusFilter,
       });
 
       if (error) throw error;
@@ -158,7 +164,7 @@ export function useInbox() {
     } finally {
       setLoadingThreads(false);
     }
-  }, [orgId, clerkUserId, filter, search, myProfileId, isAdmin]);
+  }, [orgId, clerkUserId, filter, search, myProfileId, isAdmin, assignmentFilter, statusFilter]);
 
   useEffect(() => {
     fetchThreads();
@@ -597,6 +603,76 @@ export function useInbox() {
     }
   }, [orgId, selectedThreadId]);
 
+  // Send media (image, video, audio, document) — uploads file to chat-media bucket
+  // and lets the edge function deliver via Evolution + persist as outbound message.
+  const sendMedia = useCallback(async (params: {
+    file: File;
+    kind: 'image' | 'video' | 'audio' | 'document';
+    caption?: string;
+  }) => {
+    if (!orgId || !selectedThreadId) return;
+    setSending(true);
+
+    const previewBody =
+      params.caption?.trim() ||
+      (params.kind === 'image' ? '📷 Foto'
+        : params.kind === 'video' ? '🎥 Vídeo'
+        : params.kind === 'audio' ? '🎵 Áudio'
+        : '📄 Documento');
+
+    const optimisticMsg: InboxMessage = {
+      id: `temp-${Date.now()}`,
+      organization_id: orgId,
+      conversation_id: selectedThreadId,
+      direction: 'outbound',
+      body: previewBody,
+      external_message_id: null,
+      created_at: new Date().toISOString(),
+      message_type: params.kind,
+      media_url: URL.createObjectURL(params.file),
+      mime_type: params.file.type || null,
+    } as InboxMessage;
+    setMessages(prev => dedupeAndSort([...prev, optimisticMsg]));
+
+    try {
+      // Upload to chat-media bucket
+      const ext = (params.file.name.split('.').pop() || '').toLowerCase() || 'bin';
+      const path = `${orgId}/${selectedThreadId}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('chat-media')
+        .upload(path, params.file, {
+          contentType: params.file.type || undefined,
+          upsert: false,
+        });
+      if (upErr) throw new Error(upErr.message || 'Falha no upload');
+
+      const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) throw new Error('URL pública indisponível');
+
+      const res = await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          organization_id: orgId,
+          thread_id: selectedThreadId,
+          message_type: params.kind,
+          media_url: publicUrl,
+          mime_type: params.file.type || null,
+          filename: params.file.name,
+          caption: params.caption?.trim() || undefined,
+        },
+      });
+      if (res.error) throw new Error(res.error.message || 'Erro ao enviar');
+      const data = res.data as any;
+      if (data?.error) throw new Error(data.error);
+    } catch (err: any) {
+      console.error('Error sending media:', err);
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      toast.error(err.message || 'Erro ao enviar mídia');
+    } finally {
+      setSending(false);
+    }
+  }, [orgId, selectedThreadId]);
+
   // Assign conversation
   const assignThread = useCallback(async (threadId: string, profileId: string | null) => {
     if (!orgId) return;
@@ -764,6 +840,8 @@ export function useInbox() {
     selectedThread,
     selectedThreadId,
     filter,
+    assignmentFilter,
+    statusFilter,
     search,
     loadingThreads,
     loadingMessages,
@@ -774,9 +852,12 @@ export function useInbox() {
     myProfileId,
     newMessageFlag,
     setFilter,
+    setAssignmentFilter,
+    setStatusFilter,
     setSearch,
     selectThread,
     sendMessage,
+    sendMedia,
     assignThread,
     canSendMessage,
     getLockedByName,

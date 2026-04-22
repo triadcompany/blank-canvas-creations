@@ -8211,18 +8211,33 @@ export type Database = {
       }
       get_my_org_id: { Args: never; Returns: string }
       get_my_role: { Args: never; Returns: string }
-      get_org_conversations: {
-        Args: {
-          p_clerk_user_id: string
-          p_filter?: string
-          p_is_admin?: boolean
-          p_limit?: number
-          p_org_id: string
-          p_search?: string
-          p_seller_id?: string
-        }
-        Returns: Json
-      }
+      get_org_conversations:
+        | {
+            Args: {
+              p_clerk_user_id: string
+              p_filter?: string
+              p_is_admin?: boolean
+              p_limit?: number
+              p_org_id: string
+              p_search?: string
+              p_seller_id?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_assignment_filter?: string
+              p_clerk_user_id: string
+              p_filter?: string
+              p_is_admin?: boolean
+              p_limit?: number
+              p_org_id: string
+              p_search?: string
+              p_seller_id?: string
+              p_status_filter?: string
+            }
+            Returns: Json
+          }
       get_org_lead_sources: {
         Args: { p_org_id: string }
         Returns: {
