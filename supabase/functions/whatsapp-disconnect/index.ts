@@ -31,14 +31,16 @@ serve(async (req) => {
     if (!organization_id) return respond({ ok: false, error: "organization_id obrigatório" }, 400);
     if (!clerkUserId) return respond({ ok: false, error: "x-clerk-user-id ausente" }, 401);
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
+    // Valida membership ativo via org_members (multi-org safe).
+    const { data: member } = await supabase
+      .from("org_members")
+      .select("role, status")
       .eq("clerk_user_id", clerkUserId)
       .eq("organization_id", organization_id)
+      .eq("status", "active")
       .maybeSingle();
 
-    if (!profile) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
+    if (!member) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
 
     const { data: conn } = await supabase
       .from("whatsapp_connections")

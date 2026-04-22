@@ -70,13 +70,16 @@ serve(async (req) => {
     if (!organization_id) return respond({ ok: false, error: "organization_id obrigatório" }, 400);
     if (!clerkUserId) return respond({ ok: false, error: "x-clerk-user-id header ausente" }, 401);
 
-    // Validar admin da org + buscar nome da org para gerar instance_name legível
-    const [{ data: profile }, { data: org }] = await Promise.all([
+    // Validar membership ativo via org_members (fonte de verdade multi-org).
+    // NÃO usar profiles.organization_id porque ele reflete apenas a última
+    // org ativa do usuário e quebra ao trocar de organização.
+    const [{ data: member }, { data: org }] = await Promise.all([
       supabase
-        .from("profiles")
-        .select("organization_id")
+        .from("org_members")
+        .select("role, status")
         .eq("clerk_user_id", clerkUserId)
         .eq("organization_id", organization_id)
+        .eq("status", "active")
         .maybeSingle(),
       supabase
         .from("organizations")
@@ -85,7 +88,9 @@ serve(async (req) => {
         .maybeSingle(),
     ]);
 
-    if (!profile) return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
+    if (!member) {
+      return respond({ ok: false, error: "Usuário não pertence à organização" }, 403);
+    }
 
     // Busca QUALQUER registro existente (connected/connecting/disconnected/error)
     // e valida live na Evolution antes de decidir bloquear ou limpar.
