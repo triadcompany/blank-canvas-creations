@@ -41,6 +41,7 @@ import { WebhookIntegration } from "@/components/settings/WebhookIntegration";
 import BillingSettings from "@/components/settings/BillingSettings";
 import { MetaAdsSettings } from "@/components/settings/MetaAdsSettings";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
+import { ClerkSyncPanel } from "@/components/settings/ClerkSyncPanel";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
@@ -567,6 +568,9 @@ export function Settings() {
             </>
           )}
         </div>
+
+        <Separator />
+        <ClerkSyncPanel />
       </div>
     );
   };
