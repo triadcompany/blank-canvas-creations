@@ -82,7 +82,7 @@ verify_jwt = false
 [functions.process-event-dispatch]
 verify_jwt = false
 
-[functions.clerk-webhook]
+[functions.clerk-reconcile-users]
 verify_jwt = false
 
 [functions.bootstrap-org]
