@@ -430,13 +430,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (!isFromMe) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
+        // Groups refresh sooner (~6h) since WhatsApp picture URLs expire in ~24h.
+        const ttlMs = isGroup ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
         const needsRefresh = !existingConv.profile_picture_url ||
           !picUpdatedAt ||
-          (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
+          (Date.now() - new Date(picUpdatedAt).getTime()) > ttlMs;
         if (needsRefresh) {
           // For groups, use the full JID; for individuals, the normalized phone.
           const target = isGroup ? remoteJid : normalizedPhone;
-          fetchAndSaveProfilePicture(supabase, instanceName, target, conversationId);
+          fetchAndSaveProfilePicture(supabase, instanceName, target, conversationId, isGroup);
         }
       }
     } else {

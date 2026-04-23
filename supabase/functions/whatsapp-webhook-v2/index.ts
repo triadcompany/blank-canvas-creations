@@ -275,14 +275,16 @@ async function handleMessagesUpsert(
             .catch((e) => console.error("[wa-webhook-v2] group refresh error:", e));
         }
 
-        // Refresh profile picture (individuals AND groups)
+        // Refresh profile picture (individuals AND groups). Groups refresh more often
+        // because WhatsApp picture URLs expire (~24h via the `oe=` param).
         if (!isFromMe) {
           const picUpdatedAt = existingConv.profile_picture_updated_at;
+          const ttlMs = isGroup ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
           const needsRefresh = !existingConv.profile_picture_url ||
             !picUpdatedAt ||
-            (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
+            (Date.now() - new Date(picUpdatedAt).getTime()) > ttlMs;
           if (needsRefresh) {
-            fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, existingConv.id)
+            fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, existingConv.id, isGroup)
               .catch((e) => console.error("[wa-webhook-v2] picture refresh error:", e));
           }
         }
@@ -322,7 +324,7 @@ async function handleMessagesUpsert(
 
         // Fetch profile picture for new conversation (individuals AND groups, background)
         if (conversationId && !isFromMe) {
-          fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
+          fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId, isGroup)
             .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
         }
 
@@ -506,33 +508,63 @@ async function refreshGroupNameAsync(
   }
 }
 
-// Fetch profile picture from Evolution API and save to conversations table
+// Fetch profile picture from Evolution API and save to conversations table.
+// For groups, also tries `findGroupInfos` as a fallback (some Evolution versions
+// only expose the picture there). Only marks `updated_at` when a URL was actually
+// obtained, so failed lookups can be retried on the next inbound message.
 async function fetchAndStoreProfilePicture(
   supabase: any,
   instanceName: string,
   remoteJid: string,
   conversationId: string,
+  isGroup = false,
 ): Promise<void> {
   if (!EVOLUTION_BASE_URL || !EVOLUTION_API_KEY) return;
+  let pictureUrl: string | null = null;
   try {
     const res = await fetch(`${EVOLUTION_BASE_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
       body: JSON.stringify({ number: remoteJid }),
     });
-    if (!res.ok) {
-      console.warn(`[wa-webhook-v2] fetchProfilePictureUrl failed: ${res.status}`);
-      return;
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
+    } else {
+      console.warn(`[wa-webhook-v2] fetchProfilePictureUrl ${remoteJid}: ${res.status}`);
     }
-    const data = await res.json().catch(() => ({}));
-    const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
-    const updateData: Record<string, unknown> = {
-      profile_picture_updated_at: new Date().toISOString(),
-    };
-    if (pictureUrl) updateData.profile_picture_url = pictureUrl;
-    await supabase.from("conversations").update(updateData).eq("id", conversationId);
-    console.log(`[wa-webhook-v2] profile picture ${pictureUrl ? "updated" : "checked"} for conv ${conversationId}`);
   } catch (e) {
-    console.error("[wa-webhook-v2] fetchAndStoreProfilePicture error:", e);
+    console.error("[wa-webhook-v2] fetchProfilePictureUrl error:", e);
+  }
+
+  // Group fallback: try findGroupInfos which sometimes returns `pictureUrl`.
+  if (!pictureUrl && isGroup) {
+    try {
+      const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(remoteJid)}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({} as any));
+        const node = Array.isArray(data) ? data[0] : data;
+        pictureUrl = node?.pictureUrl || node?.profilePictureUrl || node?.profilePicUrl || null;
+      }
+    } catch (e) {
+      console.error("[wa-webhook-v2] group picture fallback error:", e);
+    }
+  }
+
+  if (pictureUrl) {
+    await supabase
+      .from("conversations")
+      .update({
+        profile_picture_url: pictureUrl,
+        profile_picture_updated_at: new Date().toISOString(),
+      })
+      .eq("id", conversationId);
+    console.log(`[wa-webhook-v2] picture saved for conv ${conversationId}`);
+  } else {
+    console.log(`[wa-webhook-v2] no picture available for ${remoteJid} (will retry next message)`);
   }
 }
