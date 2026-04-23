@@ -119,7 +119,7 @@ serve(async (req) => {
 
       const [subject, pictureUrl] = await Promise.all([
         needsSubject ? fetchGroupSubject(conv.instance_name, groupJid) : Promise.resolve(null),
-        needsPicture ? fetchProfilePicture(conv.instance_name, groupJid) : Promise.resolve(null),
+        needsPicture ? fetchProfilePicture(conv.instance_name, groupJid, true) : Promise.resolve(null),
       ]);
 
       const updatePayload: Record<string, unknown> = {};
