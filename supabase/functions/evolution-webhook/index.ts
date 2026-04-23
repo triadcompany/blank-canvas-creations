@@ -428,13 +428,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           .catch((e: unknown) => console.error("[evolution-webhook] group name fetch error:", e));
       }
 
-      if (!isFromMe && !isGroup) {
+      if (!isFromMe) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
         const needsRefresh = !existingConv.profile_picture_url ||
           !picUpdatedAt ||
           (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
         if (needsRefresh) {
-          fetchAndSaveProfilePicture(supabase, instanceName, normalizedPhone, conversationId);
+          // For groups, use the full JID; for individuals, the normalized phone.
+          const target = isGroup ? remoteJid : normalizedPhone;
+          fetchAndSaveProfilePicture(supabase, instanceName, target, conversationId);
         }
       }
     } else {

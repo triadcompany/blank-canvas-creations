@@ -275,8 +275,8 @@ async function handleMessagesUpsert(
             .catch((e) => console.error("[wa-webhook-v2] group refresh error:", e));
         }
 
-        // Refresh profile picture (only for individual conversations)
-        if (!isFromMe && !isGroup) {
+        // Refresh profile picture (individuals AND groups)
+        if (!isFromMe) {
           const picUpdatedAt = existingConv.profile_picture_updated_at;
           const needsRefresh = !existingConv.profile_picture_url ||
             !picUpdatedAt ||
@@ -320,8 +320,8 @@ async function handleMessagesUpsert(
         }
         conversationId = newConv?.id || null;
 
-        // Fetch profile picture for new conversation (background) — only for individuals
-        if (conversationId && !isFromMe && !isGroup) {
+        // Fetch profile picture for new conversation (individuals AND groups, background)
+        if (conversationId && !isFromMe) {
           fetchAndStoreProfilePicture(supabase, instanceName, remoteJid, conversationId)
             .catch((e) => console.error("[wa-webhook-v2] picture fetch error:", e));
         }
