@@ -8473,6 +8473,13 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      switch_active_organization: {
+        Args: { p_clerk_user_id: string; p_organization_id: string }
+        Returns: {
+          organization_id: string
+          role: string
+        }[]
+      }
       test_automation_trigger: {
         Args: {
           p_event_type: string
