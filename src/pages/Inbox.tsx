@@ -216,7 +216,7 @@ function ThreadItem({
             'text-xs font-semibold',
             thread.is_group ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-primary/10 text-primary'
           )}>
-            {thread.is_group ? <Users className="h-4 w-4" /> : initials}
+            {initials || (thread.is_group ? <Users className="h-4 w-4" /> : '?')}
           </AvatarFallback>
         </Avatar>
 
