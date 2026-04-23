@@ -48,8 +48,6 @@ verify_jwt = false
 [functions.backfill-group-names]
 verify_jwt = false
 
-[functions.debug-group-picture]
-verify_jwt = false
 
 [functions.event-dispatcher]
 verify_jwt = false
