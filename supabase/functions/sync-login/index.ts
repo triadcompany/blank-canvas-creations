@@ -150,8 +150,8 @@ Deno.serve(async (req) => {
           .upsert(
             {
               clerk_user_id,
-              email: email || null,
-              name: pendingInvite.name || full_name || null,
+              email: safeEmail,
+              name: pendingInvite.name || safeName,
               avatar_url: avatar_url || null,
               organization_id: pendingInvite.organization_id,
               onboarding_completed: true,
@@ -273,8 +273,8 @@ Deno.serve(async (req) => {
           .upsert(
             {
               clerk_user_id,
-              email: email || null,
-              name: pendingInvite.name || full_name || null,
+              email: safeEmail,
+              name: pendingInvite.name || safeName,
               avatar_url: avatar_url || null,
               organization_id: pendingInvite.organization_id,
               onboarding_completed: true,
