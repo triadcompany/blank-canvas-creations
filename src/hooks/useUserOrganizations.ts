@@ -87,22 +87,24 @@ export function useUserOrganizations() {
       if (target.organization_id === orgId) return;
       setSwitching(true);
       try {
-        // 1) Update profiles.organization_id (this is what RLS reads).
-        // We don't .select() the row back because changing organization_id
-        // can momentarily intersect the SELECT policy and return null even
-        // on success. We trust the absence of `error` and verify with a
-        // separate SELECT below.
-        const { error: profileErr } = await supabase
-          .from('profiles')
-          .update({ organization_id: target.organization_id })
-          .eq('clerk_user_id', user.id);
+        // 1) Switch active org via SECURITY DEFINER RPC. The previous direct
+        // UPDATE on profiles silently affected 0 rows because the UPDATE RLS
+        // policy (`clerk_user_id = get_clerk_user_id()`) couldn't resolve the
+        // Clerk identity from custom headers in PostgREST. The RPC bypasses
+        // RLS and validates org_members membership server-side.
+        const { data: switchData, error: switchErr } = await supabase.rpc(
+          'switch_active_organization',
+          {
+            p_clerk_user_id: user.id,
+            p_organization_id: target.organization_id,
+          } as any,
+        );
 
-        if (profileErr) {
-          throw new Error(profileErr.message);
+        if (switchErr) {
+          throw new Error(switchErr.message);
         }
 
         // Verify the update landed by reading back via clerk_user_id
-        // (this row is always visible to the user via RLS).
         const { data: verify, error: verifyErr } = await supabase
           .from('profiles')
           .select('organization_id')
