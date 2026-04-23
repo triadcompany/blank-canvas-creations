@@ -1,6 +1,8 @@
-// One-shot backfill: fetch real WhatsApp group names from Evolution API
-// for all conversations where is_group=true and contact_name is the
-// "Grupo (XXXX)" fallback. Updates contact_name + group_name + source.
+// One-shot backfill: fetch real WhatsApp group names AND profile pictures from
+// Evolution API. Uses `chat/fetchProfilePictureUrl` per group, with a single
+// `group/fetchAllGroups` lookup per instance as a fallback (provides both
+// `subject` and `pictureUrl`, and works on Evolution versions that 404 on
+// `findGroupInfos`).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
@@ -12,62 +14,51 @@ const corsHeaders = {
 const EVOLUTION_BASE_URL = Deno.env.get("EVOLUTION_BASE_URL") || "";
 const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
-async function fetchGroupSubject(instanceName: string, groupJid: string): Promise<string | null> {
+type GroupInfo = { subject: string | null; pictureUrl: string | null };
+
+// Fetches every group of an instance once and indexes by JID → {subject, pictureUrl}.
+async function fetchAllGroupsMap(instanceName: string): Promise<Map<string, GroupInfo>> {
+  const map = new Map<string, GroupInfo>();
   try {
-    const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`;
+    const url = `${EVOLUTION_BASE_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`;
     const res = await fetch(url, {
       method: "GET",
       headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
     });
     if (!res.ok) {
-      console.warn(`[backfill] findGroupInfos ${groupJid}: ${res.status}`);
-      return null;
+      console.warn(`[backfill] fetchAllGroups ${instanceName}: ${res.status}`);
+      return map;
     }
-    const data = await res.json().catch(() => ({} as any));
-    const node = Array.isArray(data) ? data[0] : data;
-    return (node?.subject || node?.name || node?.groupSubject || null) as string | null;
+    const data = await res.json().catch(() => [] as any);
+    const list = Array.isArray(data) ? data : (data?.groups || []);
+    for (const g of list) {
+      const jid: string | undefined = g?.id || g?.groupJid || g?.remoteJid;
+      if (!jid) continue;
+      map.set(jid, {
+        subject: g?.subject || g?.name || g?.groupSubject || null,
+        pictureUrl: g?.pictureUrl || g?.profilePictureUrl || g?.profilePicUrl || null,
+      });
+    }
   } catch (e) {
-    console.error(`[backfill] fetch error for ${groupJid}:`, e);
-    return null;
+    console.error(`[backfill] fetchAllGroups error for ${instanceName}:`, e);
   }
+  return map;
 }
 
-async function fetchProfilePicture(instanceName: string, jid: string, isGroup: boolean): Promise<string | null> {
-  // Try the chat endpoint first.
+async function fetchProfilePictureViaChat(instanceName: string, jid: string): Promise<string | null> {
   try {
     const res = await fetch(`${EVOLUTION_BASE_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
       body: JSON.stringify({ number: jid }),
     });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({} as any));
-      const url = (data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null) as string | null;
-      if (url) return url;
-    }
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({} as any));
+    return (data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null) as string | null;
   } catch (e) {
     console.error(`[backfill] picture fetch error for ${jid}:`, e);
+    return null;
   }
-
-  // Group fallback via findGroupInfos.
-  if (isGroup) {
-    try {
-      const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(jid)}`;
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({} as any));
-        const node = Array.isArray(data) ? data[0] : data;
-        return (node?.pictureUrl || node?.profilePictureUrl || node?.profilePicUrl || null) as string | null;
-      }
-    } catch (e) {
-      console.error(`[backfill] group picture fallback error for ${jid}:`, e);
-    }
-  }
-
-  return null;
 }
 
 serve(async (req) => {
@@ -101,11 +92,17 @@ serve(async (req) => {
       .eq("is_group", true);
 
     if (organizationId) q = q.eq("organization_id", organizationId);
-    // When not forcing, repair rows missing either the verified subject or a picture.
     if (!force) q = q.or("contact_name_source.neq.whatsapp_group,profile_picture_url.is.null");
 
     const { data: convs, error } = await q;
     if (error) return respond({ ok: false, error: error.message }, 500);
+
+    // Group by instance and prefetch the full group list once per instance.
+    const instanceGroups = new Map<string, Map<string, GroupInfo>>();
+    const instances = Array.from(new Set((convs || []).map((c: any) => c.instance_name).filter(Boolean)));
+    await Promise.all(instances.map(async (inst) => {
+      instanceGroups.set(inst, await fetchAllGroupsMap(inst));
+    }));
 
     const results: any[] = [];
     let updated = 0;
@@ -113,14 +110,19 @@ serve(async (req) => {
 
     for (const conv of convs || []) {
       const groupJid = `${conv.contact_phone}@g.us`;
+      const groupMap = instanceGroups.get(conv.instance_name) || new Map();
+      const groupInfo = groupMap.get(groupJid) || { subject: null, pictureUrl: null };
 
       const needsSubject = force || conv.contact_name_source !== "whatsapp_group";
       const needsPicture = force || !conv.profile_picture_url;
 
-      const [subject, pictureUrl] = await Promise.all([
-        needsSubject ? fetchGroupSubject(conv.instance_name, groupJid) : Promise.resolve(null),
-        needsPicture ? fetchProfilePicture(conv.instance_name, groupJid, true) : Promise.resolve(null),
-      ]);
+      let subject: string | null = needsSubject ? groupInfo.subject : null;
+      let pictureUrl: string | null = needsPicture ? groupInfo.pictureUrl : null;
+
+      // If fetchAllGroups didn't have the picture, try the per-chat endpoint as a fallback.
+      if (needsPicture && !pictureUrl) {
+        pictureUrl = await fetchProfilePictureViaChat(conv.instance_name, groupJid);
+      }
 
       const updatePayload: Record<string, unknown> = {};
       if (subject) {
@@ -155,6 +157,7 @@ serve(async (req) => {
     return respond({
       ok: true,
       total: convs?.length || 0,
+      instances_checked: instances.length,
       updated,
       skipped,
       details: results,
