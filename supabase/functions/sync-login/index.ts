@@ -397,7 +397,10 @@ Deno.serve(async (req) => {
   } catch (err: any) {
     console.error("❌ sync-login error:", err.message);
     return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
+      JSON.stringify({
+        ok: false,
+        error: "Ocorreu um erro ao carregar sua conta. Tente novamente ou entre em contato com o suporte.",
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
