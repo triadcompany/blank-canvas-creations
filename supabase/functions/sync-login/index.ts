@@ -30,7 +30,12 @@ Deno.serve(async (req) => {
 
     console.log(`🔄 sync-login for user: ${clerk_user_id}${invitation_token ? " (with invitation token)" : ""}`);
 
-    // Upsert users_profile with last_login_at
+    // Resolve a usable display name & email — profiles.name and profiles.email
+    // are NOT NULL, so we always need a fallback before any upsert.
+    const safeEmail = email || `${clerk_user_id}@no-email.local`;
+    const safeName = full_name || (email ? email.split("@")[0] : null) || "Usuário";
+
+    // Upsert users_profile (Clerk mirror) with last_login_at
     const { data, error } = await supabase
       .from("users_profile")
       .upsert(
@@ -47,8 +52,36 @@ Deno.serve(async (req) => {
       .single();
 
     if (error) {
-      console.error("❌ sync-login upsert error:", error);
+      console.error("❌ sync-login users_profile upsert error:", error);
       throw new Error(error.message);
+    }
+
+    // ── SAFETY NET: ensure a profiles row ALWAYS exists for this user.
+    // Without this, an interrupted onboarding leaves the user stuck and the
+    // app shows a generic "user not found" error on subsequent logins.
+    // organization_id is nullable, so we can create the profile even when the
+    // user has not joined an org yet — they will simply be sent to /onboarding.
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id, organization_id")
+      .eq("clerk_user_id", clerk_user_id)
+      .maybeSingle();
+
+    if (!existingProfile) {
+      console.log(`🆕 sync-login: creating missing profile for ${clerk_user_id}`);
+      const { error: profileInsertErr } = await supabase
+        .from("profiles")
+        .insert({
+          clerk_user_id,
+          email: safeEmail,
+          name: safeName,
+          avatar_url: avatar_url || null,
+          organization_id: null,
+          onboarding_completed: false,
+        });
+      if (profileInsertErr && !profileInsertErr.message.includes("duplicate")) {
+        console.error("⚠️ sync-login: profile insert failed:", profileInsertErr.message);
+      }
     }
 
     // ── SHORT-CIRCUIT: if the user already has a profiles.organization_id
