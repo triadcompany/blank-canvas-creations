@@ -209,7 +209,7 @@ function ThreadItem({
     >
       <div className="flex items-start gap-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
-          {!thread.is_group && thread.profile_picture_url && (
+          {thread.profile_picture_url && (
             <AvatarImage src={thread.profile_picture_url} alt={name} />
           )}
           <AvatarFallback className={cn(
