@@ -142,7 +142,9 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       setOrg(null);
     } catch (err: any) {
       console.error('❌ useAuthBootstrap error:', err.message);
-      setError(err.message);
+      setError(
+        'Ocorreu um erro ao carregar sua conta. Tente novamente ou entre em contato com o suporte.',
+      );
     } finally {
       bootstrappingRef.current = false;
     }
@@ -155,7 +157,9 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       await withTimeout(bootstrap(user), 10000, 'retryBootstrap');
     } catch (err: any) {
       console.error('❌ retryBootstrap error:', err.message);
-      setError(err.message);
+      setError(
+        'Ocorreu um erro ao carregar sua conta. Tente novamente ou entre em contato com o suporte.',
+      );
     } finally {
       setLoading(false);
     }
@@ -193,7 +197,9 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
     withTimeout(bootstrap(user), 10000, 'bootstrap')
       .catch((err: any) => {
         console.error('❌ Bootstrap timeout/error:', err.message);
-        setError(err.message);
+        setError(
+          'Ocorreu um erro ao carregar sua conta. Tente novamente ou entre em contato com o suporte.',
+        );
       })
       .finally(() => setLoading(false));
   }, [user, isLoaded, bootstrap]);
