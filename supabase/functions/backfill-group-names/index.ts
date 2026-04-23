@@ -32,20 +32,42 @@ async function fetchGroupSubject(instanceName: string, groupJid: string): Promis
   }
 }
 
-async function fetchProfilePicture(instanceName: string, jid: string): Promise<string | null> {
+async function fetchProfilePicture(instanceName: string, jid: string, isGroup: boolean): Promise<string | null> {
+  // Try the chat endpoint first.
   try {
     const res = await fetch(`${EVOLUTION_BASE_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
       body: JSON.stringify({ number: jid }),
     });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({} as any));
-    return (data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null) as string | null;
+    if (res.ok) {
+      const data = await res.json().catch(() => ({} as any));
+      const url = (data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null) as string | null;
+      if (url) return url;
+    }
   } catch (e) {
     console.error(`[backfill] picture fetch error for ${jid}:`, e);
-    return null;
   }
+
+  // Group fallback via findGroupInfos.
+  if (isGroup) {
+    try {
+      const url = `${EVOLUTION_BASE_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(jid)}`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({} as any));
+        const node = Array.isArray(data) ? data[0] : data;
+        return (node?.pictureUrl || node?.profilePictureUrl || node?.profilePicUrl || null) as string | null;
+      }
+    } catch (e) {
+      console.error(`[backfill] group picture fallback error for ${jid}:`, e);
+    }
+  }
+
+  return null;
 }
 
 serve(async (req) => {
