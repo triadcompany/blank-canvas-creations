@@ -32,6 +32,22 @@ async function fetchGroupSubject(instanceName: string, groupJid: string): Promis
   }
 }
 
+async function fetchProfilePicture(instanceName: string, jid: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${EVOLUTION_BASE_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+      body: JSON.stringify({ number: jid }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({} as any));
+    return (data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null) as string | null;
+  } catch (e) {
+    console.error(`[backfill] picture fetch error for ${jid}:`, e);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -59,11 +75,12 @@ serve(async (req) => {
     // Fetch group conversations needing repair
     let q = supabase
       .from("conversations")
-      .select("id, organization_id, instance_name, contact_phone, contact_name, contact_name_source, group_name")
+      .select("id, organization_id, instance_name, contact_phone, contact_name, contact_name_source, group_name, profile_picture_url")
       .eq("is_group", true);
 
     if (organizationId) q = q.eq("organization_id", organizationId);
-    if (!force) q = q.neq("contact_name_source", "whatsapp_group");
+    // When not forcing, repair rows missing either the verified subject or a picture.
+    if (!force) q = q.or("contact_name_source.neq.whatsapp_group,profile_picture_url.is.null");
 
     const { data: convs, error } = await q;
     if (error) return respond({ ok: false, error: error.message }, 500);
@@ -74,28 +91,42 @@ serve(async (req) => {
 
     for (const conv of convs || []) {
       const groupJid = `${conv.contact_phone}@g.us`;
-      const subject = await fetchGroupSubject(conv.instance_name, groupJid);
 
-      if (!subject) {
+      const needsSubject = force || conv.contact_name_source !== "whatsapp_group";
+      const needsPicture = force || !conv.profile_picture_url;
+
+      const [subject, pictureUrl] = await Promise.all([
+        needsSubject ? fetchGroupSubject(conv.instance_name, groupJid) : Promise.resolve(null),
+        needsPicture ? fetchProfilePicture(conv.instance_name, groupJid) : Promise.resolve(null),
+      ]);
+
+      const updatePayload: Record<string, unknown> = {};
+      if (subject) {
+        updatePayload.group_name = subject;
+        updatePayload.contact_name = subject;
+        updatePayload.contact_name_source = "whatsapp_group";
+      }
+      if (pictureUrl) {
+        updatePayload.profile_picture_url = pictureUrl;
+        updatePayload.profile_picture_updated_at = new Date().toISOString();
+      }
+
+      if (Object.keys(updatePayload).length === 0) {
         skipped++;
-        results.push({ id: conv.id, jid: groupJid, status: "no_subject" });
+        results.push({ id: conv.id, jid: groupJid, status: "no_data" });
         continue;
       }
 
       const { error: updErr } = await supabase
         .from("conversations")
-        .update({
-          group_name: subject,
-          contact_name: subject,
-          contact_name_source: "whatsapp_group",
-        })
+        .update(updatePayload)
         .eq("id", conv.id);
 
       if (updErr) {
         results.push({ id: conv.id, jid: groupJid, status: "update_error", error: updErr.message });
       } else {
         updated++;
-        results.push({ id: conv.id, jid: groupJid, status: "updated", subject });
+        results.push({ id: conv.id, jid: groupJid, status: "updated", subject, pictureUrl });
       }
     }
 
