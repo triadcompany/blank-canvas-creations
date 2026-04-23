@@ -430,13 +430,15 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
 
       if (!isFromMe) {
         const picUpdatedAt = existingConv.profile_picture_updated_at;
+        // Groups refresh sooner (~6h) since WhatsApp picture URLs expire in ~24h.
+        const ttlMs = isGroup ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
         const needsRefresh = !existingConv.profile_picture_url ||
           !picUpdatedAt ||
-          (Date.now() - new Date(picUpdatedAt).getTime()) > 24 * 60 * 60 * 1000;
+          (Date.now() - new Date(picUpdatedAt).getTime()) > ttlMs;
         if (needsRefresh) {
           // For groups, use the full JID; for individuals, the normalized phone.
           const target = isGroup ? remoteJid : normalizedPhone;
-          fetchAndSaveProfilePicture(supabase, instanceName, target, conversationId);
+          fetchAndSaveProfilePicture(supabase, instanceName, target, conversationId, isGroup);
         }
       }
     } else {
@@ -877,32 +879,68 @@ function invokeAutoReplyWorker() {
 }
 
 // ── Helper: Fetch profile picture from Evolution API ──
-async function fetchAndSaveProfilePicture(supabase: any, instanceName: string, phone: string, conversationId: string) {
+// Falls back to `group/findGroupInfos` for groups when the chat endpoint fails.
+// Only writes `profile_picture_updated_at` when a URL was obtained, so failed
+// lookups retry on the next inbound message instead of waiting the TTL window.
+async function fetchAndSaveProfilePicture(
+  supabase: any,
+  instanceName: string,
+  phone: string,
+  conversationId: string,
+  isGroup = false,
+) {
   try {
     const evolutionBaseUrl = Deno.env.get("EVOLUTION_BASE_URL");
     const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY");
     if (!evolutionBaseUrl || !evolutionApiKey) return;
 
-    const res = await fetch(`${evolutionBaseUrl}/chat/fetchProfilePictureUrl/${instanceName}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
-      body: JSON.stringify({ number: phone }),
-    });
+    let pictureUrl: string | null = null;
 
-    if (!res.ok) {
-      console.log(`[evolution-webhook] Profile picture fetch failed for ${phone}: ${res.status}`);
-      return;
+    try {
+      const res = await fetch(`${evolutionBaseUrl}/chat/fetchProfilePictureUrl/${instanceName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        body: JSON.stringify({ number: phone }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({} as any));
+        pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
+      } else {
+        console.log(`[evolution-webhook] Profile picture fetch failed for ${phone}: ${res.status}`);
+      }
+    } catch (innerErr) {
+      console.log(`[evolution-webhook] Profile picture fetch error for ${phone}:`, innerErr);
     }
 
-    const data = await res.json();
-    const pictureUrl = data?.profilePictureUrl || data?.pictureUrl || data?.imgUrl || null;
-
-    const updateData: Record<string, unknown> = { profile_picture_updated_at: new Date().toISOString() };
-    if (pictureUrl) updateData.profile_picture_url = pictureUrl;
-    await supabase.from("conversations").update(updateData).eq("id", conversationId);
+    // Group fallback: try findGroupInfos which sometimes returns `pictureUrl`.
+    if (!pictureUrl && isGroup) {
+      try {
+        const url = `${evolutionBaseUrl}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(phone)}`;
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({} as any));
+          const node = Array.isArray(data) ? data[0] : data;
+          pictureUrl = node?.pictureUrl || node?.profilePictureUrl || node?.profilePicUrl || null;
+        }
+      } catch (gErr) {
+        console.log(`[evolution-webhook] Group picture fallback error for ${phone}:`, gErr);
+      }
+    }
 
     if (pictureUrl) {
+      await supabase
+        .from("conversations")
+        .update({
+          profile_picture_url: pictureUrl,
+          profile_picture_updated_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId);
       console.log(`[evolution-webhook] Profile picture saved for ${phone}`);
+    } else {
+      console.log(`[evolution-webhook] No picture available for ${phone} (will retry next message)`);
     }
   } catch (err) {
     console.log(`[evolution-webhook] Profile picture fetch error for ${phone}:`, err);
