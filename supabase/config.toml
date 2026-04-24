@@ -178,3 +178,6 @@ verify_jwt = false
 [functions.update-user-role]
 verify_jwt = false
 
+[functions.admin-fix-wa-v2-webhook]
+verify_jwt = false
+
