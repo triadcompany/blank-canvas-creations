@@ -411,7 +411,10 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
           convUpdate.contact_name = fallback;
           convUpdate.contact_name_source = "group_fallback";
         }
-      } else if (pushName && pushName !== normalizedPhone) {
+      } else if (!isFromMe && pushName && pushName !== normalizedPhone) {
+        // For 1:1 chats, pushName ONLY represents the contact when the
+        // message is inbound. Outbound messages carry the user's own
+        // profile name and must NOT overwrite the contact name.
         const currentName = existingConv.contact_name || "";
         const nameSource = existingConv.contact_name_source || "whatsapp";
         const nameIsPhoneOrEmpty = !currentName || currentName === normalizedPhone || currentName === phone;
@@ -449,16 +452,22 @@ async function handleMessages(supabase: any, body: any, orgId: string, instanceN
         : null;
       const groupFallback = isGroup ? `Grupo (${normalizedPhone.slice(-4)})` : null;
       const groupSubject = inlineGroupSubject || groupFallback;
+      // For new 1:1 conversations: only persist pushName as contact_name
+      // when it actually came from the contact (inbound message).
+      const initialContactName = isGroup
+        ? groupSubject
+        : (!isFromMe && pushName ? pushName : null);
+      const initialContactNameSource = isGroup
+        ? (inlineGroupSubject ? "whatsapp_group" : "group_fallback")
+        : (!isFromMe && pushName ? "whatsapp" : null);
       const { data: newConv } = await supabase
         .from("conversations")
         .insert({
           organization_id: orgId,
           instance_name: instanceName,
           contact_phone: normalizedPhone,
-          contact_name: isGroup ? groupSubject : (pushName || null),
-          contact_name_source: isGroup
-            ? (inlineGroupSubject ? "whatsapp_group" : "group_fallback")
-            : (pushName ? "whatsapp" : null),
+          contact_name: initialContactName,
+          contact_name_source: initialContactNameSource,
           last_message_at: now,
           last_message_preview: messagePreview,
           unread_count: isFromMe ? 0 : 1,

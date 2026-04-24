@@ -256,11 +256,16 @@ async function handleMessagesUpsert(
             update.contact_name_source = "group_fallback";
           }
         } else {
-          const currentName = existingConv.contact_name || "";
-          const isPlaceholder = !currentName || currentName === phone;
-          if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
-            update.contact_name = pushName;
-            update.contact_name_source = "whatsapp";
+          // For 1:1 chats, pushName ONLY represents the contact when the
+          // message is inbound. When isFromMe=true, pushName is the user's
+          // own profile name and must NOT overwrite the contact name.
+          if (!isFromMe) {
+            const currentName = existingConv.contact_name || "";
+            const isPlaceholder = !currentName || currentName === phone;
+            if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
+              update.contact_name = pushName;
+              update.contact_name_source = "whatsapp";
+            }
           }
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
@@ -296,16 +301,22 @@ async function handleMessagesUpsert(
           : null;
         const groupFallback = isGroup ? `Grupo (${phone.slice(-4)})` : null;
         const groupSubject = inlineSubject || groupFallback;
+        // For new 1:1 conversations: only persist pushName as contact_name
+        // when it actually came from the contact (inbound message).
+        const initialContactName = isGroup
+          ? groupSubject
+          : (!isFromMe && pushName ? pushName : null);
+        const initialContactNameSource = isGroup
+          ? (inlineSubject ? "whatsapp_group" : "group_fallback")
+          : (!isFromMe && pushName ? "whatsapp" : null);
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
           .insert({
             organization_id: conn.organization_id,
             instance_name: instanceName,
             contact_phone: phone,
-            contact_name: isGroup ? groupSubject : (pushName || null),
-            contact_name_source: isGroup
-              ? (inlineSubject ? "whatsapp_group" : "group_fallback")
-              : (pushName ? "whatsapp" : null),
+            contact_name: initialContactName,
+            contact_name_source: initialContactNameSource,
             last_message_at: now,
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
