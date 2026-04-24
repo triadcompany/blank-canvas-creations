@@ -301,16 +301,22 @@ async function handleMessagesUpsert(
           : null;
         const groupFallback = isGroup ? `Grupo (${phone.slice(-4)})` : null;
         const groupSubject = inlineSubject || groupFallback;
+        // For new 1:1 conversations: only persist pushName as contact_name
+        // when it actually came from the contact (inbound message).
+        const initialContactName = isGroup
+          ? groupSubject
+          : (!isFromMe && pushName ? pushName : null);
+        const initialContactNameSource = isGroup
+          ? (inlineSubject ? "whatsapp_group" : "group_fallback")
+          : (!isFromMe && pushName ? "whatsapp" : null);
         const { data: newConv, error: convErr } = await supabase
           .from("conversations")
           .insert({
             organization_id: conn.organization_id,
             instance_name: instanceName,
             contact_phone: phone,
-            contact_name: isGroup ? groupSubject : (pushName || null),
-            contact_name_source: isGroup
-              ? (inlineSubject ? "whatsapp_group" : "group_fallback")
-              : (pushName ? "whatsapp" : null),
+            contact_name: initialContactName,
+            contact_name_source: initialContactNameSource,
             last_message_at: now,
             last_message_preview: preview,
             unread_count: isFromMe ? 0 : 1,
