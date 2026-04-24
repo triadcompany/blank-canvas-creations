@@ -256,11 +256,16 @@ async function handleMessagesUpsert(
             update.contact_name_source = "group_fallback";
           }
         } else {
-          const currentName = existingConv.contact_name || "";
-          const isPlaceholder = !currentName || currentName === phone;
-          if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
-            update.contact_name = pushName;
-            update.contact_name_source = "whatsapp";
+          // For 1:1 chats, pushName ONLY represents the contact when the
+          // message is inbound. When isFromMe=true, pushName is the user's
+          // own profile name and must NOT overwrite the contact name.
+          if (!isFromMe) {
+            const currentName = existingConv.contact_name || "";
+            const isPlaceholder = !currentName || currentName === phone;
+            if (pushName && (isPlaceholder || existingConv.contact_name_source === "whatsapp")) {
+              update.contact_name = pushName;
+              update.contact_name_source = "whatsapp";
+            }
           }
         }
         await supabase.from("conversations").update(update).eq("id", existingConv.id);
