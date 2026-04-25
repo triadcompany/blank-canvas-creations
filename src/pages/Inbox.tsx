@@ -871,7 +871,7 @@ export default function InboxPage() {
     setFtStatusOpen(true);
     try {
       const resp = await fetch(
-        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/reset-first-touch?organization_id=${encodeURIComponent(profile.organization_id)}&phone=${encodeURIComponent(selectedThread.contact_phone)}`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-first-touch?organization_id=${encodeURIComponent(profile.organization_id)}&phone=${encodeURIComponent(selectedThread.contact_phone)}`,
         {
           headers: {
             apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',

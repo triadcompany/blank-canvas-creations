@@ -160,7 +160,7 @@ export function InstagramSettings() {
     const processCallback = async () => {
       try {
         const res = await fetch(
-          `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/instagram-exchange`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-exchange`,
           {
             method: 'POST',
             headers: {
@@ -256,7 +256,7 @@ export function InstagramSettings() {
     setConnecting(true);
     try {
       const res = await fetch(
-        `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/instagram-connect`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-connect`,
         {
           method: 'POST',
           headers: {

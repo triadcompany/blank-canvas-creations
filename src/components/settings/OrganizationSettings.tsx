@@ -102,7 +102,7 @@ export function OrganizationSettings() {
     }
     setUploading(true);
     try {
-      const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
       const fd = new FormData();
       fd.append('clerk_user_id', user.id);
       fd.append('organization_id', orgId);
@@ -160,7 +160,7 @@ export function OrganizationSettings() {
 
       // Sync name + logo to Clerk (best-effort; do not block the success message)
       try {
-        const SUPABASE_URL = 'https://tapbwlmdvluqdgvixkxf.supabase.co';
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
         await fetch(`${SUPABASE_URL}/functions/v1/update-clerk-org`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

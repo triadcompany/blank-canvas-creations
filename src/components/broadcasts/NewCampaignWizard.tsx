@@ -84,7 +84,7 @@ export function NewCampaignWizard({ onClose }: Props) {
     queryKey: ['automations-for-broadcast', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const res = await fetch(`https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automations-api`, {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automations-api`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'list', organization_id: orgId }),

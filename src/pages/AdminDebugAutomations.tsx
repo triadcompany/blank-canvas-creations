@@ -22,7 +22,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PageHeader } from "@/components/layout/PageHeader";
 
-const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 async function apiCall(action: string, params: Record<string, unknown>) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {

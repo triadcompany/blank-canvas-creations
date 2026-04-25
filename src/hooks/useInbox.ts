@@ -751,13 +751,11 @@ export function useInbox() {
         if (res.error) console.error('Lead distribution error:', res.error);
       });
 
-      fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      supabase.functions.invoke('automation-trigger', {
+        body: {
           organization_id: orgId,
-          trigger_type: "lead_created",
-          entity_type: "lead",
+          trigger_type: 'lead_created',
+          entity_type: 'lead',
           entity_id: newLead.id,
           context: {
             lead_name: leadData.name,
@@ -767,8 +765,10 @@ export function useInbox() {
             stage_id: leadData.stage_id,
             seller_id: leadData.seller_id,
           },
-        }),
-      }).catch(err => console.error("Automation trigger error:", err));
+        },
+      }).then(({ error }) => {
+        if (error) console.error('Automation trigger error:', error);
+      });
 
       toast.success('Lead criado e vinculado à conversa');
       await fetchThreads();

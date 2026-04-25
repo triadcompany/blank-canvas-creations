@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Edge, Node } from "@xyflow/react";
 
-const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 export interface Automation {
   id: string;

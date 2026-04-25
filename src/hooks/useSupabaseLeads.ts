@@ -384,7 +384,7 @@ export function useSupabaseLeads(pipelineId?: string) {
 
     // Fire automation trigger (non-blocking)
     if (orgId) {
-      fetch("https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/automation-trigger", {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automation-trigger`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

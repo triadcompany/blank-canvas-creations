@@ -24,7 +24,7 @@ export function WebhookIntegration() {
   const organizationId = profile?.organization_id || authOrgId;
   
   // URL base do webhook - usando a URL do Supabase diretamente
-  const supabaseUrl = "https://tapbwlmdvluqdgvixkxf.supabase.co";
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
   const webhookUrl = organizationId 
     ? `${supabaseUrl}/functions/v1/receive-lead-webhook?org=${organizationId}`
     : '';

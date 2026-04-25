@@ -80,9 +80,26 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
       }
 
       if (!existingProfile) {
-        // Try to provision via SECURITY DEFINER RPC (bypasses RLS, handles
-        // race conditions, and works for invited members whose profile row
-        // is missing while their org_members entry exists).
+        // The profile might not exist yet because sync-login (useAuthBootstrap)
+        // runs concurrently and hasn't finished creating it. Wait briefly, then
+        // re-check before concluding the user needs onboarding.
+        console.log('⏳ No profile found, waiting for sync-login to complete...');
+        await new Promise(resolve => setTimeout(resolve, 1800));
+
+        const { data: retryProfile, error: retryError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', clerkUserId)
+          .maybeSingle();
+
+        if (!retryError && retryProfile) {
+          // sync-login created the profile in the meantime — continue normally
+          console.log('✅ Profile appeared after retry:', retryProfile.id);
+          // Fall through by using retryProfile as existingProfile below
+          return await checkProfile(clerkUser);
+        }
+
+        // Still no profile — try to provision via SECURITY DEFINER RPC.
         console.log('🎟️ Attempting profile provisioning via RPC...');
         const { data: provisioned, error: provisionError } = await supabase.rpc(
           'provision_profile_from_membership' as any,
@@ -96,6 +113,9 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
 
         if (provisionError) {
           console.error('❌ provision_profile_from_membership failed:', provisionError);
+          // RPC error is distinct from "no membership". Don't immediately send
+          // user to onboarding — mark as error so AppGate shows a retry button.
+          throw new Error(`Profile provisioning failed: ${provisionError.message}`);
         }
 
         if (provisioned) {
@@ -114,6 +134,7 @@ export function useClerkSupabase(): UseClerkSupabaseReturn {
           return newProfile;
         }
 
+        // No profile and no membership anywhere — genuine new user.
         console.log('📝 No profile found and no membership - needs onboarding');
         setNeedsOnboarding(true);
         setProfile(null);

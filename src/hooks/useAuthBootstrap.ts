@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser, useSession } from '@clerk/clerk-react';
 
-const SUPABASE_URL = "https://tapbwlmdvluqdgvixkxf.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 /** Race a promise against a timeout */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -33,6 +33,7 @@ interface UseAuthBootstrapReturn {
 
 export function useAuthBootstrap(): UseAuthBootstrapReturn {
   const { user, isLoaded } = useUser();
+  const { session } = useSession();
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,11 +41,23 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
   const bootstrappingRef = useRef(false);
 
   const callEdgeFunction = useCallback(async (fnName: string, body: Record<string, any>) => {
+    // Prefer the Clerk session token so the edge function can verify identity.
+    // Falls back to the anon key when no Clerk session is available yet.
+    let authHeader = `Bearer ${SUPABASE_KEY}`;
+    if (session) {
+      try {
+        const token = await session.getToken();
+        if (token) authHeader = `Bearer ${token}`;
+      } catch {
+        // session.getToken() can throw if the session has expired; fall back
+      }
+    }
+
     const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Authorization': authHeader,
       },
       body: JSON.stringify(body),
     });
@@ -53,7 +66,7 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
       throw new Error(data.error || `${fnName} failed with status ${res.status}`);
     }
     return data;
-  }, []);
+  }, [session]);
 
   const bootstrap = useCallback(async (clerkUser: NonNullable<typeof user>) => {
     if (bootstrappingRef.current) return;
@@ -77,17 +90,25 @@ export function useAuthBootstrap(): UseAuthBootstrapReturn {
 
       console.log('🔄 useAuthBootstrap: syncing login for', clerkUserId, invitationToken ? '(with invitation token)' : '');
 
-      const syncResult = await withTimeout(
-        callEdgeFunction('sync-login', {
-          clerk_user_id: clerkUserId,
-          email,
-          full_name: fullName,
-          avatar_url: avatarUrl,
-          invitation_token: invitationToken,
-        }),
-        8000,
-        'sync-login'
-      );
+      const syncPayload = {
+        clerk_user_id: clerkUserId,
+        email,
+        full_name: fullName,
+        avatar_url: avatarUrl,
+        invitation_token: invitationToken,
+      };
+
+      // Attempt sync-login with one automatic retry on failure (network hiccup,
+      // cold-start latency, etc.). This is the most common cause of users being
+      // stuck at load when their account is perfectly valid.
+      let syncResult: any;
+      try {
+        syncResult = await withTimeout(callEdgeFunction('sync-login', syncPayload), 8000, 'sync-login');
+      } catch (firstErr: any) {
+        console.warn('⚠️ sync-login first attempt failed, retrying in 2s:', firstErr.message);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        syncResult = await withTimeout(callEdgeFunction('sync-login', syncPayload), 10000, 'sync-login retry');
+      }
 
       if (syncResult.membership) {
         console.log('✅ User has existing org membership');

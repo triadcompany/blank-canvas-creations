@@ -42,7 +42,7 @@ export function WhatsAppIntegration() {
   });
 
   const webhookEndpoint = integration?.webhook_token 
-    ? `https://tapbwlmdvluqdgvixkxf.supabase.co/functions/v1/whatsapp-webhook/${integration.webhook_token}`
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook/${integration.webhook_token}`
     : 'Configure primeiro para gerar a URL única';
 
   useEffect(() => {
