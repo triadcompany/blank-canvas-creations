@@ -82,6 +82,7 @@ export function useInboxSend({
     } catch (err: any) {
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
       toast.error(err.message || 'Erro ao enviar mensagem');
+      throw err;
     } finally {
       setSending(false);
     }

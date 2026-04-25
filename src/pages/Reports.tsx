@@ -31,6 +31,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
   BarChart,
@@ -290,6 +291,10 @@ export function Reports() {
 
   // Export PDF (mantendo a lógica existente)
   const exportToPDF = () => {
+    if (filteredLeads.length === 0) {
+      toast.error('Nenhum dado para exportar. Ajuste os filtros e tente novamente.');
+      return;
+    }
     try {
       const doc = new jsPDF();
       let currentY = 30;

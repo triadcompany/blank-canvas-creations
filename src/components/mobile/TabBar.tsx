@@ -4,18 +4,19 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { FileText, Settings, Share2, HelpCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUnreadCount } from "@/hooks/useUnreadCount";
 
 const mainTabs = [
-  { icon: Home, label: "Dashboard", path: "/" },
+  { icon: Home, label: "Dashboard", path: "/dashboard" },
   { icon: Kanban, label: "Oportunidades", path: "/oportunidades" },
   { icon: Users, label: "Contatos", path: "/leads" },
-  { icon: MessageSquare, label: "Mensagens", path: "/mensagens" },
+  { icon: MessageSquare, label: "Mensagens", path: "/inbox" },
 ];
 
 const moreItems = [
   { icon: ListTodo, label: "Tarefas", path: "/tarefas" },
   { icon: CalendarClock, label: "Follow-ups", path: "/follow-ups" },
-  { icon: FileText, label: "Relatórios", path: "/relatorios" },
+  { icon: FileText, label: "Relatórios", path: "/reports" },
   { icon: Settings, label: "Configurações", path: "/settings" },
   { icon: Share2, label: "Distribuição de Leads", path: "/settings?tab=distribution" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda" },
@@ -24,8 +25,8 @@ const moreItems = [
 export function TabBar() {
   const location = useLocation();
   const { user } = useAuth();
-  
-  // Não mostrar TabBar em rotas públicas ou quando não autenticado
+  const unreadCount = useUnreadCount();
+
   const publicRoutes = ['/landing', '/auth', '/seller-auth'];
   if (publicRoutes.includes(location.pathname) || !user) {
     return null;
@@ -40,18 +41,25 @@ export function TabBar() {
             to={tab.path}
             className={({ isActive }) =>
               cn(
-                "flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-w-0 transition-colors",
+                "flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-w-0 transition-colors relative",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )
             }
           >
-            <tab.icon className="h-5 w-5 shrink-0" />
+            <div className="relative">
+              <tab.icon className="h-5 w-5 shrink-0" />
+              {tab.path === "/inbox" && unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center leading-none">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </div>
             <span className="text-[10px] font-medium truncate">{tab.label}</span>
           </NavLink>
         ))}
-        
+
         <Sheet>
           <SheetTrigger className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-w-0 text-muted-foreground hover:text-foreground transition-colors">
             <Menu className="h-5 w-5 shrink-0" />

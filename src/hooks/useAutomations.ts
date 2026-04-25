@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Edge, Node } from "@xyflow/react";
+import { supabase } from "@/integrations/supabase/client";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
 export interface Automation {
   id: string;
@@ -65,9 +67,15 @@ export interface RunStats {
 }
 
 async function apiCall(action: string, params: Record<string, unknown>) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? SUPABASE_ANON_KEY;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/automations-api`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${token}`,
+    },
     body: JSON.stringify({ action, ...params }),
   });
   return res.json();
@@ -218,9 +226,15 @@ export function useAutomations() {
 
   const triggerWorker = async (): Promise<boolean> => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? SUPABASE_ANON_KEY;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/automation-worker`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({}),
       });
       const data = await res.json();

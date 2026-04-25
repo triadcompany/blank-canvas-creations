@@ -800,7 +800,11 @@ export default function InboxPage() {
     if (!messageText.trim() || sending || !canSend) return;
     const text = messageText;
     setMessageText('');
-    await sendMessage(text);
+    try {
+      await sendMessage(text);
+    } catch {
+      setMessageText(text);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -870,16 +874,14 @@ export default function InboxPage() {
     setFtStatusData(null);
     setFtStatusOpen(true);
     try {
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-first-touch?organization_id=${encodeURIComponent(profile.organization_id)}&phone=${encodeURIComponent(selectedThread.contact_phone)}`,
-        {
-          headers: {
-            apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhcGJ3bG1kdmx1cWRndml4a3hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDY0NDgsImV4cCI6MjA3MDE4MjQ0OH0.U2p9jneQ6Lcgu672Z8W-KnKhLgMLygDk1jB4a0YIwvQ',
-          },
-        }
-      );
-      const data = await resp.json();
-      setFtStatusData(data);
+      const res = await supabase.functions.invoke('reset-first-touch', {
+        body: {
+          organization_id: profile.organization_id,
+          phone: selectedThread.contact_phone,
+          status_only: true,
+        },
+      });
+      setFtStatusData(res.data ?? { ok: false, error: res.error?.message });
     } catch (err: any) {
       setFtStatusData({ ok: false, error: err.message });
     } finally {

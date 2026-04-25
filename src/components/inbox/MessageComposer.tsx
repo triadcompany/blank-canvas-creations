@@ -408,7 +408,7 @@ export function MessageComposer({
           value={pending ? caption : value}
           onChange={(e) => (pending ? setCaption(e.target.value) : onChange(e.target.value))}
           onKeyDown={handleKeyDown}
-          placeholder={pending ? 'Adicionar legenda...' : 'Digite sua mensagem...'}
+          placeholder={pending ? 'Adicionar legenda...' : 'Mensagem… Enter para enviar, Shift+Enter para nova linha'}
           className={cn(
             'flex-1 min-h-[40px] max-h-[120px] resize-none text-sm bg-background rounded-2xl px-4 py-2.5'
           )}

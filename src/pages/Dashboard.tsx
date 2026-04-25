@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users,
   TrendingUp,
@@ -24,38 +25,7 @@ export function Dashboard() {
 
   // Calcular métricas reais baseadas nos dados
   const metrics = useMemo(() => {
-    if (loading || salesLoading || !leads.length) {
-      return [
-        {
-          title: "Total de Leads",
-          value: "0",
-          change: "0%",
-          icon: Users,
-          gradient: "from-primary to-primary/70"
-        },
-        {
-          title: "Vendas Fechadas",
-          value: "0",
-          change: "0%",
-          icon: Target,
-          gradient: "from-emerald-500 to-emerald-400"
-        },
-        {
-          title: "Taxa de Conversão",
-          value: "0%",
-          change: "0%",
-          icon: TrendingUp,
-          gradient: "from-authority to-authority/70"
-        },
-        {
-          title: "Receita do Mês",
-          value: "R$ 0",
-          change: "0%",
-          icon: DollarSign,
-          gradient: "from-amber-500 to-amber-400"
-        }
-      ];
-    }
+    if (loading || salesLoading) return [];
 
     const totalLeads = leads.length;
 
@@ -145,35 +115,52 @@ export function Dashboard() {
 
       {/* Metrics Cards - Improved */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        {metrics.map((metric, index) => (
-          <Card 
-            key={metric.title} 
-            className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 group"
-          >
-            <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-5 group-hover:opacity-10 transition-opacity`}></div>
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-poppins font-medium text-muted-foreground">
-                    {metric.title}
-                  </p>
-                  <p className="text-3xl font-poppins font-bold text-foreground">
-                    {metric.value}
-                  </p>
-                  <div className="flex items-center gap-1 mt-2">
-                    <ArrowUpRight className="h-3 w-3 text-emerald-500" />
-                    <span className="text-xs font-medium text-emerald-600">
-                      {metric.change} vs mês anterior
-                    </span>
+        {(loading || salesLoading) ? (
+          [0, 1, 2, 3].map((i) => (
+            <Card key={i} className="border-0 shadow-lg overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-9 w-20" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-12 w-12 rounded-2xl" />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          metrics.map((metric) => (
+            <Card
+              key={metric.title}
+              className="relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 group"
+            >
+              <div className={`absolute inset-0 bg-gradient-to-br ${metric.gradient} opacity-5 group-hover:opacity-10 transition-opacity`}></div>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-poppins font-medium text-muted-foreground">
+                      {metric.title}
+                    </p>
+                    <p className="text-3xl font-poppins font-bold text-foreground">
+                      {metric.value}
+                    </p>
+                    <div className="flex items-center gap-1 mt-2">
+                      <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+                      <span className="text-xs font-medium text-emerald-600">
+                        {metric.change} vs mês anterior
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`p-3 rounded-2xl bg-gradient-to-br ${metric.gradient} shadow-lg`}>
+                    <metric.icon className="h-6 w-6 text-white" />
                   </div>
                 </div>
-                <div className={`p-3 rounded-2xl bg-gradient-to-br ${metric.gradient} shadow-lg`}>
-                  <metric.icon className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       {/* Charts Row - Improved */}
@@ -187,7 +174,19 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {leads.length > 0 ? (
+            {loading ? (
+              <div className="space-y-4">
+                {[0,1,2,3].map(i => (
+                  <div key={i}>
+                    <div className="flex items-center justify-between mb-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-2 w-full rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : leads.length > 0 ? (
               <div className="space-y-4">
                 {stages.map((stage) => {
                   const stageLeads = leads.filter(lead => lead.stage_id === stage.id);

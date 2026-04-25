@@ -15,8 +15,11 @@ import {
 import {
   Plus, Zap, Play, Pause, Copy, Trash2, ArrowLeft, Loader2,
   MessageSquare, AlertTriangle, RotateCw, FileText, Pencil, Check, X,
-  Megaphone,
+  Megaphone, UserPlus, GitBranch, Instagram, Phone, Radio, Tag, FormInput, Activity,
 } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useAutomations, Automation, AutomationFlow, AutomationRun, RunStats } from "@/hooks/useAutomations";
 import { useAuth } from "@/contexts/AuthContext";
 import { AutomationFlowEditor } from "@/components/automations/AutomationFlowEditor";
@@ -28,6 +31,17 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Node, Edge } from "@xyflow/react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+
+const TRIGGER_OPTIONS = [
+  { value: "first_message", label: "Primeira mensagem recebida", description: "Dispara quando um contato envia a primeira mensagem via WhatsApp ou Instagram", icon: MessageSquare },
+  { value: "lead_created", label: "Lead criado", description: "Dispara quando um novo lead é cadastrado no CRM", icon: UserPlus },
+  { value: "lead_stage_changed", label: "Lead movido de etapa", description: "Dispara quando um lead é movido para uma etapa específica do pipeline", icon: GitBranch },
+  { value: "deal_stage_changed", label: "Mudança de etapa (Kanban)", description: "Dispara quando um lead é movido no Kanban para a etapa destino", icon: Activity },
+  { value: "lead_from_whatsapp", label: "Lead via WhatsApp", description: "Dispara quando um lead chega pelo canal do WhatsApp", icon: Phone },
+  { value: "lead_from_instagram", label: "Lead via Instagram", description: "Dispara quando um lead chega pelo canal do Instagram", icon: Instagram },
+  { value: "broadcast_response", label: "Resposta a Campanha", description: "Dispara quando um contato responde a uma mensagem de campanha", icon: Radio },
+  { value: "tag_added", label: "Tag adicionada", description: "Dispara quando uma tag específica é adicionada a um lead", icon: Tag },
+];
 
 export default function Automacoes() {
   const { isAdmin, profile, loading: authLoading, orgId: authOrgId, needsOnboarding } = useAuth();
@@ -46,6 +60,7 @@ export default function Automacoes() {
   const [createDialog, setCreateDialog] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newTriggerType, setNewTriggerType] = useState("");
 
   // Runs & stats state for detail view
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -96,8 +111,19 @@ export default function Automacoes() {
     const result = await createAutomation(newName, newDesc);
     if (result) {
       setCreateDialog(false);
+      // Pre-populate a trigger node if the user selected a trigger type
+      if (newTriggerType) {
+        const triggerNode: Node = {
+          id: `trigger-${Date.now()}`,
+          type: "trigger",
+          position: { x: 250, y: 120 },
+          data: { config: { triggerType: newTriggerType } },
+        };
+        await saveFlow(result.id, [triggerNode], []);
+      }
       setNewName("");
       setNewDesc("");
+      setNewTriggerType("");
       setEditingAutomation(result);
     }
   };
@@ -486,26 +512,73 @@ export default function Automacoes() {
         </Tabs>
 
         {/* Create Dialog */}
-        <Dialog open={createDialog} onOpenChange={setCreateDialog}>
-          <DialogContent>
+        <Dialog open={createDialog} onOpenChange={(open) => {
+          setCreateDialog(open);
+          if (!open) { setNewName(""); setNewDesc(""); setNewTriggerType(""); }
+        }}>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-poppins">Nova Automação</DialogTitle>
+              <DialogTitle className="font-poppins text-lg">Nova Automação</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="font-poppins">Nome</Label>
-                <Input value={newName} onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ex: Boas-vindas novo lead" className="font-poppins" />
+            <div className="space-y-5 py-1">
+              <div className="space-y-1.5">
+                <Label className="font-poppins font-medium">Nome <span className="text-destructive">*</span></Label>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Ex: Boas-vindas novo lead"
+                  className="font-poppins"
+                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                  autoFocus
+                />
               </div>
-              <div>
-                <Label className="font-poppins">Descrição (opcional)</Label>
-                <Textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Descreva o objetivo desta automação" className="font-poppins" />
+              <div className="space-y-1.5">
+                <Label className="font-poppins font-medium">Descrição <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+                <Textarea
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="Descreva o objetivo desta automação"
+                  className="font-poppins resize-none"
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="font-poppins font-medium">
+                  Gatilho <span className="text-muted-foreground text-xs">(opcional — pode configurar depois)</span>
+                </Label>
+                <Select value={newTriggerType} onValueChange={setNewTriggerType}>
+                  <SelectTrigger className="font-poppins">
+                    <SelectValue placeholder="Selecione como a automação será disparada" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRIGGER_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value} className="font-poppins">
+                        <div className="flex items-center gap-2">
+                          <t.icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span>{t.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {newTriggerType && (() => {
+                  const opt = TRIGGER_OPTIONS.find(t => t.value === newTriggerType);
+                  return opt ? (
+                    <p className="text-xs text-muted-foreground font-poppins pl-1">{opt.description}</p>
+                  ) : null;
+                })()}
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setCreateDialog(false)} className="font-poppins">Cancelar</Button>
-              <Button onClick={handleCreate} disabled={!newName.trim()} className="btn-gradient text-white font-poppins">Criar</Button>
+              <Button
+                onClick={handleCreate}
+                disabled={!newName.trim()}
+                className="btn-gradient text-white font-poppins"
+              >
+                <Zap className="h-4 w-4 mr-1.5" />
+                Criar automação
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

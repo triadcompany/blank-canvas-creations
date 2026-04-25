@@ -38,6 +38,7 @@ export function Leads() {
   const [isEditObservationsOpen, setIsEditObservationsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [selectedSeller, setSelectedSeller] = useState<string>("all");
   const [sellers, setSellers] = useState<Profile[]>([]);
   
@@ -118,7 +119,24 @@ export function Leads() {
 
   return (
     <div className="min-h-screen pb-16 md:pb-0">
-      <MobileHeader title="Contatos" onSearch={() => {/* TODO: implement mobile search */}} />
+      <MobileHeader title="Contatos" onSearch={() => setIsMobileSearchOpen(s => !s)} />
+
+      {/* Mobile search bar */}
+      {isMobileSearchOpen && (
+        <div className="md:hidden px-4 py-2 bg-background border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              type="text"
+              placeholder="Buscar por nome, email ou telefone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+      )}
       
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Header - Hidden on mobile */}
@@ -216,7 +234,7 @@ export function Leads() {
         {/* Leads List */}
         <Card>
         <CardHeader>
-          <CardTitle className="font-poppins">Leads ({filteredLeads.length})</CardTitle>
+          <CardTitle className="font-poppins">{filteredLeads.length} {filteredLeads.length === 1 ? 'Lead' : 'Leads'}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {filteredLeads.length === 0 ? (
