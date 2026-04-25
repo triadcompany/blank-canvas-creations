@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { triggerN8nWebhook } from '@/services/n8nWebhook';
 import { publishAutomationEvent, AI_EVENTS } from '@/services/automationEventBus';
-import { changeLeadStatus as changeLeadStatusApi, updateSaleValue } from '@/services/secureApi';
 
 export interface Lead {
   id: string;
@@ -19,12 +19,10 @@ export interface Lead {
   stage_id: string;
   created_at: string;
   created_by: string;
-  // Campos financeiros e de localização
   valor_negocio?: number;
   servico?: string;
   cidade?: string;
   estado?: string;
-  // Joined data
   seller_name?: string;
   stage_name?: string;
   stage_position?: number;
@@ -47,389 +45,329 @@ export interface KanbanColumn {
   position: number;
 }
 
+// ─── query key factories ───────────────────────────────────────────────────
+const stagesKey = (orgId: string | undefined, pipelineId: string | undefined) =>
+  ['stages', orgId, pipelineId] as const;
+
+const leadsKey = (orgId: string | undefined, isAdmin: boolean, sellerId: string | undefined) =>
+  ['leads', orgId, isAdmin, sellerId] as const;
+
+// ─── hook ─────────────────────────────────────────────────────────────────
 export function useSupabaseLeads(pipelineId?: string) {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [stages, setStages] = useState<PipelineStage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const { profile, isAdmin, orgId: authOrgId } = useAuth();
   // Always prefer the ACTIVE org from AuthContext (kept in sync on org switch).
-  // profile.organization_id can be stale right after switching organizations.
   const orgId = authOrgId || profile?.organization_id;
+  const clerkUserId = profile?.clerk_user_id;
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Fetch pipeline stages
-  const fetchStages = async () => {
-    if (!orgId) {
-      setStages([]);
-      return;
-    }
+  // ── Stages query ─────────────────────────────────────────────────────────
+  const stagesQuery = useQuery({
+    queryKey: stagesKey(orgId, pipelineId),
+    enabled: !!orgId,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<PipelineStage[]> => {
+      if (!orgId) return [];
 
-    // Se não tem pipelineId, busca o pipeline padrão via RPC
-    let activePipelineId = pipelineId;
-    
-    if (!activePipelineId) {
-      const { data: orgPipelines } = await supabase.rpc('get_org_pipelines', {
-        p_org_id: orgId,
-      });
-      
-      const pipelineList = (orgPipelines || []) as any[];
-      let defaultPipeline = pipelineList.find((p: any) => p.is_default) || pipelineList[0];
-      
-      if (!defaultPipeline) {
-        // Tentar seed idempotente
-        if (profile?.clerk_user_id) {
-          const { data: seededId } = await supabase.rpc('ensure_default_pipeline', {
-            p_org_id: orgId,
-            p_created_by: profile.clerk_user_id,
-          });
-          activePipelineId = seededId;
+      let activePipelineId = pipelineId;
+
+      if (!activePipelineId) {
+        const { data: orgPipelines } = await supabase.rpc('get_org_pipelines', {
+          p_org_id: orgId,
+        });
+        const list = (orgPipelines || []) as any[];
+        const defaultPipeline = list.find((p: any) => p.is_default) || list[0];
+
+        if (!defaultPipeline) {
+          if (clerkUserId) {
+            const { data: seededId } = await supabase.rpc('ensure_default_pipeline', {
+              p_org_id: orgId,
+              p_created_by: clerkUserId,
+            });
+            activePipelineId = seededId;
+          }
+        } else {
+          activePipelineId = defaultPipeline.id;
         }
-      } else {
-        activePipelineId = defaultPipeline.id;
       }
-    }
 
-    if (!activePipelineId) {
-      setStages([]);
-      return;
-    }
+      if (!activePipelineId) return [];
 
-    // Fetch stages via RPC
-    const { data, error } = await supabase.rpc('get_pipeline_stages', {
-      p_pipeline_id: activePipelineId,
-    });
-
-    if (error) {
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar etapas do pipeline",
-        variant: "destructive",
+      const { data, error } = await supabase.rpc('get_pipeline_stages', {
+        p_pipeline_id: activePipelineId,
       });
-    } else {
-      setStages((data || []) as PipelineStage[]);
-    }
-  };
 
-  // Fetch leads via RPC (bypasses RLS issues with Clerk auth)
-  const fetchLeads = async () => {
-    if (!orgId || !profile?.clerk_user_id) {
-      console.log('❌ useSupabaseLeads: No orgId or clerk_user_id, skipping fetch');
-      return;
-    }
-    
-    console.log('🔍 useSupabaseLeads: Fetching leads via RPC...', { 
-      isAdmin, 
-      profileId: profile?.id,
-      organizationId: orgId 
-    });
-    
-    const { data, error } = await supabase.rpc('get_org_leads', {
-      p_clerk_user_id: profile.clerk_user_id,
-      p_org_id: orgId,
-      p_is_admin: isAdmin || false,
-      p_seller_id: (!isAdmin && profile?.id) ? profile.id : null,
-    });
+      if (error) throw new Error(error.message);
+      return (data || []) as PipelineStage[];
+    },
+    meta: { errorMessage: 'Erro ao carregar etapas do pipeline' },
+  });
 
-    if (error) {
-      console.error('❌ useSupabaseLeads: Error fetching leads:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao carregar leads",
-        variant: "destructive",
+  // ── Leads query ──────────────────────────────────────────────────────────
+  const leadsQuery = useQuery({
+    queryKey: leadsKey(orgId, isAdmin, profile?.id),
+    enabled: !!orgId && !!clerkUserId,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async (): Promise<Lead[]> => {
+      if (!orgId || !clerkUserId) return [];
+
+      const { data, error } = await supabase.rpc('get_org_leads', {
+        p_clerk_user_id: clerkUserId,
+        p_org_id: orgId,
+        p_is_admin: isAdmin || false,
+        p_seller_id: (!isAdmin && profile?.id) ? profile.id : null,
       });
-    } else {
-      const leadsArray = (data || []) as any[];
-      console.log(`✅ useSupabaseLeads: Fetched ${leadsArray.length} leads`);
-      setLeads(leadsArray);
-    }
-  };
 
-  useEffect(() => {
-    if (orgId) {
-      Promise.all([fetchStages(), fetchLeads()]).finally(() => setLoading(false));
-    } else {
-      // No org yet — don't stay stuck in loading
-      setLoading(false);
-    }
-  }, [orgId, isAdmin, pipelineId]);
+      if (error) throw new Error(error.message);
+      return (data || []) as Lead[];
+    },
+    meta: { errorMessage: 'Erro ao carregar leads' },
+  });
 
-  // Filter leads based on search term
-  const getFilteredLeads = (): Lead[] => {
+  // Surface query errors as toasts (single place, not per-mutation)
+  if (stagesQuery.error && !stagesQuery.isFetching) {
+    toast({ title: 'Erro', description: 'Erro ao carregar etapas do pipeline', variant: 'destructive' });
+  }
+  if (leadsQuery.error && !leadsQuery.isFetching) {
+    toast({ title: 'Erro', description: 'Erro ao carregar leads', variant: 'destructive' });
+  }
+
+  const leads = leadsQuery.data ?? [];
+  const stages = stagesQuery.data ?? [];
+  const loading = leadsQuery.isLoading || stagesQuery.isLoading;
+
+  // ── Memoized derived state ────────────────────────────────────────────────
+  const filteredLeads = useMemo<Lead[]>(() => {
     if (!searchTerm.trim()) return leads;
     const term = searchTerm.toLowerCase();
-    return leads.filter(lead => 
+    return leads.filter(lead =>
       lead.name.toLowerCase().includes(term) ||
       lead.phone.toLowerCase().includes(term) ||
       (lead.email && lead.email.toLowerCase().includes(term)) ||
       (lead.interest && lead.interest.toLowerCase().includes(term)) ||
       (lead.observations && lead.observations.toLowerCase().includes(term))
     );
-  };
+  }, [leads, searchTerm]);
 
-  // Get kanban columns with filtered leads
-  const getKanbanColumns = (): KanbanColumn[] => {
-    const filteredLeads = getFilteredLeads();
-    return stages.map(stage => {
-      const stageLeads = filteredLeads.filter(lead => lead.stage_id === stage.id);
-      return {
-        id: stage.id,
-        title: stage.name,
-        leads: stageLeads,
-        color: stage.color,
-        count: stageLeads.length,
-        position: stage.position
-      };
-    }).sort((a, b) => a.position - b.position);
-  };
+  const kanbanColumns = useMemo<KanbanColumn[]>(() => {
+    return stages
+      .map(stage => {
+        const stageLeads = filteredLeads.filter(lead => lead.stage_id === stage.id);
+        return {
+          id: stage.id,
+          title: stage.name,
+          leads: stageLeads,
+          color: stage.color,
+          count: stageLeads.length,
+          position: stage.position,
+        };
+      })
+      .sort((a, b) => a.position - b.position);
+  }, [filteredLeads, stages]);
 
-  // Move lead to different stage
-  const moveLead = async (leadId: string, newStageId: string) => {
-    if (!profile) return;
-
-    // Buscar lead atual e estágio antigo para o webhook
-    const currentLead = leads.find(l => l.id === leadId);
-    const oldStage = stages.find(s => s.id === currentLead?.stage_id);
-    const newStage = stages.find(s => s.id === newStageId);
-
-    // Use RPC for server-side validation (Clerk auth compatible)
-    const { error: moveError } = await supabase.rpc('update_lead_rpc', {
-      p_clerk_user_id: profile.clerk_user_id!,
-      p_lead_id: leadId,
-      p_data: { stage_id: newStageId } as any,
-    });
-
-    if (moveError) {
-      toast({
-        title: "Erro",
-        description: moveError.message || "Erro ao mover lead",
-        variant: "destructive",
+  // ── moveLead mutation (optimistic update) ────────────────────────────────
+  const moveLeadMutation = useMutation({
+    mutationFn: async ({ leadId, newStageId }: { leadId: string; newStageId: string }) => {
+      if (!profile?.clerk_user_id) throw new Error('Not authenticated');
+      const { error } = await supabase.rpc('update_lead_rpc', {
+        p_clerk_user_id: profile.clerk_user_id,
+        p_lead_id: leadId,
+        p_data: { stage_id: newStageId } as any,
       });
-    } else {
-      // Update local state
-      setLeads(prevLeads =>
-        prevLeads.map(lead =>
-          lead.id === leadId
-            ? { ...lead, stage_id: newStageId, stage_name: newStage?.name }
-            : lead
+      if (error) throw new Error(error.message);
+      return { leadId, newStageId };
+    },
+    onMutate: async ({ leadId, newStageId }) => {
+      // Optimistic update — update cache immediately so Kanban feels instant
+      await queryClient.cancelQueries({ queryKey: leadsKey(orgId, isAdmin, profile?.id) });
+      const previous = queryClient.getQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id));
+      queryClient.setQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id), old =>
+        (old ?? []).map(l =>
+          l.id === leadId
+            ? { ...l, stage_id: newStageId, stage_name: stages.find(s => s.id === newStageId)?.name }
+            : l
         )
       );
-      toast({
-        title: "Sucesso",
-        description: "Lead movido com sucesso",
-      });
+      return { previous };
+    },
+    onSuccess: ({ leadId, newStageId }) => {
+      toast({ title: 'Sucesso', description: 'Lead movido com sucesso' });
 
-      // Disparar webhook n8n se configurado
-      if (currentLead && profile.organization_id) {
+      const currentLead = leads.find(l => l.id === leadId);
+      const oldStage = stages.find(s => s.id === currentLead?.stage_id);
+      const newStage = stages.find(s => s.id === newStageId);
+
+      if (currentLead && profile?.organization_id) {
         triggerN8nWebhook(
           profile.organization_id,
-          {
-            id: currentLead.id,
-            name: currentLead.name,
-            email: currentLead.email,
-            phone: currentLead.phone,
-            source: currentLead.source,
-            interest: currentLead.interest,
-            observations: currentLead.observations
-          },
-          {
-            from: oldStage?.name || 'Desconhecido',
-            to: newStage?.name || 'Desconhecido',
-            fromId: currentLead.stage_id,
-            toId: newStageId
-          }
+          { id: currentLead.id, name: currentLead.name, email: currentLead.email,
+            phone: currentLead.phone, source: currentLead.source,
+            interest: currentLead.interest, observations: currentLead.observations },
+          { from: oldStage?.name || 'Desconhecido', to: newStage?.name || 'Desconhecido',
+            fromId: currentLead.stage_id, toId: newStageId }
         );
 
-        // Publish deal.stage_changed event to Event Bus
-        const traceId = crypto.randomUUID();
         publishAutomationEvent({
           organizationId: profile.organization_id,
           eventName: AI_EVENTS.DEAL_STAGE_CHANGED as any,
-          entityType: 'lead',
-          entityId: currentLead.id,
-          leadId: currentLead.id,
+          entityType: 'lead', entityId: currentLead.id, leadId: currentLead.id,
           payload: {
-            trace_id: traceId,
-            lead_id: currentLead.id,
-            phone: currentLead.phone,
-            email: currentLead.email,
-            lead_name: currentLead.name,
+            trace_id: crypto.randomUUID(),
+            lead_id: currentLead.id, phone: currentLead.phone,
+            email: currentLead.email, lead_name: currentLead.name,
             lead_source: currentLead.source,
             lead_value: currentLead.valor_negocio || null,
-            from_stage_id: currentLead.stage_id,
-            from_stage_name: oldStage?.name || '',
-            to_stage_id: newStageId,
-            to_stage_name: newStage?.name || '',
-            pipeline_id: pipelineId || '',
-            changed_by_user_id: profile.id,
+            from_stage_id: currentLead.stage_id, from_stage_name: oldStage?.name || '',
+            to_stage_id: newStageId, to_stage_name: newStage?.name || '',
+            pipeline_id: pipelineId || '', changed_by_user_id: profile.id,
             occurred_at: new Date().toISOString(),
           },
           source: 'human',
           idempotencyParts: [currentLead.id, newStageId],
-        }).catch(err => console.warn('[deal.stage_changed] Event publish failed:', err));
+        }).catch(() => {/* non-blocking */});
       }
-    }
-  };
+    },
+    onError: (err: Error, _, context) => {
+      // Roll back optimistic update
+      if (context?.previous) {
+        queryClient.setQueryData(leadsKey(orgId, isAdmin, profile?.id), context.previous);
+      }
+      toast({ title: 'Erro', description: err.message || 'Erro ao mover lead', variant: 'destructive' });
+    },
+  });
 
-  // Update lead via RPC
-  const updateLead = async (leadId: string, updatedData: Partial<Lead>) => {
-    if (!profile || !leadId || !profile.clerk_user_id) {
-      toast({
-        title: "Erro",
-        description: "Dados inválidos para atualização",
-        variant: "destructive",
+  // ── updateLead mutation ───────────────────────────────────────────────────
+  const updateLeadMutation = useMutation({
+    mutationFn: async ({ leadId, updatedData }: { leadId: string; updatedData: Partial<Lead> }) => {
+      if (!profile?.clerk_user_id) throw new Error('Not authenticated');
+      const { error } = await supabase.rpc('update_lead_rpc', {
+        p_clerk_user_id: profile.clerk_user_id,
+        p_lead_id: leadId,
+        p_data: updatedData as any,
       });
-      return;
-    }
-
-    console.log('Updating lead:', leadId, 'with data:', updatedData);
-
-    // valor_negocio is now handled by update_lead_rpc (no special case needed)
-
-    const { error } = await supabase.rpc('update_lead_rpc', {
-      p_clerk_user_id: profile.clerk_user_id,
-      p_lead_id: leadId,
-      p_data: updatedData as any,
-    });
-
-    if (error) {
-      console.error('Error updating lead:', error);
-      toast({
-        title: "Erro",
-        description: `Erro ao atualizar lead: ${error.message}`,
-        variant: "destructive",
-      });
-    } else {
-      // Update local state
-      setLeads(prevLeads =>
-        prevLeads.map(lead =>
-          lead.id === leadId
-            ? { ...lead, ...updatedData }
-            : lead
-        )
+      if (error) throw new Error(error.message);
+      return { leadId, updatedData };
+    },
+    onMutate: async ({ leadId, updatedData }) => {
+      await queryClient.cancelQueries({ queryKey: leadsKey(orgId, isAdmin, profile?.id) });
+      const previous = queryClient.getQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id));
+      queryClient.setQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id), old =>
+        (old ?? []).map(l => l.id === leadId ? { ...l, ...updatedData } : l)
       );
-      toast({
-        title: "Sucesso",
-        description: "Lead atualizado com sucesso",
-      });
-    }
-  };
+      return { previous };
+    },
+    onSuccess: () => {
+      toast({ title: 'Sucesso', description: 'Lead atualizado com sucesso' });
+    },
+    onError: (err: Error, _, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(leadsKey(orgId, isAdmin, profile?.id), context.previous);
+      }
+      toast({ title: 'Erro', description: `Erro ao atualizar lead: ${err.message}`, variant: 'destructive' });
+    },
+  });
 
-  // Add new lead via RPC
-  const addLead = async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => {
-    console.log('🆕 addLead called with:', newLeadData);
-    console.log('🆕 addLead profile state:', { hasProfile: !!profile, clerkUserId: profile?.clerk_user_id, orgId: profile?.organization_id });
+  // ── addLead mutation ──────────────────────────────────────────────────────
+  const addLeadMutation = useMutation({
+    mutationFn: async (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) => {
+      if (!profile?.clerk_user_id) throw new Error('Sessão não está pronta. Recarregue a página.');
 
-    if (!profile || !profile.clerk_user_id) {
-      console.error('❌ addLead: missing profile or clerk_user_id');
-      toast({
-        title: "Erro",
-        description: "Sessão não está pronta. Recarregue a página e tente novamente.",
-        variant: "destructive",
-      });
-      return;
-    }
+      const stageId = (newLeadData as any).stage_id
+        || [...stages].sort((a, b) => a.position - b.position)[0]?.id;
 
-    // Use the stage_id passed from the modal, or fall back to the first stage
-    const stageId = (newLeadData as any).stage_id || stages.sort((a, b) => a.position - b.position)[0]?.id;
-    if (!stageId) {
-      console.error('❌ addLead: no stageId available');
-      toast({
-        title: "Erro",
-        description: "Nenhuma etapa do funil disponível. Selecione uma etapa.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (!stageId) throw new Error('Nenhuma etapa do funil disponível. Selecione uma etapa.');
 
-    console.log('🆕 addLead calling create_lead_rpc with stage_id:', stageId, 'org:', orgId);
-    const { data, error } = await supabase.rpc('create_lead_rpc', {
-      p_clerk_user_id: profile.clerk_user_id,
-      p_name: newLeadData.name,
-      p_phone: newLeadData.phone || '',
-      p_email: newLeadData.email || '',
-      p_source: newLeadData.source || '',
-      p_interest: newLeadData.interest || '',
-      p_price: (newLeadData as any).price || '',
-      p_observations: newLeadData.observations || '',
-      p_servico: (newLeadData as any).servico || '',
-      p_cidade: (newLeadData as any).cidade || '',
-      p_estado: (newLeadData as any).estado || '',
-      p_seller_id: (newLeadData as any).seller_id || null,
-      p_stage_id: stageId,
-      p_org_id: orgId || null,
-    } as any);
+      const { data, error } = await supabase.rpc('create_lead_rpc', {
+        p_clerk_user_id: profile.clerk_user_id,
+        p_name: newLeadData.name,
+        p_phone: newLeadData.phone || '',
+        p_email: newLeadData.email || '',
+        p_source: newLeadData.source || '',
+        p_interest: newLeadData.interest || '',
+        p_price: (newLeadData as any).price || '',
+        p_observations: newLeadData.observations || '',
+        p_servico: (newLeadData as any).servico || '',
+        p_cidade: (newLeadData as any).cidade || '',
+        p_estado: (newLeadData as any).estado || '',
+        p_seller_id: (newLeadData as any).seller_id || null,
+        p_stage_id: stageId,
+        p_org_id: orgId || null,
+      } as any);
 
-    if (error) {
-      console.error('❌ Error creating lead:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao criar lead",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (error) throw new Error(error.message);
+      return data as any;
+    },
+    onSuccess: (createdLead) => {
+      queryClient.invalidateQueries({ queryKey: leadsKey(orgId, isAdmin, profile?.id) });
+      toast({ title: 'Sucesso', description: 'Lead criado com sucesso' });
 
-    console.log('✅ Lead created:', data);
-
-    const createdLead = data as any;
-
-    // Refresh leads to get full data with joins
-    await fetchLeads();
-
-    toast({
-      title: "Sucesso",
-      description: "Lead criado com sucesso",
-    });
-
-    // Fire automation trigger (non-blocking)
-    if (orgId) {
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automation-trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organization_id: orgId,
-          trigger_type: "lead_created",
-          entity_type: "lead",
-          entity_id: createdLead.id,
-          context: {
-            lead_name: createdLead.name,
-            lead_phone: createdLead.phone,
-            lead_email: createdLead.email,
-            lead_source: createdLead.source,
-            stage_id: createdLead.stage_id,
-            seller_id: createdLead.seller_id,
+      if (orgId && createdLead?.id) {
+        supabase.functions.invoke('automation-trigger', {
+          body: {
+            organization_id: orgId, trigger_type: 'lead_created',
+            entity_type: 'lead', entity_id: createdLead.id,
+            context: {
+              lead_name: createdLead.name, lead_phone: createdLead.phone,
+              lead_email: createdLead.email, lead_source: createdLead.source,
+              stage_id: createdLead.stage_id, seller_id: createdLead.seller_id,
+            },
           },
-        }),
-      }).catch((err) => console.error("Automation trigger error:", err));
-    }
-  };
+        }).then(({ error: fnErr }) => {
+          if (fnErr) console.error('automation-trigger error:', fnErr);
+        });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro', description: err.message || 'Erro ao criar lead', variant: 'destructive' });
+    },
+  });
 
-  // Delete lead via RPC
-  const deleteLead = async (leadId: string) => {
-    if (!profile?.clerk_user_id) return;
-
-    const { error } = await supabase.rpc('delete_lead_rpc', {
-      p_clerk_user_id: profile.clerk_user_id,
-      p_lead_id: leadId,
-    });
-
-    if (error) {
-      console.error('Error deleting lead:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao excluir lead. Verifique suas permissões.",
-        variant: "destructive",
+  // ── deleteLead mutation ───────────────────────────────────────────────────
+  const deleteLeadMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      if (!profile?.clerk_user_id) throw new Error('Not authenticated');
+      const { error } = await supabase.rpc('delete_lead_rpc', {
+        p_clerk_user_id: profile.clerk_user_id,
+        p_lead_id: leadId,
       });
-    } else {
-      // Update local state
-      setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
-      toast({
-        title: "Sucesso",
-        description: "Lead excluído com sucesso",
-      });
-    }
-  };
+      if (error) throw new Error(error.message);
+      return leadId;
+    },
+    onMutate: async (leadId) => {
+      await queryClient.cancelQueries({ queryKey: leadsKey(orgId, isAdmin, profile?.id) });
+      const previous = queryClient.getQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id));
+      queryClient.setQueryData<Lead[]>(leadsKey(orgId, isAdmin, profile?.id), old =>
+        (old ?? []).filter(l => l.id !== leadId)
+      );
+      return { previous };
+    },
+    onSuccess: () => {
+      toast({ title: 'Sucesso', description: 'Lead excluído com sucesso' });
+    },
+    onError: (err: Error, _, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(leadsKey(orgId, isAdmin, profile?.id), context.previous);
+      }
+      toast({ title: 'Erro', description: err.message || 'Erro ao excluir lead. Verifique suas permissões.', variant: 'destructive' });
+    },
+  });
+
+  // ── Stable wrappers (same signatures as before) ───────────────────────────
+  const moveLead = (leadId: string, newStageId: string) =>
+    moveLeadMutation.mutateAsync({ leadId, newStageId });
+
+  const updateLead = (leadId: string, updatedData: Partial<Lead>) =>
+    updateLeadMutation.mutateAsync({ leadId, updatedData });
+
+  const addLead = (newLeadData: Omit<Lead, 'id' | 'created_at' | 'created_by' | 'stage_id'> & { stage_id?: string }) =>
+    addLeadMutation.mutateAsync(newLeadData);
+
+  const deleteLead = (leadId: string) =>
+    deleteLeadMutation.mutateAsync(leadId);
+
+  const refreshLeads = () =>
+    queryClient.invalidateQueries({ queryKey: leadsKey(orgId, isAdmin, profile?.id) });
 
   return {
     leads,
@@ -437,11 +375,12 @@ export function useSupabaseLeads(pipelineId?: string) {
     loading,
     searchTerm,
     setSearchTerm,
-    kanbanColumns: getKanbanColumns(),
+    filteredLeads,
+    kanbanColumns,
     moveLead,
     updateLead,
     addLead,
     deleteLead,
-    refreshLeads: fetchLeads,
+    refreshLeads,
   };
 }

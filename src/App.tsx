@@ -37,6 +37,7 @@ import { InstallPrompt } from "./components/pwa/InstallPrompt";
 import { UpdatePrompt } from "./components/pwa/UpdatePrompt";
 import { OfflineIndicator } from "./components/pwa/OfflineIndicator";
 import { useEffect } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,60 +88,61 @@ const App = () => {
   }, []);
 
   return (
-    <ClerkProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* ── Public routes ── */}
-              <Route path="/landing" element={<LandingPage />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/seller-auth" element={<SellerAuth />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/invite" element={<Invite />} />
+    // Nível 1: captura erros fora do Router (providers, contextos globais)
+    <ErrorBoundary>
+      <ClerkProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <AuthProvider>
+              <BrowserRouter>
+                <Routes>
+                  {/* ── Public routes ── */}
+                  <Route path="/landing" element={<LandingPage />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/seller-auth" element={<SellerAuth />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/invite" element={<Invite />} />
 
-              {/* ── Private routes — all under AppGate ── */}
-              <Route element={<AppGate />}>
-                {/* Onboarding (AppGate only allows access when no org) */}
-                <Route path="/onboarding" element={<Onboarding />} />
+                  {/* ── Private routes — all under AppGate ── */}
+                  <Route element={<AppGate />}>
+                    <Route path="/onboarding" element={<Onboarding />} />
 
-              {/* App routes wrapped in persistent CRMLayout */}
-                <Route element={<CRMLayout />}>
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/oportunidades" element={<Oportunidades />} />
-                  <Route path="/leads" element={<Leads />} />
-                  <Route path="/reports" element={<Reports />} />
-                  <Route path="/pipelines" element={<Pipelines />} />
-                  <Route path="/tarefas" element={<Tasks />} />
-                  <Route path="/automacoes" element={<Automacoes />} />
-                  <Route path="/inbox" element={<InboxPage />} />
-                  <Route path="/broadcasts" element={<Broadcasts />} />
-                  <Route path="/broadcasts/:id" element={<BroadcastDetail />} />
+                    {/* Nível 2: captura erros de página sem derrubar o layout */}
+                    <Route element={<CRMLayout />}>
+                      <Route path="/dashboard" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+                      <Route path="/oportunidades" element={<ErrorBoundary><Oportunidades /></ErrorBoundary>} />
+                      <Route path="/leads" element={<ErrorBoundary><Leads /></ErrorBoundary>} />
+                      <Route path="/reports" element={<ErrorBoundary><Reports /></ErrorBoundary>} />
+                      <Route path="/pipelines" element={<ErrorBoundary><Pipelines /></ErrorBoundary>} />
+                      <Route path="/tarefas" element={<ErrorBoundary><Tasks /></ErrorBoundary>} />
+                      <Route path="/automacoes" element={<ErrorBoundary><Automacoes /></ErrorBoundary>} />
+                      <Route path="/inbox" element={<ErrorBoundary><InboxPage /></ErrorBoundary>} />
+                      <Route path="/broadcasts" element={<ErrorBoundary><Broadcasts /></ErrorBoundary>} />
+                      <Route path="/broadcasts/:id" element={<ErrorBoundary><BroadcastDetail /></ErrorBoundary>} />
 
-                  {/* Admin-only routes — sellers are silently redirected */}
-                  <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
-                  <Route path="/treinar-agente" element={<AdminRoute><TreinarAgente /></AdminRoute>} />
-                  <Route path="/admin/debug/automations" element={<AdminRoute><AdminDebugAutomations /></AdminRoute>} />
-                  <Route path="/admin/diagnostico" element={<AdminRoute><AdminDiagnostico /></AdminRoute>} />
-                </Route>
-              </Route>
+                      <Route path="/settings" element={<AdminRoute><ErrorBoundary><Settings /></ErrorBoundary></AdminRoute>} />
+                      <Route path="/treinar-agente" element={<AdminRoute><ErrorBoundary><TreinarAgente /></ErrorBoundary></AdminRoute>} />
+                      <Route path="/admin/debug/automations" element={<AdminRoute><ErrorBoundary><AdminDebugAutomations /></ErrorBoundary></AdminRoute>} />
+                      <Route path="/admin/diagnostico" element={<AdminRoute><ErrorBoundary><AdminDiagnostico /></ErrorBoundary></AdminRoute>} />
+                    </Route>
+                  </Route>
 
-              {/* ── Catch-all ── */}
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <TabBar />
-            <InstallPrompt />
-            <UpdatePrompt />
-            <OfflineIndicator />
-          </BrowserRouter>
-        </AuthProvider>
-        </TooltipProvider>
-      </QueryClientProvider>
-    </ClerkProvider>
+                  {/* ── Catch-all ── */}
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+                <TabBar />
+                <InstallPrompt />
+                <UpdatePrompt />
+                <OfflineIndicator />
+              </BrowserRouter>
+            </AuthProvider>
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ClerkProvider>
+    </ErrorBoundary>
   );
 };
 

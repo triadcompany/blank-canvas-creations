@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useUser, useAuth as useClerkAuth, useClerk, useOrganization } from '@clerk/clerk-react';
-import { useClerkSupabase } from '@/hooks/useClerkSupabase';
-import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
+import { useAuthSession } from '@/hooks/useAuthSession';
 import { useClerkAvailable } from '@/providers/ClerkProvider';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -18,7 +17,6 @@ interface Profile {
   whatsapp_e164?: string;
 }
 
-// Tipo de usuário compatível com a interface anterior
 interface CompatUser {
   id: string;
   email?: string;
@@ -37,105 +35,82 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   retryBootstrap: () => Promise<void>;
-  /** Update the active org in memory after switching organizations.
-   *  Avoids a full page reload while keeping orgId / role / clerkOrgId in sync. */
   switchActiveOrg: (next: { org_id: string; clerk_org_id: string; role: 'admin' | 'seller' }) => void;
   isAdmin: boolean;
   orgId: string | null;
   clerkOrgId: string | null;
-  /** User's display name from Clerk (fullName > firstName > email prefix) */
   userName: string;
-  /** User's email from Clerk */
   userEmail: string;
-  /** Organization name from Clerk (live) or Supabase (fallback) */
   orgName: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Internal provider that uses Clerk hooks - only rendered when Clerk is available
 function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
   const { openSignIn, openSignUp } = useClerk();
   const { organization: clerkOrganization } = useOrganization();
-  const { profile, role, loading: supabaseLoading, refreshProfile, error, needsOnboarding } = useClerkSupabase();
-  const { org, loading: bootstrapLoading, error: bootstrapError, needsOnboarding: bootstrapNeedsOnboarding, retryBootstrap, setActiveOrg } = useAuthBootstrap();
 
-  // Converter usuário Clerk para formato compatível
-  const user: CompatUser | null = clerkUser ? {
-    id: clerkUser.id,
-    email: clerkUser.primaryEmailAddress?.emailAddress,
-  } : null;
+  const {
+    profile, role, org, loading: sessionLoading, error,
+    needsOnboarding, refreshProfile, retryBootstrap, setActiveOrg,
+  } = useAuthSession();
 
-  // Combined loading
-  const loading = !clerkLoaded || supabaseLoading || bootstrapLoading;
+  const user: CompatUser | null = clerkUser
+    ? { id: clerkUser.id, email: clerkUser.primaryEmailAddress?.emailAddress }
+    : null;
 
-  // Merge needsOnboarding from both hooks
-  // If user has an org (from bootstrap), they don't need onboarding regardless of profile state
+  const loading = !clerkLoaded || sessionLoading;
+
+  // If user has an org or completed onboarding, they don't need onboarding
   const hasOrg = !!org;
   const profileOnboardingDone = profile && (profile as any).onboarding_completed === true;
-  const combinedNeedsOnboarding = hasOrg || profileOnboardingDone ? false : (needsOnboarding || bootstrapNeedsOnboarding);
+  const resolvedNeedsOnboarding = hasOrg || profileOnboardingDone ? false : needsOnboarding;
 
-  // signIn agora abre o modal do Clerk
   const signIn = useCallback(async (_email: string, _password: string): Promise<{ error: any }> => {
     try {
-      console.warn('signIn via AuthContext is deprecated. Use Clerk components instead.');
       openSignIn();
       return { error: null };
-    } catch (error) {
-      return { error };
+    } catch (err) {
+      return { error: err };
     }
   }, [openSignIn]);
 
-  // signUp agora abre o modal do Clerk
   const signUp = useCallback(async (_email: string, _password: string, _name: string, _organizationName?: string): Promise<{ error: any; data?: any }> => {
     try {
-      console.warn('signUp via AuthContext is deprecated. Use Clerk components instead.');
       openSignUp();
       return { error: null, data: null };
-    } catch (error) {
-      return { error, data: null };
+    } catch (err) {
+      return { error: err, data: null };
     }
   }, [openSignUp]);
 
-  // signOut agora usa o Clerk
   const signOut = useCallback(async () => {
     await clerkSignOut();
   }, [clerkSignOut]);
 
-  // SECURITY: derive isAdmin from a SINGLE source of truth (the active org
-  // membership returned by sync-login) when available. Falling back to
-  // user_roles only when bootstrap hasn't returned yet. Never use OR with
-  // both sources — that allows privilege escalation when one of them is
-  // stale (e.g. after switching organizations).
+  // SECURITY: derive isAdmin from the single source of truth returned by sync-login
   const effectiveRole = org?.role ?? role;
   const isAdmin = effectiveRole === 'admin';
 
-  const combinedError = error || (bootstrapError ? new Error(bootstrapError) : null);
-
-  // Derive display name from Clerk (source of truth)
   const userName = clerkUser?.fullName
     || clerkUser?.firstName
     || clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0]
     || '';
   const userEmail = clerkUser?.primaryEmailAddress?.emailAddress || '';
-
-  // Derive org name: prefer Clerk live data, fallback to profile's org
   const orgName = clerkOrganization?.name || '';
 
   const switchActiveOrg = useCallback(
     (next: { org_id: string; clerk_org_id: string; role: 'admin' | 'seller' }) => {
       setActiveOrg(next);
-      // Persist the active org to the profile row so that sync-login respects
-      // this choice on the next login instead of returning the old organization.
       if (clerkUser?.id) {
         supabase
           .from('profiles')
           .update({ organization_id: next.org_id })
           .eq('clerk_user_id', clerkUser.id)
-          .then(({ error }) => {
-            if (error) console.error('switchActiveOrg: failed to persist org switch', error);
+          .then(({ error: err }) => {
+            if (err) console.error('switchActiveOrg: failed to persist org switch', err);
           });
       }
     },
@@ -147,9 +122,9 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     session: clerkUser ? { user: clerkUser } : null,
     profile,
     role: org?.role || role,
-    error: combinedError,
+    error,
     loading,
-    needsOnboarding: combinedNeedsOnboarding,
+    needsOnboarding: resolvedNeedsOnboarding,
     signIn,
     signUp,
     signOut,
@@ -162,12 +137,11 @@ function AuthProviderWithClerk({ children }: { children: React.ReactNode }) {
     userName,
     userEmail,
     orgName,
-  }), [user, clerkUser, profile, role, combinedError, loading, combinedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, switchActiveOrg, isAdmin, org, userName, userEmail, orgName]);
+  }), [user, clerkUser, profile, role, error, loading, resolvedNeedsOnboarding, signIn, signUp, signOut, refreshProfile, retryBootstrap, switchActiveOrg, isAdmin, org, userName, userEmail, orgName]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Fallback provider when Clerk is not available
 function AuthProviderFallback({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (_email: string, _password: string): Promise<{ error: any }> => {
     console.error('Clerk is not configured. Please add VITE_CLERK_PUBLISHABLE_KEY.');
@@ -186,25 +160,13 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
   const refreshProfile = useCallback(async () => {}, []);
 
   const value: AuthContextType = useMemo(() => ({
-    user: null,
-    session: null,
-    profile: null,
-    role: null,
-    error: null,
-    loading: false,
-    needsOnboarding: false,
-    signIn,
-    signUp,
-    signOut,
-    refreshProfile,
+    user: null, session: null, profile: null, role: null, error: null,
+    loading: false, needsOnboarding: false,
+    signIn, signUp, signOut, refreshProfile,
     retryBootstrap: refreshProfile,
     switchActiveOrg: () => {},
-    isAdmin: false,
-    orgId: null,
-    clerkOrgId: null,
-    userName: '',
-    userEmail: '',
-    orgName: '',
+    isAdmin: false, orgId: null, clerkOrgId: null,
+    userName: '', userEmail: '', orgName: '',
   }), [signIn, signUp, signOut, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -212,12 +174,10 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clerkAvailable = useClerkAvailable();
-
   if (!clerkAvailable) {
     console.warn('⚠️ Clerk is not available. Authentication will not work.');
     return <AuthProviderFallback>{children}</AuthProviderFallback>;
   }
-
   return <AuthProviderWithClerk>{children}</AuthProviderWithClerk>;
 }
 

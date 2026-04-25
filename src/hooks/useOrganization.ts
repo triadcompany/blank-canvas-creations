@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Organization {
@@ -18,39 +16,24 @@ interface Organization {
 }
 
 export function useOrganization() {
-  const { profile, orgId: authOrgId } = useAuth();
-  const resolvedOrgId = profile?.organization_id || authOrgId;
-  const [organization, setOrganization] = useState<Organization | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { orgId, orgName, loading } = useAuth();
 
-  useEffect(() => {
-    const fetchOrganization = async () => {
-      if (!resolvedOrgId) {
-        setLoading(false);
-        return;
+  const organization: Organization | null = orgId
+    ? {
+        id: orgId,
+        name: orgName,
+        email: null,
+        phone: null,
+        cnpj: null,
+        address: null,
+        city: null,
+        state: null,
+        zip_code: null,
+        is_active: true,
+        created_at: '',
+        updated_at: '',
       }
-
-      try {
-        const { data, error } = await supabase
-          .from('organizations')
-          .select('*')
-          .eq('id', resolvedOrgId)
-          .single();
-
-        if (error) {
-          console.error('Error fetching organization:', error);
-        } else {
-          setOrganization(data);
-        }
-      } catch (err) {
-        console.error('Error fetching organization:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrganization();
-  }, [resolvedOrgId]);
+    : null;
 
   return { organization, loading };
 }
