@@ -626,7 +626,14 @@ export function NewCampaignWizard({ onClose }: Props) {
       instance_name: instanceName,
       payload_type: payloadType as any,
       payload,
-      settings: { minDelay, maxDelay, limitPerHour, windowStart, windowEnd, noDuplicate },
+      settings: {
+        minDelay,
+        maxDelay,
+        limitPerHour,
+        // Só envia janela se o usuário tiver preenchido AMBOS os campos
+        ...(windowStart && windowEnd ? { windowStart, windowEnd } : {}),
+        noDuplicate,
+      },
       recipients: rows,
       profileId: profile.id,
       enableAutomation,
