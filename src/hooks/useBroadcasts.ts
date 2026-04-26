@@ -3,6 +3,27 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+// Dispara o broadcast-worker via fetch com keepalive: true para garantir
+// que o request não seja cancelado se a UI fechar o modal logo em seguida.
+// Era o motivo das campanhas ficarem em "Em andamento" sem disparar nada.
+async function triggerBroadcastWorker(campaignId: string) {
+  try {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+    await fetch(`${SUPABASE_URL}/functions/v1/broadcast-worker`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: SUPABASE_KEY,
+      },
+      body: JSON.stringify({ campaign_id: campaignId }),
+      keepalive: true,
+    });
+  } catch (err) {
+    console.error('[broadcasts] worker trigger failed:', err);
+  }
+}
 export interface BroadcastCampaign {
   id: string;
   organization_id: string;
