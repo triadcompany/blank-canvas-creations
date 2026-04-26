@@ -162,8 +162,8 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [limitPerHour, setLimitPerHour] = useState(600);
   // Janela vazia por padrão = sem restrição (o worker dispara a qualquer hora).
   // Se o usuário preencher, a janela é aplicada (timezone Brasil).
-  const [windowStart, setWindowStart] = useState('');
-  const [windowEnd, setWindowEnd] = useState('');
+  const [windowStart, setWindowStart] = useState('09:00');
+  const [windowEnd, setWindowEnd] = useState('18:00');
   const [noDuplicate, setNoDuplicate] = useState(true);
   const [enableAutomation, setEnableAutomation] = useState(false);
   const [selectedAutomationId, setSelectedAutomationId] = useState('');
