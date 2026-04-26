@@ -14,13 +14,14 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy,
+  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy, Pencil,
   MoreVertical, Search, FileSpreadsheet, Users, MessageSquare, Calendar,
   CheckCircle, MessageSquareReply, AlertTriangle, Clock,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { NewCampaignWizard } from '@/components/broadcasts/NewCampaignWizard';
+import { EditCampaignModal } from '@/components/broadcasts/EditCampaignModal';
 import { toast } from 'sonner';
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -40,6 +41,7 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = 
 export default function Broadcasts() {
   const { campaigns, loading, updateCampaignStatus, duplicateCampaign } = useBroadcasts();
   const [showWizard, setShowWizard] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<BroadcastCampaign | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const navigate = useNavigate();
@@ -58,6 +60,11 @@ export default function Broadcasts() {
   const handleDuplicate = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     duplicateCampaign.mutate(id);
+  };
+
+  const handleEdit = (e: React.MouseEvent, campaign: BroadcastCampaign) => {
+    e.stopPropagation();
+    setEditingCampaign(campaign);
   };
 
   return (
@@ -129,6 +136,7 @@ export default function Broadcasts() {
               onView={() => navigate(`/broadcasts/${c.id}`)}
               onStatusAction={handleStatusAction}
               onDuplicate={handleDuplicate}
+              onEdit={handleEdit}
             />
           ))}
         </div>
@@ -136,6 +144,13 @@ export default function Broadcasts() {
 
       {showWizard && (
         <NewCampaignWizard onClose={() => setShowWizard(false)} />
+      )}
+
+      {editingCampaign && (
+        <EditCampaignModal
+          campaign={editingCampaign}
+          onClose={() => setEditingCampaign(null)}
+        />
       )}
     </div>
   );
@@ -146,11 +161,13 @@ function CampaignCard({
   onView,
   onStatusAction,
   onDuplicate,
+  onEdit,
 }: {
   campaign: BroadcastCampaign;
   onView: () => void;
   onStatusAction: (e: React.MouseEvent, id: string, status: string) => void;
   onDuplicate: (e: React.MouseEvent, id: string) => void;
+  onEdit: (e: React.MouseEvent, campaign: BroadcastCampaign) => void;
 }) {
   const st = STATUS_CONFIG[c.status] ?? { label: c.status, className: 'bg-muted text-muted-foreground' };
   const src = SOURCE_CONFIG[c.source_type ?? 'spreadsheet'];
@@ -240,6 +257,11 @@ function CampaignCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {(c.status === 'paused' || c.status === 'scheduled' || c.status === 'canceled') && (
+                  <DropdownMenuItem onClick={e => onEdit(e, c)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Editar
+                  </DropdownMenuItem>
+                )}
                 {c.status === 'running' && (
                   <DropdownMenuItem onClick={e => onStatusAction(e, c.id, 'paused')}>
                     <Pause className="h-4 w-4 mr-2" /> Pausar
