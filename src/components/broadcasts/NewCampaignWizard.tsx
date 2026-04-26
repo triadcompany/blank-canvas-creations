@@ -160,8 +160,10 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [minDelay, setMinDelay] = useState(2);
   const [maxDelay, setMaxDelay] = useState(6);
   const [limitPerHour, setLimitPerHour] = useState(600);
-  const [windowStart, setWindowStart] = useState('09:00');
-  const [windowEnd, setWindowEnd] = useState('18:00');
+  // Janela vazia por padrão = sem restrição (o worker dispara a qualquer hora).
+  // Se o usuário preencher, a janela é aplicada (timezone Brasil).
+  const [windowStart, setWindowStart] = useState('');
+  const [windowEnd, setWindowEnd] = useState('');
   const [noDuplicate, setNoDuplicate] = useState(true);
   const [enableAutomation, setEnableAutomation] = useState(false);
   const [selectedAutomationId, setSelectedAutomationId] = useState('');
