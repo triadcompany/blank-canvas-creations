@@ -1474,7 +1474,7 @@ export function NewCampaignWizard({ onClose }: Props) {
                     ...(duplicates > 0 ? [['Duplicatas removidas', duplicates]] : []),
                     ['Delay', `${minDelay}s – ${maxDelay}s`],
                     ['Limite/hora', limitPerHour],
-                    ['Janela', `${windowStart} – ${windowEnd}`],
+                    ['Janela', windowStart && windowEnd ? `${windowStart} – ${windowEnd}` : 'Sem restrição (24h)'],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="flex justify-between">
                       <span className="text-sm text-muted-foreground">{label}</span>
