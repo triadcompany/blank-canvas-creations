@@ -149,6 +149,7 @@ export const useLeadDistribution = () => {
   const resetCursor = async () => {
     try {
       if (!ldOrgId) throw new Error('Organization not found');
+      if (!profile?.organization_id) throw new Error('Profile not found');
 
       const { error } = await (supabase.rpc as any)('reset_distribution_cursor', {
         p_organization_id: profile.organization_id

@@ -7,12 +7,16 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Settings, Users, Loader2, Save, Megaphone, MessageCircle, UserCheck } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import {
+  Settings, Users, Loader2, Save, Megaphone, MessageCircle, UserCheck, RefreshCw,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSupabaseProfiles } from '@/hooks/useSupabaseProfiles';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DistributionScheduleManager } from './DistributionScheduleManager';
 
 interface BucketSettings {
   id?: string;
@@ -51,6 +55,7 @@ const LeadDistribution: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState<'traffic' | 'non_traffic' | null>(null);
   const [globalEnabled, setGlobalEnabled] = useState(false);
   const [globalSettingsId, setGlobalSettingsId] = useState<string | undefined>();
   const [trafficSettings, setTrafficSettings] = useState<BucketSettings>(DEFAULT_BUCKET('traffic', orgId));
@@ -61,7 +66,6 @@ const LeadDistribution: React.FC = () => {
     if (!orgId) { setLoading(false); return; }
     setLoading(true);
     try {
-      // Fetch global settings from whatsapp_routing_settings
       const { data: globalData } = await supabase
         .from('whatsapp_routing_settings')
         .select('id, enabled')
@@ -73,7 +77,6 @@ const LeadDistribution: React.FC = () => {
         setGlobalSettingsId(globalData.id);
       }
 
-      // Fetch per-bucket settings
       const { data: bucketData } = await supabase
         .from('whatsapp_routing_bucket_settings')
         .select('*')
@@ -95,7 +98,6 @@ const LeadDistribution: React.FC = () => {
         }
       }
 
-      // Fetch routing state
       const { data: stateData } = await supabase
         .from('whatsapp_routing_state')
         .select('bucket, last_assigned_user_id')
@@ -109,9 +111,7 @@ const LeadDistribution: React.FC = () => {
     }
   }, [orgId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSave = async () => {
     if (!orgId || !isAdmin) return;
@@ -119,18 +119,18 @@ const LeadDistribution: React.FC = () => {
     try {
       // Save global toggle
       if (globalSettingsId) {
-        const { error: gErr } = await supabase
+        const { error } = await supabase
           .from('whatsapp_routing_settings')
           .update({ enabled: globalEnabled, updated_at: new Date().toISOString() })
           .eq('id', globalSettingsId);
-        if (gErr) { console.error('Global update error:', gErr); toast.error('Erro ao atualizar: ' + gErr.message); setSaving(false); return; }
+        if (error) { toast.error('Erro ao salvar: ' + error.message); setSaving(false); return; }
       } else {
-        const { data, error: gErr } = await supabase
+        const { data, error } = await supabase
           .from('whatsapp_routing_settings')
           .insert({ organization_id: orgId, enabled: globalEnabled })
           .select('id')
           .single();
-        if (gErr) { console.error('Global insert error:', gErr); toast.error('Erro ao inserir: ' + gErr.message); setSaving(false); return; }
+        if (error) { toast.error('Erro ao inserir: ' + error.message); setSaving(false); return; }
         if (data) setGlobalSettingsId(data.id);
       }
 
@@ -147,19 +147,19 @@ const LeadDistribution: React.FC = () => {
         };
 
         if (settings.id) {
-          const { error: bErr } = await supabase
+          const { error } = await supabase
             .from('whatsapp_routing_bucket_settings')
             .update(payload)
             .eq('id', settings.id);
-          if (bErr) { console.error('Bucket update error:', bErr); toast.error('Erro bucket: ' + bErr.message); }
+          if (error) toast.error('Erro bucket: ' + error.message);
         } else {
-          const { data, error: bErr } = await supabase
+          const { data, error } = await supabase
             .from('whatsapp_routing_bucket_settings')
             .insert(payload)
             .select('id')
             .single();
-          if (bErr) { console.error('Bucket insert error:', bErr); toast.error('Erro bucket: ' + bErr.message); }
-          if (data) {
+          if (error) toast.error('Erro bucket: ' + error.message);
+          else if (data) {
             if (settings.bucket === 'traffic') setTrafficSettings(s => ({ ...s, id: data.id }));
             else setNonTrafficSettings(s => ({ ...s, id: data.id }));
           }
@@ -168,27 +168,57 @@ const LeadDistribution: React.FC = () => {
 
       toast.success('Configurações salvas com sucesso');
       await fetchData();
-    } catch (err: any) {
-      console.error('Error saving settings:', err);
+    } catch (err) {
       toast.error('Erro ao salvar configurações');
     } finally {
       setSaving(false);
     }
   };
 
+  // Resolve user_id or id or clerk_user_id → display name
   const getUserName = (userId: string) => {
-    const p = profiles.find(pr => pr.user_id === userId || pr.id === userId);
+    if (!userId) return 'Usuário';
+    const p = profiles.find(
+      pr => pr.user_id === userId || pr.id === userId || (pr as any).clerk_user_id === userId
+    );
     return p?.name || 'Usuário desconhecido';
   };
 
+  // Returns the name of whoever will receive the NEXT lead in this bucket
   const getNextInQueue = (bucket: 'traffic' | 'non_traffic') => {
     const settings = bucket === 'traffic' ? trafficSettings : nonTrafficSettings;
     if (settings.mode !== 'auto' || settings.auto_assign_user_ids.length === 0) return null;
+
     const state = routingStates.find(s => s.bucket === bucket);
-    if (!state?.last_assigned_user_id) return getUserName(settings.auto_assign_user_ids[0]);
+    if (!state?.last_assigned_user_id) {
+      // No assignment yet → first user in list is next
+      return getUserName(settings.auto_assign_user_ids[0]);
+    }
+
     const lastIdx = settings.auto_assign_user_ids.indexOf(state.last_assigned_user_id);
-    const nextIdx = (lastIdx + 1) % settings.auto_assign_user_ids.length;
+    // If last assigned is not in current list (user removed), start from 0
+    const nextIdx = lastIdx === -1 ? 0 : (lastIdx + 1) % settings.auto_assign_user_ids.length;
     return getUserName(settings.auto_assign_user_ids[nextIdx]);
+  };
+
+  // Reset round-robin cursor for a bucket
+  const handleResetCursor = async (bucket: 'traffic' | 'non_traffic') => {
+    if (!orgId) return;
+    setResetting(bucket);
+    try {
+      await supabase
+        .from('whatsapp_routing_state')
+        .delete()
+        .eq('organization_id', orgId)
+        .eq('bucket', bucket);
+
+      setRoutingStates(prev => prev.filter(s => s.bucket !== bucket));
+      toast.success(`Fila de ${bucket === 'traffic' ? 'tráfego' : 'orgânico'} resetada — próximo lead vai para o primeiro usuário`);
+    } catch (err) {
+      toast.error('Erro ao resetar fila');
+    } finally {
+      setResetting(null);
+    }
   };
 
   const toggleUserInBucket = (bucket: 'traffic' | 'non_traffic', userId: string) => {
@@ -219,6 +249,7 @@ const LeadDistribution: React.FC = () => {
     const settings = bucket === 'traffic' ? trafficSettings : nonTrafficSettings;
     const setter = bucket === 'traffic' ? setTrafficSettings : setNonTrafficSettings;
     const nextUser = getNextInQueue(bucket);
+    const isResetting = resetting === bucket;
 
     return (
       <div className="space-y-5 pt-2">
@@ -255,7 +286,7 @@ const LeadDistribution: React.FC = () => {
                   <Label htmlFor={`${bucket}-auto`} className="cursor-pointer flex-1">
                     <span className="font-medium text-sm">Automático (Round-robin)</span>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Distribui alternando entre os usuários selecionados
+                      Distribui alternando entre os usuários selecionados em ordem circular
                     </p>
                   </Label>
                 </div>
@@ -271,43 +302,78 @@ const LeadDistribution: React.FC = () => {
               </RadioGroup>
             </div>
 
-            {/* Auto mode: multi-select users */}
+            {/* Auto mode: user list */}
             {settings.mode === 'auto' && (
               <div className="space-y-3">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   Usuários que recebem leads
+                  <span className="text-xs text-muted-foreground font-normal">
+                    (salve após selecionar)
+                  </span>
                 </Label>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {profiles.map((p) => (
-                    <label
-                      key={p.id}
-                      className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={settings.auto_assign_user_ids.includes(p.user_id)}
-                        onCheckedChange={() => toggleUserInBucket(bucket, p.user_id)}
-                        disabled={readOnly}
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">({p.role})</span>
-                      </div>
-                    </label>
-                  ))}
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {profiles.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-3 text-center">
+                      Nenhum usuário encontrado nesta organização
+                    </p>
+                  ) : (
+                    profiles.map((p) => (
+                      <label
+                        key={p.id}
+                        className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={settings.auto_assign_user_ids.includes(p.user_id)}
+                          onCheckedChange={() => toggleUserInBucket(bucket, p.user_id)}
+                          disabled={readOnly}
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">({p.role})</span>
+                        </div>
+                      </label>
+                    ))
+                  )}
                 </div>
 
-                {/* Status */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
+                {/* Status row */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="p-3 bg-muted/50 rounded-lg">
-                    <p className="text-xs text-muted-foreground mb-1">Usuários ativos</p>
-                    <p className="text-sm font-semibold">{settings.auto_assign_user_ids.length}</p>
+                    <p className="text-xs text-muted-foreground mb-1">Usuários na fila</p>
+                    <p className="text-sm font-semibold">
+                      {settings.auto_assign_user_ids.length > 0
+                        ? `${settings.auto_assign_user_ids.length} usuário${settings.auto_assign_user_ids.length > 1 ? 's' : ''}`
+                        : <span className="text-muted-foreground font-normal text-xs">Nenhum selecionado</span>}
+                    </p>
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <p className="text-xs text-muted-foreground mb-1">Próximo na fila</p>
-                    <p className="text-sm font-semibold">{nextUser || 'N/A'}</p>
+                    <p className="text-sm font-semibold">
+                      {nextUser ?? (
+                        <span className="text-muted-foreground font-normal text-xs">
+                          {settings.auto_assign_user_ids.length === 0 ? 'Sem usuários' : 'N/A'}
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
+
+                {/* Reset cursor */}
+                {isAdmin && settings.auto_assign_user_ids.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleResetCursor(bucket)}
+                    disabled={isResetting}
+                    className="w-full font-poppins gap-2 text-xs"
+                  >
+                    {isResetting
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <RefreshCw className="h-3.5 w-3.5" />}
+                    Resetar fila (próximo vai para {getUserName(settings.auto_assign_user_ids[0])})
+                  </Button>
+                )}
               </div>
             )}
 
@@ -334,6 +400,12 @@ const LeadDistribution: React.FC = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {settings.fixed_user_id && (
+                  <p className="text-xs text-muted-foreground">
+                    Todos os leads de {bucket === 'traffic' ? 'tráfego' : 'orgânico'} serão atribuídos a{' '}
+                    <strong>{getUserName(settings.fixed_user_id)}</strong>.
+                  </p>
+                )}
               </div>
             )}
           </>
@@ -352,7 +424,8 @@ const LeadDistribution: React.FC = () => {
             Distribuição Automática de Leads
           </CardTitle>
           <CardDescription>
-            Configure como os leads do WhatsApp devem ser distribuídos automaticamente para os vendedores
+            Configure como os leads do WhatsApp são distribuídos automaticamente para os vendedores.
+            Leads de tráfego pago (Meta Ads) e leads orgânicos têm filas independentes.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -360,7 +433,7 @@ const LeadDistribution: React.FC = () => {
             <div className="space-y-1">
               <Label>Distribuição Automática</Label>
               <p className="text-sm text-muted-foreground">
-                Quando ativada, os leads serão distribuídos automaticamente conforme as regras por bucket
+                Quando ativada, novos leads são atribuídos automaticamente conforme as regras por bucket
               </p>
             </div>
             <Switch
@@ -372,7 +445,7 @@ const LeadDistribution: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Per-bucket config with tabs */}
+      {/* Per-bucket configuration */}
       {globalEnabled && (
         <Card>
           <CardHeader>
@@ -381,7 +454,8 @@ const LeadDistribution: React.FC = () => {
               Configuração por Bucket
             </CardTitle>
             <CardDescription>
-              Configure filas separadas para tráfego (ads) e não-tráfego (orgânico)
+              Tráfego = leads com marcador de anúncio (palavra "anuncio" na mensagem).
+              Não-tráfego = leads orgânicos e clientes antigos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -389,7 +463,7 @@ const LeadDistribution: React.FC = () => {
               <TabsList className="w-full">
                 <TabsTrigger value="traffic" className="flex-1 gap-2">
                   <Megaphone className="h-4 w-4" />
-                  Tráfego
+                  Tráfego (Ads)
                 </TabsTrigger>
                 <TabsTrigger value="non_traffic" className="flex-1 gap-2">
                   <MessageCircle className="h-4 w-4" />
@@ -407,7 +481,41 @@ const LeadDistribution: React.FC = () => {
         </Card>
       )}
 
-      {/* Save */}
+      {/* Time-based schedule rules */}
+      {globalEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              Regras de Horário
+            </CardTitle>
+            <CardDescription>
+              Defina diferentes conjuntos de usuários para cada período do dia.
+              Quando uma regra de horário se aplica, ela substitui a lista padrão do round-robin.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DistributionScheduleManager
+              orgId={orgId}
+              profiles={profiles}
+              isAdmin={isAdmin}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* How it works info */}
+      {globalEnabled && (
+        <div className="rounded-xl bg-muted/40 border border-border p-4 text-xs text-muted-foreground font-poppins space-y-1.5">
+          <p className="font-semibold text-foreground text-sm mb-2">Como funciona a distribuição</p>
+          <p>1. Ao chegar um lead pelo WhatsApp, o sistema identifica se é <strong>tráfego</strong> (mensagem contém "anuncio") ou <strong>orgânico</strong>.</p>
+          <p>2. Verifica se há uma <strong>regra de horário ativa</strong> para o momento atual — se houver, usa os usuários daquela regra.</p>
+          <p>3. Se não há regra de horário aplicável, usa a <strong>lista padrão do bucket</strong> em round-robin.</p>
+          <p>4. No modo <strong>round-robin</strong>, cada novo lead vai para o próximo usuário da fila em sequência circular.</p>
+          <p>5. Leads já atribuídos, clientes ou oportunidades ganhas <strong>não são redistribuídos</strong>.</p>
+        </div>
+      )}
+
+      {/* Save button */}
       {isAdmin && (
         <Button onClick={handleSave} disabled={saving} className="w-full">
           {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}

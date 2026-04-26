@@ -1524,6 +1524,70 @@ async function autoCreateLeadAndOpportunity(
 }
 
 // ── Helper: Apply lead distribution rules (dual-bucket with independent counters) ──
+async function checkDistributionSchedule(
+  supabase: any,
+  orgId: string,
+  bucket: string,
+): Promise<string[] | null> {
+  try {
+    const { data: schedules, error } = await supabase
+      .from("distribution_schedules")
+      .select("days_of_week, start_time, end_time, assigned_user_ids, priority")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .in("bucket", [bucket, "all"])
+      .order("priority", { ascending: true });
+
+    if (error || !schedules?.length) return null;
+
+    // Current Brazil time
+    const now = new Date();
+    const brtFormatter = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = brtFormatter.formatToParts(now);
+    const weekdayShort = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+
+    // Map pt-BR short weekday → 0–6 (Sun=0)
+    const weekdayMap: Record<string, number> = {
+      dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sáb: 6,
+    };
+    const currentDay = weekdayMap[weekdayShort.toLowerCase()] ?? now.getDay();
+    const currentTime = `${hour}:${minute}`;
+
+    for (const schedule of schedules) {
+      const { days_of_week, start_time, end_time, assigned_user_ids } = schedule;
+
+      if (!days_of_week?.includes(currentDay)) continue;
+      if (!assigned_user_ids?.length) continue;
+
+      // Compare HH:MM strings lexicographically — works because zero-padded
+      const isOvernight = start_time > end_time;
+      const inWindow = isOvernight
+        ? currentTime >= start_time || currentTime <= end_time
+        : currentTime >= start_time && currentTime <= end_time;
+
+      if (inWindow) {
+        console.log(
+          `[distribution] Schedule matched: day=${currentDay} time=${currentTime} window=${start_time}-${end_time} users=${assigned_user_ids.join(",")}`,
+        );
+        return assigned_user_ids as string[];
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.error("[distribution] checkDistributionSchedule error:", err);
+    return null;
+  }
+}
+
 async function applyLeadDistribution(
   supabase: any,
   orgId: string,
@@ -1598,7 +1662,9 @@ async function applyLeadDistribution(
       }
     } else if (bucketSettings.mode === "auto") {
       // ── Round-robin mode with independent counter ──
-      const userIds: string[] = bucketSettings.auto_assign_user_ids || [];
+      // Check time-based schedule rules first; fall back to default list
+      const scheduleUsers = await checkDistributionSchedule(supabase, orgId, bucket);
+      const userIds: string[] = scheduleUsers ?? bucketSettings.auto_assign_user_ids ?? [];
       if (userIds.length === 0) {
         console.log(`[distribution] No users configured for bucket="${bucket}"`);
         return;
