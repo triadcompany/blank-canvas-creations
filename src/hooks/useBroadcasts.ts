@@ -190,9 +190,7 @@ export function useBroadcasts() {
 
       // Only trigger worker immediately if not scheduled
       if (!isScheduled) {
-        supabase.functions.invoke('broadcast-worker', {
-          body: { campaign_id: campaign.id },
-        }).catch(err => console.error('Worker trigger error:', err));
+        await triggerBroadcastWorker(campaign.id);
       }
 
       return campaign.id;
@@ -265,9 +263,7 @@ export function useBroadcasts() {
       if (error) throw error;
 
       if (status === 'running') {
-        supabase.functions.invoke('broadcast-worker', {
-          body: { campaign_id: id },
-        }).catch(err => console.error('Worker trigger error:', err));
+        await triggerBroadcastWorker(id);
       }
     },
     onSuccess: () => {
@@ -290,9 +286,7 @@ export function useBroadcasts() {
         .update({ status: 'running' })
         .eq('id', campaignId);
 
-      supabase.functions.invoke('broadcast-worker', {
-        body: { campaign_id: campaignId },
-      }).catch(err => console.error('Worker trigger error:', err));
+      await triggerBroadcastWorker(campaignId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
