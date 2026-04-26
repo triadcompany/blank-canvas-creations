@@ -1416,8 +1416,8 @@ export function NewCampaignWizard({ onClose }: Props) {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><Label>Limite/hora</Label><Input type="number" value={limitPerHour} onChange={e => setLimitPerHour(+e.target.value)} /></div>
-                <div><Label>Janela início</Label><Input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} /></div>
-                <div><Label>Janela fim</Label><Input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} /></div>
+                <div><Label>Janela início (opcional)</Label><Input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} placeholder="24h" /></div>
+                <div><Label>Janela fim (opcional)</Label><Input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} placeholder="24h" /></div>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={noDuplicate} onCheckedChange={setNoDuplicate} />
