@@ -200,7 +200,15 @@ export function useBroadcasts() {
       automation_id?: string | null;
       scheduled_at?: string | null;
     }) => {
-      const update: Record<string, any> = {};
+      const update: {
+        name?: string;
+        payload?: any;
+        settings?: any;
+        response_window_hours?: number;
+        enable_automation?: boolean;
+        automation_id?: string | null;
+        scheduled_at?: string | null;
+      } = {};
       if (params.name !== undefined) update.name = params.name;
       if (params.payload !== undefined) update.payload = params.payload;
       if (params.settings !== undefined) update.settings = params.settings;

@@ -62,7 +62,7 @@ export function useLeadSources() {
 
   const updateSource = useMutation({
     mutationFn: async ({ id, name, description, is_active, sort_order }: { id: string; name?: string; description?: string | null; is_active?: boolean; sort_order?: number }) => {
-      const updates: Record<string, unknown> = {};
+      const updates: { name?: string; description?: string | null; is_active?: boolean; sort_order?: number } = {};
       if (name !== undefined) updates.name = name.trim();
       if (description !== undefined) updates.description = description;
       if (is_active !== undefined) updates.is_active = is_active;
