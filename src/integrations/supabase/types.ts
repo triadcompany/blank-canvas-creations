@@ -965,7 +965,10 @@ export type Database = {
           payload: Json
           payload_type: string
           response_window_hours: number
+          scheduled_at: string | null
           settings: Json
+          source_filters: Json | null
+          source_type: string
           status: string
         }
         Insert: {
@@ -981,7 +984,10 @@ export type Database = {
           payload?: Json
           payload_type: string
           response_window_hours?: number
+          scheduled_at?: string | null
           settings?: Json
+          source_filters?: Json | null
+          source_type?: string
           status?: string
         }
         Update: {
@@ -997,7 +1003,10 @@ export type Database = {
           payload?: Json
           payload_type?: string
           response_window_hours?: number
+          scheduled_at?: string | null
           settings?: Json
+          source_filters?: Json | null
+          source_type?: string
           status?: string
         }
         Relationships: [
@@ -2271,6 +2280,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      distribution_schedules: {
+        Row: {
+          assigned_user_ids: string[]
+          bucket: string
+          created_at: string
+          days_of_week: number[]
+          end_time: string
+          id: string
+          is_active: boolean
+          name: string
+          organization_id: string
+          priority: number
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_user_ids?: string[]
+          bucket?: string
+          created_at?: string
+          days_of_week?: number[]
+          end_time: string
+          id?: string
+          is_active?: boolean
+          name: string
+          organization_id: string
+          priority?: number
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_user_ids?: string[]
+          bucket?: string
+          created_at?: string
+          days_of_week?: number[]
+          end_time?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          organization_id?: string
+          priority?: number
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       entradas: {
         Row: {

@@ -199,17 +199,44 @@ export function NewCampaignWizard({ onClose }: Props) {
   }, [recording]);
 
   // ── Remote data ──
+  // WhatsApp instances: prefer whatsapp_connections (real source) and only show connected ones.
+  // Falls back to whatsapp_integrations if no connection records exist.
   const { data: instances } = useQuery({
     queryKey: ['whatsapp-instances', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data: connections } = await supabase
+        .from('whatsapp_connections')
+        .select('instance_name, status, phone_number')
+        .eq('organization_id', orgId!)
+        .eq('status', 'connected');
+      if (connections && connections.length > 0) {
+        return connections.map((c: any) => ({
+          instance_name: c.instance_name,
+          status: c.status,
+          phone_number: c.phone_number,
+        }));
+      }
+      // Fallback for legacy orgs that only have whatsapp_integrations rows
+      const { data: legacy } = await supabase
         .from('whatsapp_integrations')
-        .select('instance_name, status')
-        .eq('organization_id', orgId!);
-      return data || [];
+        .select('instance_name, status, phone_number')
+        .eq('organization_id', orgId!)
+        .eq('status', 'connected');
+      return (legacy || []).map((c: any) => ({
+        instance_name: c.instance_name,
+        status: c.status,
+        phone_number: c.phone_number,
+      }));
     },
   });
+
+  // Auto-select the only available instance
+  useEffect(() => {
+    if (!instanceName && instances && instances.length === 1) {
+      setInstanceName(instances[0].instance_name);
+    }
+  }, [instances, instanceName]);
 
   const { data: pipelines } = useQuery({
     queryKey: ['pipelines-for-broadcast', orgId],
@@ -231,16 +258,26 @@ export function NewCampaignWizard({ onClose }: Props) {
     },
   });
 
+  // Members of the current organization (uses org_members → profiles join,
+  // because profiles.organization_id only reflects the user's "current" org).
   const { data: sellers } = useQuery({
     queryKey: ['sellers-for-broadcast', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, name')
+      const { data: members, error } = await supabase
+        .from('org_members')
+        .select('clerk_user_id')
         .eq('organization_id', orgId!)
+        .eq('status', 'active');
+      if (error || !members?.length) return [];
+      const clerkIds = members.map(m => m.clerk_user_id).filter(Boolean) as string[];
+      if (!clerkIds.length) return [];
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, name, clerk_user_id')
+        .in('clerk_user_id', clerkIds)
         .order('name');
-      return data || [];
+      return (profs || []).filter(p => p.name);
     },
   });
 
@@ -978,16 +1015,32 @@ export function NewCampaignWizard({ onClose }: Props) {
 
               <div>
                 <Label>Instância Evolution *</Label>
-                <Select value={instanceName} onValueChange={setInstanceName}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {(instances || []).map(inst => (
-                      <SelectItem key={inst.instance_name} value={inst.instance_name}>
-                        {inst.instance_name} ({inst.status})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {(!instances || instances.length === 0) ? (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
+                      <span>Nenhum WhatsApp conectado.</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { onClose(); window.location.href = '/configuracoes/whatsapp'; }}
+                      >
+                        Configurar WhatsApp
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Select value={instanceName} onValueChange={setInstanceName}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {instances.map(inst => (
+                        <SelectItem key={inst.instance_name} value={inst.instance_name}>
+                          {inst.instance_name}{inst.phone_number ? ` · ${inst.phone_number}` : ''} ({inst.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div>
