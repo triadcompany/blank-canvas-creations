@@ -54,12 +54,14 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
 async function callMetaCapiEndpoint(body: Record<string, unknown>) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? SUPABASE_KEY;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-capi-settings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });
@@ -98,13 +100,37 @@ export function MetaAdsSettings() {
 
   return (
     <div className="space-y-6">
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          Esta tela configura a <strong>conexão</strong> com a Meta Conversions API (CAPI).
-          O envio de eventos é feito exclusivamente via <strong>Automações → Ação "Enviar para Meta (CAPI)"</strong>.
-        </AlertDescription>
-      </Alert>
+      {/* Guide */}
+      <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-poppins text-blue-800 dark:text-blue-200">Como fazer o Meta CAPI funcionar</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-3 text-sm">
+            <div className="flex-1 flex items-start gap-2 p-3 bg-blue-100/60 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+              <span className="font-bold text-blue-600 dark:text-blue-400 text-base leading-none mt-0.5">①</span>
+              <div>
+                <p className="font-semibold text-blue-800 dark:text-blue-200">Configurar conexão</p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">Pixel ID + Access Token abaixo</p>
+              </div>
+            </div>
+            <div className="flex-1 flex items-start gap-2 p-3 bg-muted/60 rounded-lg border">
+              <span className="font-bold text-muted-foreground text-base leading-none mt-0.5">②</span>
+              <div>
+                <p className="font-semibold">Criar automação</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Automações → Nova → Ação "Enviar para Meta"</p>
+              </div>
+            </div>
+            <div className="flex-1 flex items-start gap-2 p-3 bg-muted/60 rounded-lg border">
+              <span className="font-bold text-muted-foreground text-base leading-none mt-0.5">③</span>
+              <div>
+                <p className="font-semibold">Ativar e testar</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Clique "Testar Conexão" após salvar</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {isAdmin && (
         <TechStatusChecklist orgId={orgId} profileId={profileId} />
@@ -320,6 +346,10 @@ function ConnectionCard({ orgId, profileId, isAdmin }: { orgId: string; profileI
       toast.error("Pixel ID e Access Token são obrigatórios");
       return;
     }
+    if (!/^\d{10,16}$/.test(pixelId.trim())) {
+      toast.error("Pixel ID inválido — deve conter apenas números (10 a 16 dígitos). Ex: 123456789012345");
+      return;
+    }
     setSaving(true);
     try {
       const { status, data } = await callMetaCapiEndpoint({
@@ -356,12 +386,19 @@ function ConnectionCard({ orgId, profileId, isAdmin }: { orgId: string; profileI
         organization_id: orgId,
       });
       if (data.ok) {
-        toast.success(data.message || "Conexão OK!");
+        toast.success(
+          `${data.message || "Conexão funcionando!"} Verifique em Gerenciador de Eventos → Teste de Eventos.`,
+          { duration: 8000 }
+        );
       } else {
-        const msg = data.code === "MISSING_PERMISSION"
-          ? "Seu token não tem permissão. Use System User no Business Manager."
-          : data.message || "Erro desconhecido";
-        toast.error(msg, { duration: 8000 });
+        const codeMessages: Record<string, string> = {
+          INVALID_TOKEN: "Access Token inválido ou expirado. Gere um novo token no Business Manager.",
+          MISSING_PERMISSION: "Seu token não tem permissão para este Pixel. Use um System User com acesso ao Dataset.",
+          INVALID_DATASET: "Pixel ID não encontrado. Verifique o ID no Gerenciador de Eventos.",
+          NETWORK_ERROR: "Erro de rede ao conectar com a Meta. Tente novamente.",
+        };
+        const msg = codeMessages[data.code] || data.message || "Erro desconhecido";
+        toast.error(msg, { duration: 10000 });
         setErrorDetail({ endpoint: "meta-capi-settings (test)", httpStatus: status, response: data, message: msg });
       }
     } catch (err: any) {
@@ -427,8 +464,8 @@ function ConnectionCard({ orgId, profileId, isAdmin }: { orgId: string; profileI
           {config && !isAdmin ? (
             <div className="space-y-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Dataset / Pixel ID</Label>
-                <p className="font-mono text-sm">{config.pixel_id}</p>
+                <Label className="text-xs text-muted-foreground">Pixel ID (Dataset)</Label>
+                <p className="font-mono text-sm">{"•".repeat(Math.max(0, config.pixel_id.length - 4))}{config.pixel_id.slice(-4)}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Access Token</Label>
@@ -450,19 +487,34 @@ function ConnectionCard({ orgId, profileId, isAdmin }: { orgId: string; profileI
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="capi-pixel-id">Dataset ID / Pixel ID</Label>
-                <Input id="capi-pixel-id" placeholder="123456789012345" value={pixelId} onChange={(e) => setPixelId(e.target.value)} />
-                <p className="text-xs text-muted-foreground">
-                  Encontre no{" "}
-                  <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-                    Events Manager <ExternalLink className="h-3 w-3" />
-                  </a>
-                </p>
+                <Label htmlFor="capi-pixel-id">Pixel ID (Dataset ID)</Label>
+                <Input
+                  id="capi-pixel-id"
+                  placeholder="Ex: 123456789012345"
+                  value={pixelId}
+                  onChange={(e) => setPixelId(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                  inputMode="numeric"
+                  className={pixelId && !/^\d{10,16}$/.test(pixelId) ? "border-destructive" : ""}
+                />
+                {pixelId && !/^\d{10,16}$/.test(pixelId) ? (
+                  <p className="text-xs text-destructive">Pixel ID inválido — apenas números, 10 a 16 dígitos</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Encontre em{" "}
+                    <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      Gerenciador de Eventos <ExternalLink className="h-3 w-3" />
+                    </a>
+                    {" "}→ Configurações → Dataset ID
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="capi-token">Access Token</Label>
+                <Label htmlFor="capi-token">Access Token da API de Conversões</Label>
                 <Input id="capi-token" type="password" placeholder="EAAxxxxxxxxxxxxx..." value={accessToken} onChange={(e) => setAccessToken(e.target.value)} />
+                <p className="text-xs text-muted-foreground">
+                  Gere em Gerenciador de Eventos → Configurações → API de Conversões
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -565,7 +617,7 @@ function QueueLogsSection({ orgId, profileId, isAdmin }: { orgId: string; profil
 
   const statusBadge = (status: string) => {
     switch (status) {
-      case "sent":
+      case "success":
         return <Badge variant="outline" className="gap-1 text-xs text-emerald-600 border-emerald-300"><Check className="h-3 w-3" /> Enviado</Badge>;
       case "failed":
       case "dead":

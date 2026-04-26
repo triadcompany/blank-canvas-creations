@@ -18,6 +18,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 // ─── Types ───
 interface QueueItem {
@@ -50,12 +51,14 @@ const META_EVENT_OPTIONS = [
 ];
 
 async function callMetaCapiEndpoint(body: Record<string, unknown>) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? SUPABASE_KEY;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-capi-settings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });
@@ -68,15 +71,26 @@ export function MetaCapiAutomations() {
   const orgId = profile?.organization_id || authOrgId;
   const profileId = profile?.id || user?.id || null;
   const isAdmin = role === "admin";
+  const [pixelConfigured, setPixelConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!orgId) return;
+    (supabase as any)
+      .from("meta_capi_settings")
+      .select("id, enabled")
+      .eq("organization_id", orgId)
+      .maybeSingle()
+      .then(({ data }: { data: any }) => {
+        setPixelConfigured(!!(data?.id));
+      });
+  }, [orgId]);
 
   if (!orgId) {
     return (
       <div className="space-y-6">
         <Alert>
           <Info className="h-4 w-4" />
-          <AlertDescription>
-            Carregando dados do usuário...
-          </AlertDescription>
+          <AlertDescription>Carregando dados do usuário...</AlertDescription>
         </Alert>
       </div>
     );
@@ -84,6 +98,23 @@ export function MetaCapiAutomations() {
 
   return (
     <div className="space-y-6">
+      {pixelConfigured === false && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between flex-wrap gap-2">
+            <span>
+              Nenhum Pixel configurado. Configure o Pixel ID e Access Token antes de usar os envios de eventos.
+            </span>
+            <a
+              href="/settings?tab=meta-ads"
+              className="underline font-medium whitespace-nowrap"
+            >
+              Ir para Configurações →
+            </a>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
