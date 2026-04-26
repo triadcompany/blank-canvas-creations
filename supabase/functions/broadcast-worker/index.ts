@@ -173,14 +173,26 @@ serve(async (req) => {
               media: payload.media_url,
               caption: payload.caption || "",
             };
-          } else {
-            // audio
+          } else if (payloadType === "audio") {
+            sendUrl = `${evolutionBaseUrl}/message/sendWhatsAppAudio/${campaign.instance_name}`;
+            sendBody = {
+              number: phone,
+              audio: payload.audio_url,
+              encoding: true,
+            };
+          } else if (payloadType === "document") {
             sendUrl = `${evolutionBaseUrl}/message/sendMedia/${campaign.instance_name}`;
             sendBody = {
               number: phone,
-              mediatype: "audio",
+              mediatype: "document",
               media: payload.media_url,
+              fileName: payload.file_name || "documento",
+              caption: payload.caption || "",
             };
+          } else {
+            // fallback — should not reach here
+            sendUrl = `${evolutionBaseUrl}/message/sendText/${campaign.instance_name}`;
+            sendBody = { number: phone, text: "[mídia não suportada]" };
           }
 
           const res = await fetch(sendUrl, {
