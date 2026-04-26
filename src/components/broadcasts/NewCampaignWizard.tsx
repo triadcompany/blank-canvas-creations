@@ -157,9 +157,9 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [buttons, setButtons] = useState<Array<{ label: string; value: string }>>([]);
   const [messageText, setMessageText] = useState('');
   const [caption, setCaption] = useState('');
-  const [minDelay, setMinDelay] = useState(20);
-  const [maxDelay, setMaxDelay] = useState(60);
-  const [limitPerHour, setLimitPerHour] = useState(80);
+  const [minDelay, setMinDelay] = useState(2);
+  const [maxDelay, setMaxDelay] = useState(6);
+  const [limitPerHour, setLimitPerHour] = useState(600);
   const [windowStart, setWindowStart] = useState('09:00');
   const [windowEnd, setWindowEnd] = useState('18:00');
   const [noDuplicate, setNoDuplicate] = useState(true);
@@ -1365,6 +1365,40 @@ export function NewCampaignWizard({ onClose }: Props) {
                   Enviando arquivo para o servidor...
                 </div>
               )}
+
+              {/* Speed presets */}
+              <div className="space-y-2">
+                <Label>Velocidade dos disparos</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={minDelay === 5 && maxDelay === 15 ? 'default' : 'outline'}
+                    onClick={() => { setMinDelay(5); setMaxDelay(15); setLimitPerHour(240); }}
+                  >
+                    Conservador (5–15s)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={minDelay === 2 && maxDelay === 6 ? 'default' : 'outline'}
+                    onClick={() => { setMinDelay(2); setMaxDelay(6); setLimitPerHour(600); }}
+                  >
+                    Moderado (2–6s) — recomendado
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={minDelay === 1 && maxDelay === 3 ? 'default' : 'outline'}
+                    onClick={() => { setMinDelay(1); setMaxDelay(3); setLimitPerHour(1200); }}
+                  >
+                    Rápido (1–3s)
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Quanto mais rápido, maior o risco de o WhatsApp bloquear o número. Ajuste manualmente abaixo se quiser.
+                </p>
+              </div>
 
               {/* Settings */}
               <div className="grid grid-cols-2 gap-4">
