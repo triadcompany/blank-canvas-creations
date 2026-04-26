@@ -120,7 +120,7 @@ export function useSupabaseLeads(pipelineId?: string) {
       });
 
       if (error) throw new Error(error.message);
-      return (data || []) as Lead[];
+      return ((data as unknown) as Lead[]) || [];
     },
     meta: { errorMessage: 'Erro ao carregar leads' },
   });
