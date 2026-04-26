@@ -199,17 +199,44 @@ export function NewCampaignWizard({ onClose }: Props) {
   }, [recording]);
 
   // ── Remote data ──
+  // WhatsApp instances: prefer whatsapp_connections (real source) and only show connected ones.
+  // Falls back to whatsapp_integrations if no connection records exist.
   const { data: instances } = useQuery({
     queryKey: ['whatsapp-instances', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data: connections } = await supabase
+        .from('whatsapp_connections')
+        .select('instance_name, status, phone_number')
+        .eq('organization_id', orgId!)
+        .eq('status', 'connected');
+      if (connections && connections.length > 0) {
+        return connections.map((c: any) => ({
+          instance_name: c.instance_name,
+          status: c.status,
+          phone_number: c.phone_number,
+        }));
+      }
+      // Fallback for legacy orgs that only have whatsapp_integrations rows
+      const { data: legacy } = await supabase
         .from('whatsapp_integrations')
-        .select('instance_name, status')
-        .eq('organization_id', orgId!);
-      return data || [];
+        .select('instance_name, status, phone_number')
+        .eq('organization_id', orgId!)
+        .eq('status', 'connected');
+      return (legacy || []).map((c: any) => ({
+        instance_name: c.instance_name,
+        status: c.status,
+        phone_number: c.phone_number,
+      }));
     },
   });
+
+  // Auto-select the only available instance
+  useEffect(() => {
+    if (!instanceName && instances && instances.length === 1) {
+      setInstanceName(instances[0].instance_name);
+    }
+  }, [instances, instanceName]);
 
   const { data: pipelines } = useQuery({
     queryKey: ['pipelines-for-broadcast', orgId],
