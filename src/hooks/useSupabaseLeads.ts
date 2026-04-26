@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -352,6 +352,62 @@ export function useSupabaseLeads(pipelineId?: string) {
       toast({ title: 'Erro', description: err.message || 'Erro ao excluir lead. Verifique suas permissões.', variant: 'destructive' });
     },
   });
+
+  // ── Supabase Realtime — updates cache without page reload ────────────────
+  // Refs keep the callback closure stable without re-subscribing on every render.
+  const isAdminRef = useRef(isAdmin);
+  const profileIdRef = useRef(profile?.id);
+  const stagesRef = useRef(stages);
+  const queryClientRef = useRef(queryClient);
+  isAdminRef.current = isAdmin;
+  profileIdRef.current = profile?.id;
+  stagesRef.current = stages;
+  queryClientRef.current = queryClient;
+
+  useEffect(() => {
+    if (!orgId) return;
+
+    const channel = supabase
+      .channel(`leads-rt-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'leads', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const qc = queryClientRef.current;
+          const key = leadsKey(orgId, isAdminRef.current, profileIdRef.current);
+
+          if (payload.eventType === 'DELETE') {
+            // Remove immediately from cache — no refetch needed
+            const deletedId = (payload.old as any).id as string;
+            qc.setQueryData<Lead[]>(key, (old) => (old ?? []).filter((l) => l.id !== deletedId));
+          } else if (payload.eventType === 'UPDATE') {
+            // Patch cache with updated fields + resolve stage_name from local stages
+            const updated = payload.new as any;
+            qc.setQueryData<Lead[]>(key, (old) =>
+              (old ?? []).map((l) =>
+                l.id === updated.id
+                  ? {
+                      ...l,
+                      ...updated,
+                      stage_name:
+                        stagesRef.current.find((s) => s.id === updated.stage_id)?.name ??
+                        l.stage_name,
+                    }
+                  : l
+              )
+            );
+          } else if (payload.eventType === 'INSERT') {
+            // Invalidate so the RPC is re-run with all JOIN fields (stage_name, seller_name…)
+            qc.invalidateQueries({ queryKey: key });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orgId]); // Recreate channel whenever the active org changes
 
   // ── Stable wrappers (same signatures as before) ───────────────────────────
   const moveLead = (leadId: string, newStageId: string) =>
