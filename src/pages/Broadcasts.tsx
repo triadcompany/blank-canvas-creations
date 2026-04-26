@@ -257,6 +257,11 @@ function CampaignCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {(c.status === 'paused' || c.status === 'scheduled' || c.status === 'canceled') && (
+                  <DropdownMenuItem onClick={e => onEdit(e, c)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Editar
+                  </DropdownMenuItem>
+                )}
                 {c.status === 'running' && (
                   <DropdownMenuItem onClick={e => onStatusAction(e, c.id, 'paused')}>
                     <Pause className="h-4 w-4 mr-2" /> Pausar
