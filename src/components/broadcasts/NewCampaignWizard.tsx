@@ -1015,16 +1015,32 @@ export function NewCampaignWizard({ onClose }: Props) {
 
               <div>
                 <Label>Instância Evolution *</Label>
-                <Select value={instanceName} onValueChange={setInstanceName}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {(instances || []).map(inst => (
-                      <SelectItem key={inst.instance_name} value={inst.instance_name}>
-                        {inst.instance_name} ({inst.status})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {(!instances || instances.length === 0) ? (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
+                      <span>Nenhum WhatsApp conectado.</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { onClose(); window.location.href = '/configuracoes/whatsapp'; }}
+                      >
+                        Configurar WhatsApp
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Select value={instanceName} onValueChange={setInstanceName}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {instances.map(inst => (
+                        <SelectItem key={inst.instance_name} value={inst.instance_name}>
+                          {inst.instance_name}{inst.phone_number ? ` · ${inst.phone_number}` : ''} ({inst.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div>
