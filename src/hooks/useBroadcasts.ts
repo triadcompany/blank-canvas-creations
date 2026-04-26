@@ -113,6 +113,11 @@ export function useBroadcasts() {
       sourceFilters?: Record<string, any> | null;
       scheduledAt?: string | null;
     }) => {
+      // Fail fast before touching the DB
+      if (!params.recipients || params.recipients.length === 0) {
+        throw new Error('Nenhum destinatário válido encontrado. Verifique os telefones da sua lista.');
+      }
+
       const isScheduled = !!params.scheduledAt;
       const { data: campaign, error: cErr } = await supabase
         .from('broadcast_campaigns')
@@ -137,19 +142,29 @@ export function useBroadcasts() {
         .single();
       if (cErr) throw cErr;
 
-      // Insert recipients in batches of 500
+      // Insert recipients in batches of 500.
+      // On failure: cancel the campaign so it doesn't stay stuck in 'running'.
       const batchSize = 500;
-      for (let i = 0; i < params.recipients.length; i += batchSize) {
-        const batch = params.recipients.slice(i, i + batchSize).map(r => ({
-          campaign_id: campaign.id,
-          organization_id: orgId!,
-          phone: r.phone,
-          name: r.name || null,
-          variables: r.variables || null,
-          status: 'pending' as const,
-        }));
-        const { error: rErr } = await supabase.from('broadcast_recipients').insert(batch);
-        if (rErr) throw rErr;
+      try {
+        for (let i = 0; i < params.recipients.length; i += batchSize) {
+          const batch = params.recipients.slice(i, i + batchSize).map(r => ({
+            campaign_id: campaign.id,
+            organization_id: orgId!,
+            phone: r.phone,
+            name: r.name || null,
+            variables: r.variables || null,
+            status: 'pending' as const,
+          }));
+          const { error: rErr } = await supabase.from('broadcast_recipients').insert(batch);
+          if (rErr) throw rErr;
+        }
+      } catch (err) {
+        // Rollback: mark campaign as canceled so it doesn't appear stuck
+        await supabase
+          .from('broadcast_campaigns')
+          .update({ status: 'canceled' })
+          .eq('id', campaign.id);
+        throw err;
       }
 
       // Only trigger worker immediately if not scheduled

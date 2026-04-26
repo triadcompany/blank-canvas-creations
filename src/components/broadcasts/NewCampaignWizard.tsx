@@ -591,6 +591,12 @@ export function NewCampaignWizard({ onClose }: Props) {
     if (sourceType === 'spreadsheet') { built = buildRecipientsFromSpreadsheet(); }
     else if (sourceType === 'crm_leads') { built = buildRecipientsFromCrm(); setDiscarded(0); setDuplicates(crmLeads.length - built.length); }
     else { built = buildRecipientsFromInbox(); setDiscarded(0); setDuplicates(inboxContacts.length - built.length); }
+
+    if (built.length === 0) {
+      toast.error('Nenhum destinatário com telefone válido encontrado. Verifique se os números têm pelo menos 10 dígitos.');
+      return;
+    }
+
     setRows(built); setStep(2);
   };
 
