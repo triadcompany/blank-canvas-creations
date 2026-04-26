@@ -208,14 +208,14 @@ export default function BroadcastDetail() {
                       <TableCell className="font-mono text-sm">{r.phone}</TableCell>
                       <TableCell>{r.name || '—'}</TableCell>
                       <TableCell>
+                        <Badge variant={st.variant}>{st.label}</Badge>
+                      </TableCell>
+                      <TableCell>
                         {r.response_received ? (
                           <Badge variant="default" className="bg-blue-500">Sim</Badge>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={st.variant}>{st.label}</Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {r.sent_at ? new Date(r.sent_at).toLocaleString('pt-BR') : '—'}
