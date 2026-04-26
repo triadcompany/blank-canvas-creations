@@ -258,16 +258,26 @@ export function NewCampaignWizard({ onClose }: Props) {
     },
   });
 
+  // Members of the current organization (uses org_members → profiles join,
+  // because profiles.organization_id only reflects the user's "current" org).
   const { data: sellers } = useQuery({
     queryKey: ['sellers-for-broadcast', orgId],
     enabled: !!orgId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, name')
+      const { data: members, error } = await supabase
+        .from('org_members')
+        .select('clerk_user_id')
         .eq('organization_id', orgId!)
+        .eq('status', 'active');
+      if (error || !members?.length) return [];
+      const clerkIds = members.map(m => m.clerk_user_id).filter(Boolean) as string[];
+      if (!clerkIds.length) return [];
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, name, clerk_user_id')
+        .in('clerk_user_id', clerkIds)
         .order('name');
-      return data || [];
+      return (profs || []).filter(p => p.name);
     },
   });
 
