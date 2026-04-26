@@ -257,7 +257,7 @@ function CampaignCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {(c.status === 'paused' || c.status === 'scheduled' || c.status === 'canceled') && (
+                {c.status !== 'completed' && (
                   <DropdownMenuItem onClick={e => onEdit(e, c)}>
                     <Pencil className="h-4 w-4 mr-2" /> Editar
                   </DropdownMenuItem>
