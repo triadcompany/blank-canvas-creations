@@ -174,6 +174,44 @@ export function useBroadcasts() {
     },
   });
 
+  const updateCampaign = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      name?: string;
+      payload?: Record<string, any>;
+      settings?: Record<string, any>;
+      response_window_hours?: number;
+      enable_automation?: boolean;
+      automation_id?: string | null;
+      scheduled_at?: string | null;
+    }) => {
+      const update: Record<string, any> = {};
+      if (params.name !== undefined) update.name = params.name;
+      if (params.payload !== undefined) update.payload = params.payload;
+      if (params.settings !== undefined) update.settings = params.settings;
+      if (params.response_window_hours !== undefined)
+        update.response_window_hours = params.response_window_hours;
+      if (params.enable_automation !== undefined)
+        update.enable_automation = params.enable_automation;
+      if (params.automation_id !== undefined) update.automation_id = params.automation_id;
+      if (params.scheduled_at !== undefined) update.scheduled_at = params.scheduled_at;
+
+      const { error } = await supabase
+        .from('broadcast_campaigns')
+        .update(update)
+        .eq('id', params.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
+      queryClient.invalidateQueries({ queryKey: ['broadcast-detail'] });
+      toast.success('Campanha atualizada');
+    },
+    onError: (err: any) => {
+      toast.error('Erro ao atualizar: ' + err.message);
+    },
+  });
+
   const updateCampaignStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const { error } = await supabase
@@ -291,6 +329,7 @@ export function useBroadcasts() {
     loading: campaignsQuery.isLoading,
     refetch: campaignsQuery.refetch,
     createCampaign,
+    updateCampaign,
     updateCampaignStatus,
     retryFailed,
     duplicateCampaign,
