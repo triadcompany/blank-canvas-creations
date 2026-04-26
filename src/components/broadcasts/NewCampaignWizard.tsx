@@ -160,8 +160,10 @@ export function NewCampaignWizard({ onClose }: Props) {
   const [minDelay, setMinDelay] = useState(2);
   const [maxDelay, setMaxDelay] = useState(6);
   const [limitPerHour, setLimitPerHour] = useState(600);
-  const [windowStart, setWindowStart] = useState('09:00');
-  const [windowEnd, setWindowEnd] = useState('18:00');
+  // Janela vazia por padrão = sem restrição (o worker dispara a qualquer hora).
+  // Se o usuário preencher, a janela é aplicada (timezone Brasil).
+  const [windowStart, setWindowStart] = useState('');
+  const [windowEnd, setWindowEnd] = useState('');
   const [noDuplicate, setNoDuplicate] = useState(true);
   const [enableAutomation, setEnableAutomation] = useState(false);
   const [selectedAutomationId, setSelectedAutomationId] = useState('');
@@ -624,7 +626,14 @@ export function NewCampaignWizard({ onClose }: Props) {
       instance_name: instanceName,
       payload_type: payloadType as any,
       payload,
-      settings: { minDelay, maxDelay, limitPerHour, windowStart, windowEnd, noDuplicate },
+      settings: {
+        minDelay,
+        maxDelay,
+        limitPerHour,
+        // Só envia janela se o usuário tiver preenchido AMBOS os campos
+        ...(windowStart && windowEnd ? { windowStart, windowEnd } : {}),
+        noDuplicate,
+      },
       recipients: rows,
       profileId: profile.id,
       enableAutomation,
@@ -1407,8 +1416,8 @@ export function NewCampaignWizard({ onClose }: Props) {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><Label>Limite/hora</Label><Input type="number" value={limitPerHour} onChange={e => setLimitPerHour(+e.target.value)} /></div>
-                <div><Label>Janela início</Label><Input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} /></div>
-                <div><Label>Janela fim</Label><Input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} /></div>
+                <div><Label>Janela início (opcional)</Label><Input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)} placeholder="24h" /></div>
+                <div><Label>Janela fim (opcional)</Label><Input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)} placeholder="24h" /></div>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={noDuplicate} onCheckedChange={setNoDuplicate} />
@@ -1465,7 +1474,7 @@ export function NewCampaignWizard({ onClose }: Props) {
                     ...(duplicates > 0 ? [['Duplicatas removidas', duplicates]] : []),
                     ['Delay', `${minDelay}s – ${maxDelay}s`],
                     ['Limite/hora', limitPerHour],
-                    ['Janela', `${windowStart} – ${windowEnd}`],
+                    ['Janela', windowStart && windowEnd ? `${windowStart} – ${windowEnd}` : 'Sem restrição (24h)'],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="flex justify-between">
                       <span className="text-sm text-muted-foreground">{label}</span>

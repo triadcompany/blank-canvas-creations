@@ -3,6 +3,27 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+// Dispara o broadcast-worker via fetch com keepalive: true para garantir
+// que o request não seja cancelado se a UI fechar o modal logo em seguida.
+// Era o motivo das campanhas ficarem em "Em andamento" sem disparar nada.
+async function triggerBroadcastWorker(campaignId: string) {
+  try {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+    await fetch(`${SUPABASE_URL}/functions/v1/broadcast-worker`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: SUPABASE_KEY,
+      },
+      body: JSON.stringify({ campaign_id: campaignId }),
+      keepalive: true,
+    });
+  } catch (err) {
+    console.error('[broadcasts] worker trigger failed:', err);
+  }
+}
 export interface BroadcastCampaign {
   id: string;
   organization_id: string;
@@ -169,9 +190,7 @@ export function useBroadcasts() {
 
       // Only trigger worker immediately if not scheduled
       if (!isScheduled) {
-        supabase.functions.invoke('broadcast-worker', {
-          body: { campaign_id: campaign.id },
-        }).catch(err => console.error('Worker trigger error:', err));
+        await triggerBroadcastWorker(campaign.id);
       }
 
       return campaign.id;
@@ -244,9 +263,7 @@ export function useBroadcasts() {
       if (error) throw error;
 
       if (status === 'running') {
-        supabase.functions.invoke('broadcast-worker', {
-          body: { campaign_id: id },
-        }).catch(err => console.error('Worker trigger error:', err));
+        await triggerBroadcastWorker(id);
       }
     },
     onSuccess: () => {
@@ -269,9 +286,7 @@ export function useBroadcasts() {
         .update({ status: 'running' })
         .eq('id', campaignId);
 
-      supabase.functions.invoke('broadcast-worker', {
-        body: { campaign_id: campaignId },
-      }).catch(err => console.error('Worker trigger error:', err));
+      await triggerBroadcastWorker(campaignId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
