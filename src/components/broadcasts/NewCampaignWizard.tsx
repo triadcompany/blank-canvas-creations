@@ -286,10 +286,16 @@ export function NewCampaignWizard({ onClose }: Props) {
   const { data: automations } = useQuery({
     queryKey: ['automations-for-broadcast', orgId],
     enabled: !!orgId,
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/automations-api`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
         body: JSON.stringify({ action: 'list', organization_id: orgId }),
       });
       const json = await res.json();
