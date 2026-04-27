@@ -200,12 +200,14 @@ function CampaignCard({
   onStatusAction,
   onDuplicate,
   onEdit,
+  onDelete,
 }: {
   campaign: BroadcastCampaign;
   onView: () => void;
   onStatusAction: (e: React.MouseEvent, id: string, status: string) => void;
   onDuplicate: (e: React.MouseEvent, id: string) => void;
   onEdit: (e: React.MouseEvent, campaign: BroadcastCampaign) => void;
+  onDelete: (e: React.MouseEvent, campaign: BroadcastCampaign) => void;
 }) {
   const st = STATUS_CONFIG[c.status] ?? { label: c.status, className: 'bg-muted text-muted-foreground' };
   const src = SOURCE_CONFIG[c.source_type ?? 'spreadsheet'];
