@@ -147,6 +147,7 @@ export default function Broadcasts() {
               onStatusAction={handleStatusAction}
               onDuplicate={handleDuplicate}
               onEdit={handleEdit}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -162,6 +163,33 @@ export default function Broadcasts() {
           onClose={() => setEditingCampaign(null)}
         />
       )}
+
+      <AlertDialog open={!!deletingCampaign} onOpenChange={(open) => !open && setDeletingCampaign(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação removerá permanentemente a campanha
+              {deletingCampaign ? ` "${deletingCampaign.name}"` : ''} e todos os seus destinatários.
+              Não é possível desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deletingCampaign) {
+                  deleteCampaign.mutate(deletingCampaign.id);
+                  setDeletingCampaign(null);
+                }
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
