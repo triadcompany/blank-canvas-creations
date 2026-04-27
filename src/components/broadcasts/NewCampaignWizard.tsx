@@ -1110,10 +1110,16 @@ export function NewCampaignWizard({ onClose }: Props) {
 
               {payloadType === 'interactive' && (
                 <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
-                  <Label className="font-medium">Botões (até 3)</Label>
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      O WhatsApp deixou de exibir botões nativos em conexões via QR Code. Para garantir entrega em todos os celulares, as opções serão enviadas como <strong>lista numerada de texto</strong> (1, 2, 3…). As respostas continuam sendo capturadas e podem disparar automações pelo número ou texto da opção.
+                    </AlertDescription>
+                  </Alert>
+                  <Label className="font-medium">Opções (até 3)</Label>
                   {buttons.map((btn, idx) => (
                     <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                      <Input placeholder="Texto do botão" value={btn.label}
+                      <Input placeholder="Texto da opção" value={btn.label}
                         onChange={e => { const u = [...buttons]; u[idx] = { ...u[idx], label: e.target.value }; setButtons(u); }} />
                       <Input placeholder="Valor interno" value={btn.value}
                         onChange={e => { const u = [...buttons]; u[idx] = { ...u[idx], value: e.target.value }; setButtons(u); }} />
@@ -1121,7 +1127,7 @@ export function NewCampaignWizard({ onClose }: Props) {
                     </div>
                   ))}
                   {buttons.length < 3 && (
-                    <Button variant="outline" size="sm" onClick={() => setButtons([...buttons, { label: '', value: '' }])}>+ Adicionar botão</Button>
+                    <Button variant="outline" size="sm" onClick={() => setButtons([...buttons, { label: '', value: '' }])}>+ Adicionar opção</Button>
                   )}
                 </div>
               )}
