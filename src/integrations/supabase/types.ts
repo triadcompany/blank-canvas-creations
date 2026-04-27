@@ -8281,6 +8281,17 @@ export type Database = {
         }
         Returns: Json
       }
+      get_inbox_contacts_for_broadcast: {
+        Args: { p_seller_id?: string; p_status?: string }
+        Returns: {
+          assigned_to: string
+          contact_name: string
+          contact_phone: string
+          id: string
+          last_message_at: string
+          status: string
+        }[]
+      }
       get_my_org_id: { Args: never; Returns: string }
       get_my_role: { Args: never; Returns: string }
       get_org_conversations:
