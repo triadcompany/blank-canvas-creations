@@ -14,7 +14,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy, Pencil,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy, Pencil, Trash2,
   MoreVertical, Search, FileSpreadsheet, Users, MessageSquare, Calendar,
   CheckCircle, MessageSquareReply, AlertTriangle, Clock,
 } from 'lucide-react';
