@@ -43,9 +43,10 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = 
 };
 
 export default function Broadcasts() {
-  const { campaigns, loading, updateCampaignStatus, duplicateCampaign } = useBroadcasts();
+  const { campaigns, loading, updateCampaignStatus, duplicateCampaign, deleteCampaign } = useBroadcasts();
   const [showWizard, setShowWizard] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<BroadcastCampaign | null>(null);
+  const [deletingCampaign, setDeletingCampaign] = useState<BroadcastCampaign | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const navigate = useNavigate();
