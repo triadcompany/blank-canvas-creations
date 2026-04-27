@@ -208,10 +208,10 @@ serve(async (req) => {
           title: "",
           description: text,
           footer: "",
-          buttons: campaignButtons.map((b) => ({
+          buttons: campaignButtons.slice(0, 3).map((b) => ({
             type: "reply",
-            buttonId: b.value,
-            buttonText: { displayText: b.label },
+            displayText: b.label,
+            id: b.value,
           })),
         };
       } else if (payloadType === "text" || payloadType === "interactive") {
