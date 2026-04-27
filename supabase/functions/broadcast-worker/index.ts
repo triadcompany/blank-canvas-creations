@@ -193,6 +193,10 @@ serve(async (req) => {
         campaignButtons &&
         campaignButtons.length > 0
       ) {
+        // WhatsApp bloqueou sendButtons em conexoes QR Code (nao-oficial).
+        // A mensagem chega como "view-once" no desktop e nem aparece no celular.
+        // Solucao: enviar como texto numerado. As respostas continuam sendo
+        // capturadas via texto/numero (compativel com qualquer aparelho).
         let text = payload.text || "";
         const vars = (recipient.variables || {}) as Record<string, any>;
         text = text.replace(/\{\{nome\}\}/gi, recipient.name || "");
@@ -202,18 +206,13 @@ serve(async (req) => {
             String(val ?? ""),
           );
         }
-        sendUrl = `${evolutionBaseUrl}/message/sendButtons/${campaign.instance_name}`;
-        sendBody = {
-          number: phone,
-          title: "",
-          description: text,
-          footer: "",
-          buttons: campaignButtons.slice(0, 3).map((b) => ({
-            type: "reply",
-            displayText: b.label,
-            id: b.value,
-          })),
-        };
+        const optionsText = campaignButtons
+          .slice(0, 3)
+          .map((b, i) => `${i + 1}. ${b.label}`)
+          .join("\n");
+        const fullText = `${text}\n\n${optionsText}\n\n_Responda com o numero da opcao desejada._`;
+        sendUrl = `${evolutionBaseUrl}/message/sendText/${campaign.instance_name}`;
+        sendBody = { number: phone, text: fullText };
       } else if (payloadType === "text" || payloadType === "interactive") {
         let text = payload.text || "";
         const vars = (recipient.variables || {}) as Record<string, any>;
