@@ -323,6 +323,12 @@ function CampaignCard({
                 <DropdownMenuItem onClick={e => onDuplicate(e, c.id)}>
                   <Copy className="h-4 w-4 mr-2" /> Duplicar
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={e => onDelete(e, c)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
