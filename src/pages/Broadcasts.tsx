@@ -14,7 +14,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy, Pencil,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Plus, Radio, Loader2, Eye, Pause, Play, XCircle, Copy, Pencil, Trash2,
   MoreVertical, Search, FileSpreadsheet, Users, MessageSquare, Calendar,
   CheckCircle, MessageSquareReply, AlertTriangle, Clock,
 } from 'lucide-react';
@@ -39,9 +43,10 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = 
 };
 
 export default function Broadcasts() {
-  const { campaigns, loading, updateCampaignStatus, duplicateCampaign } = useBroadcasts();
+  const { campaigns, loading, updateCampaignStatus, duplicateCampaign, deleteCampaign } = useBroadcasts();
   const [showWizard, setShowWizard] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<BroadcastCampaign | null>(null);
+  const [deletingCampaign, setDeletingCampaign] = useState<BroadcastCampaign | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const navigate = useNavigate();
@@ -65,6 +70,11 @@ export default function Broadcasts() {
   const handleEdit = (e: React.MouseEvent, campaign: BroadcastCampaign) => {
     e.stopPropagation();
     setEditingCampaign(campaign);
+  };
+
+  const handleDelete = (e: React.MouseEvent, campaign: BroadcastCampaign) => {
+    e.stopPropagation();
+    setDeletingCampaign(campaign);
   };
 
   return (
@@ -137,6 +147,7 @@ export default function Broadcasts() {
               onStatusAction={handleStatusAction}
               onDuplicate={handleDuplicate}
               onEdit={handleEdit}
+              onDelete={handleDelete}
             />
           ))}
         </div>
@@ -152,6 +163,33 @@ export default function Broadcasts() {
           onClose={() => setEditingCampaign(null)}
         />
       )}
+
+      <AlertDialog open={!!deletingCampaign} onOpenChange={(open) => !open && setDeletingCampaign(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação removerá permanentemente a campanha
+              {deletingCampaign ? ` "${deletingCampaign.name}"` : ''} e todos os seus destinatários.
+              Não é possível desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deletingCampaign) {
+                  deleteCampaign.mutate(deletingCampaign.id);
+                  setDeletingCampaign(null);
+                }
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -162,12 +200,14 @@ function CampaignCard({
   onStatusAction,
   onDuplicate,
   onEdit,
+  onDelete,
 }: {
   campaign: BroadcastCampaign;
   onView: () => void;
   onStatusAction: (e: React.MouseEvent, id: string, status: string) => void;
   onDuplicate: (e: React.MouseEvent, id: string) => void;
   onEdit: (e: React.MouseEvent, campaign: BroadcastCampaign) => void;
+  onDelete: (e: React.MouseEvent, campaign: BroadcastCampaign) => void;
 }) {
   const st = STATUS_CONFIG[c.status] ?? { label: c.status, className: 'bg-muted text-muted-foreground' };
   const src = SOURCE_CONFIG[c.source_type ?? 'spreadsheet'];
@@ -282,6 +322,12 @@ function CampaignCard({
                 )}
                 <DropdownMenuItem onClick={e => onDuplicate(e, c.id)}>
                   <Copy className="h-4 w-4 mr-2" /> Duplicar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={e => onDelete(e, c)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Excluir
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
