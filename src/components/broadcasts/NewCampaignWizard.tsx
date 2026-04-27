@@ -545,17 +545,13 @@ export function NewCampaignWizard({ onClose }: Props) {
     if (!orgId) return;
     setInboxLoading(true); setInboxSearched(true);
     try {
-      let q = (supabase as any)
-        .from('conversations').select('id, contact_phone, contact_name, status, assigned_to')
-        .eq('organization_id', orgId).not('contact_phone', 'is', null).neq('contact_phone', '');
-      if (inboxFilters.status !== 'all') q = q.eq('status', inboxFilters.status);
-      if (inboxFilters.sellerId !== 'all') {
-        if (inboxFilters.sellerId === 'none') q = q.is('assigned_to', null);
-        else q = q.eq('assigned_to', inboxFilters.sellerId);
-      }
-      const { data } = await q.limit(2000).order('last_message_at', { ascending: false });
+      const { data, error } = await (supabase as any).rpc('get_inbox_contacts_for_broadcast', {
+        p_status: inboxFilters.status,
+        p_seller_id: inboxFilters.sellerId,
+      });
+      if (error) throw error;
       setInboxContacts(data || []);
-    } catch (err) { console.error(err); setInboxContacts([]); }
+    } catch (err) { console.error('Erro buscando contatos do inbox:', err); setInboxContacts([]); toast.error('Erro ao buscar contatos do inbox'); }
     finally { setInboxLoading(false); }
   };
 
