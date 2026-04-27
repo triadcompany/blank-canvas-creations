@@ -362,6 +362,30 @@ export function useBroadcasts() {
     },
   });
 
+  const deleteCampaign = useMutation({
+    mutationFn: async (campaignId: string) => {
+      // Apaga destinatários primeiro (FK), depois a campanha
+      const { error: rErr } = await supabase
+        .from('broadcast_recipients')
+        .delete()
+        .eq('campaign_id', campaignId);
+      if (rErr) throw rErr;
+
+      const { error: cErr } = await supabase
+        .from('broadcast_campaigns')
+        .delete()
+        .eq('id', campaignId);
+      if (cErr) throw cErr;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
+      toast.success('Campanha excluída');
+    },
+    onError: (err: any) => {
+      toast.error('Erro ao excluir: ' + err.message);
+    },
+  });
+
   return {
     campaigns: campaignsQuery.data || [],
     loading: campaignsQuery.isLoading,
@@ -371,6 +395,7 @@ export function useBroadcasts() {
     updateCampaignStatus,
     retryFailed,
     duplicateCampaign,
+    deleteCampaign,
   };
 }
 
